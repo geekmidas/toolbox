@@ -47,6 +47,7 @@ import {
 	ImageDigestMismatch,
 	ImageDigestMissing,
 	ImageTagNotFound,
+	lookupRef,
 	RedisClientMissing,
 	RegistryRequired,
 } from '../index';
@@ -110,9 +111,9 @@ describe('gkm compose --tag', { timeout: RUN_TIMEOUT }, () => {
 
 	it('asks the registry for every image and starts nothing when any is missing', async () => {
 		const refs = {
-			api: 'registry.example.com/acme/compose-app/compose-app-api:v1.4.0',
-			auth: 'registry.example.com/acme/compose-app/compose-app-auth:v1.4.0',
-			jobs: 'registry.example.com/acme/compose-app/compose-app-jobs:v1.4.0',
+			api: 'registry.example.com/acme/compose-app/compose-app-api:v1.4.0-production',
+			auth: 'registry.example.com/acme/compose-app/compose-app-auth:v1.4.0-production',
+			jobs: 'registry.example.com/acme/compose-app/compose-app-jobs:v1.4.0-production',
 			web: 'registry.example.com/acme/compose-app/compose-app-web:v1.4.0-production',
 		};
 		const { docker, ops } = fakeDocker({ registry: [refs.api] });
@@ -138,9 +139,9 @@ describe('gkm compose --tag', { timeout: RUN_TIMEOUT }, () => {
 	it('pulls the tag and builds nothing when every image is there', async () => {
 		const { docker, ops } = fakeDocker({
 			registry: [
-				'registry.example.com/acme/compose-app/compose-app-api:v1.4.0',
-				'registry.example.com/acme/compose-app/compose-app-auth:v1.4.0',
-				'registry.example.com/acme/compose-app/compose-app-jobs:v1.4.0',
+				'registry.example.com/acme/compose-app/compose-app-api:v1.4.0-production',
+				'registry.example.com/acme/compose-app/compose-app-auth:v1.4.0-production',
+				'registry.example.com/acme/compose-app/compose-app-jobs:v1.4.0-production',
 				'registry.example.com/acme/compose-app/compose-app-web:v1.4.0-production',
 			],
 		});
@@ -164,6 +165,8 @@ describe('gkm compose --tag', { timeout: RUN_TIMEOUT }, () => {
 
 		expect(ops()).toContain('pull');
 		expect(ops()).not.toContain('build');
+		// Every image carries the stage, not only the site's.
+		expect(result?.images?.api?.tag).toBe('v1.4.0-production');
 		expect(result?.images?.web?.tag).toBe('v1.4.0-production');
 	});
 });
@@ -396,8 +399,8 @@ describe(
 			);
 
 			expect(state.releases.api.current).toMatchObject({
-				ref: 'registry.example.com/acme/compose-app/compose-app-api:abc1234',
-				tag: 'abc1234',
+				ref: 'registry.example.com/acme/compose-app/compose-app-api:abc1234-development',
+				tag: 'abc1234-development',
 				digest: result?.images?.api?.digest,
 			});
 			expect(state.releases.web.current.tag).toBe('abc1234-development');
@@ -1183,9 +1186,9 @@ export const assets = new FileServer('Assets', { open: ['public/**'] });
 describe('telemetry, self-hosted by default', { timeout: RUN_TIMEOUT }, () => {
 	let home: string;
 	const registry = [
-		'registry.example.com/acme/compose-app/compose-app-api:v1.4.0',
-		'registry.example.com/acme/compose-app/compose-app-auth:v1.4.0',
-		'registry.example.com/acme/compose-app/compose-app-jobs:v1.4.0',
+		'registry.example.com/acme/compose-app/compose-app-api:v1.4.0-production',
+		'registry.example.com/acme/compose-app/compose-app-auth:v1.4.0-production',
+		'registry.example.com/acme/compose-app/compose-app-jobs:v1.4.0-production',
 		'registry.example.com/acme/compose-app/compose-app-web:v1.4.0-production',
 	];
 
@@ -1347,9 +1350,9 @@ describe(
 describe('a site behind a password', { timeout: RUN_TIMEOUT }, () => {
 	let home: string;
 	const registry = [
-		'registry.example.com/acme/compose-app/compose-app-api:v1.4.0',
-		'registry.example.com/acme/compose-app/compose-app-auth:v1.4.0',
-		'registry.example.com/acme/compose-app/compose-app-jobs:v1.4.0',
+		'registry.example.com/acme/compose-app/compose-app-api:v1.4.0-production',
+		'registry.example.com/acme/compose-app/compose-app-auth:v1.4.0-production',
+		'registry.example.com/acme/compose-app/compose-app-jobs:v1.4.0-production',
 		'registry.example.com/acme/compose-app/compose-app-web:v1.4.0-production',
 	];
 
@@ -1473,9 +1476,9 @@ describe('a site behind a password', { timeout: RUN_TIMEOUT }, () => {
 describe("the stack's Redis", { timeout: RUN_TIMEOUT }, () => {
 	let home: string;
 	const registry = [
-		'registry.example.com/acme/compose-app/compose-app-api:v1.4.0',
-		'registry.example.com/acme/compose-app/compose-app-auth:v1.4.0',
-		'registry.example.com/acme/compose-app/compose-app-jobs:v1.4.0',
+		'registry.example.com/acme/compose-app/compose-app-api:v1.4.0-production',
+		'registry.example.com/acme/compose-app/compose-app-auth:v1.4.0-production',
+		'registry.example.com/acme/compose-app/compose-app-jobs:v1.4.0-production',
 		'registry.example.com/acme/compose-app/compose-app-web:v1.4.0-production',
 	];
 
@@ -1641,9 +1644,9 @@ it('refuses --build with --pull', async () => {
 describe('gkm compose --build --push', { timeout: RUN_TIMEOUT }, () => {
 	const REGISTRY = 'registry.example.com/acme/compose-app';
 	const refs = {
-		api: `${REGISTRY}/compose-app-api:v2`,
-		auth: `${REGISTRY}/compose-app-auth:v2`,
-		jobs: `${REGISTRY}/compose-app-jobs:v2`,
+		api: `${REGISTRY}/compose-app-api:v2-production`,
+		auth: `${REGISTRY}/compose-app-auth:v2-production`,
+		jobs: `${REGISTRY}/compose-app-jobs:v2-production`,
 		web: `${REGISTRY}/compose-app-web:v2-production`,
 	};
 
@@ -1654,7 +1657,43 @@ describe('gkm compose --build --push', { timeout: RUN_TIMEOUT }, () => {
 		await cleanupDir(dir);
 	});
 
-	it('builds and pushes every image — backends, the worker, the site at <tag>-<stage> — and starts nothing', async () => {
+	it('pushes no tag another stage pushes, when two stages build one commit', async () => {
+		// The deploy workflow's build matrix: every deployed stage, one commit.
+		await cleanupDir(dir);
+		dir = realpathSync(await createTempDir('gkm-compose-command-'));
+		writeComposeApp(dir, {
+			registry: 'registry.example.com/acme',
+			deployed: ['production', 'staging'],
+			domains: {
+				production: 'shop.example.com',
+				staging: 'staging.shop.example.com',
+			},
+		});
+		await serveFrom(dir);
+
+		const pushed: Record<string, string[]> = {};
+		for (const stage of ['production', 'staging']) {
+			const { docker, calls } = fakeDocker();
+			await composeCommand(
+				{ cwd: dir, stage, build: true, push: true, tag: 'v2' },
+				{ lookup: resolvesHere, docker },
+			);
+			pushed[stage] = calls
+				.filter((call) => call.op === 'push')
+				.map((call) => call.args as string);
+		}
+
+		expect(pushed.production).toHaveLength(4);
+		expect(pushed.staging).toHaveLength(4);
+		expect(
+			pushed.production!.filter((ref) => pushed.staging!.includes(ref)),
+		).toEqual([]);
+		expect(pushed.production).toContain(refs.api);
+		expect(pushed.staging).toContain(`${REGISTRY}/compose-app-api:v2-staging`);
+		expect(pushed.staging).toContain(`${REGISTRY}/compose-app-jobs:v2-staging`);
+	});
+
+	it('builds and pushes every image at <tag>-<stage> — backends, the worker, the site — and starts nothing', async () => {
 		const { docker, calls, ops } = fakeDocker();
 		const sql = vi.fn();
 		const migrate = vi.fn();
@@ -1685,7 +1724,7 @@ describe('gkm compose --build --push', { timeout: RUN_TIMEOUT }, () => {
 		expect(probe).not.toHaveBeenCalled();
 		expect(result?.images?.api).toEqual({
 			ref: refs.api,
-			tag: 'v2',
+			tag: 'v2-production',
 			digest: fakeDigest(refs.api),
 		});
 
@@ -1901,7 +1940,7 @@ describe('with no deploy.registry', { timeout: RUN_TIMEOUT }, () => {
 		expect((error as RegistryRequired).operation).toBe('push');
 		// The Docker Hub name it would have had.
 		expect((error as RegistryRequired).ref).toMatch(
-			/^compose-app\/compose-app-[a-z]+:v2$/,
+			/^compose-app\/compose-app-[a-z]+:v2-production$/,
 		);
 		expect((error as Error).message).toContain('deploy.registry');
 		expect(ops()).toEqual([]);
@@ -1949,9 +1988,9 @@ describe('with no deploy.registry', { timeout: RUN_TIMEOUT }, () => {
 describe('gkm compose --tag --digests-file', { timeout: RUN_TIMEOUT }, () => {
 	const REGISTRY = 'registry.example.com/acme/compose-app';
 	const refs = {
-		api: `${REGISTRY}/compose-app-api:v2`,
-		auth: `${REGISTRY}/compose-app-auth:v2`,
-		jobs: `${REGISTRY}/compose-app-jobs:v2`,
+		api: `${REGISTRY}/compose-app-api:v2-production`,
+		auth: `${REGISTRY}/compose-app-auth:v2-production`,
+		jobs: `${REGISTRY}/compose-app-jobs:v2-production`,
 		web: `${REGISTRY}/compose-app-web:v2-production`,
 	};
 	const pinned = Object.fromEntries(
@@ -1970,7 +2009,10 @@ describe('gkm compose --tag --digests-file', { timeout: RUN_TIMEOUT }, () => {
 
 	it('pulls and runs each image at its digest, and records it', async () => {
 		writeFileSync(join(dir, 'digests.json'), JSON.stringify(pinned));
-		const { docker, calls } = fakeDocker({ registry: Object.values(pinned) });
+		// The registry has each pushed image by its digest, and no tag points
+		// at any of them any more: a later push moved every one.
+		const byDigest = Object.values(pinned).map(lookupRef);
+		const { docker, calls } = fakeDocker({ registry: byDigest });
 
 		await composeCommand(
 			{
@@ -1993,9 +2035,13 @@ describe('gkm compose --tag --digests-file', { timeout: RUN_TIMEOUT }, () => {
 			},
 		);
 
+		// Asked by digest alone, so a moved tag cannot change the answer.
 		expect(
 			calls.filter((call) => call.op === 'lookup').map((call) => call.args),
-		).toEqual(expect.arrayContaining(Object.values(pinned)));
+		).toEqual(expect.arrayContaining(byDigest));
+		expect(byDigest).toContain(
+			`${REGISTRY}/compose-app-api@${fakeDigest(refs.api)}`,
+		);
 		const compose = readFileSync(
 			join(dir, '.gkm', 'compose', 'production', 'docker-compose.yml'),
 			'utf-8',
@@ -2007,7 +2053,7 @@ describe('gkm compose --tag --digests-file', { timeout: RUN_TIMEOUT }, () => {
 			readFileSync(join(dir, '.gkm', 'deploy-production.json'), 'utf-8'),
 		);
 		expect(state.releases.api.current.ref).toBe(pinned.api);
-		expect(state.releases.api.current.tag).toBe('v2');
+		expect(state.releases.api.current.tag).toBe('v2-production');
 	});
 
 	it('refuses a file missing an app, or pinning another image, before the registry is asked', async () => {

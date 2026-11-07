@@ -171,15 +171,15 @@ describe('workspaceDeployCommand', () => {
 			expect.arrayContaining([
 				'docker',
 				'build',
-				'--tag=ghcr.io/acme/shop/shop-api:v1',
+				'--tag=ghcr.io/acme/shop/shop-api:v1-production',
 			]),
-			['docker', 'push', 'ghcr.io/acme/shop/shop-api:v1'],
+			['docker', 'push', 'ghcr.io/acme/shop/shop-api:v1-production'],
 			expect.arrayContaining([
 				'docker',
 				'build',
-				'--tag=ghcr.io/acme/shop/shop-web:v1',
+				'--tag=ghcr.io/acme/shop/shop-web:v1-production',
 			]),
-			['docker', 'push', 'ghcr.io/acme/shop/shop-web:v1'],
+			['docker', 'push', 'ghcr.io/acme/shop/shop-web:v1-production'],
 		]);
 		expect(docker()[0]).toContain('--platform=linux/amd64');
 
@@ -216,16 +216,16 @@ describe('workspaceDeployCommand', () => {
 			releases: {
 				api: {
 					current: {
-						ref: 'ghcr.io/acme/shop/shop-api:v1',
-						digest: digestOf('ghcr.io/acme/shop/shop-api:v1'),
-						tag: 'v1',
+						ref: 'ghcr.io/acme/shop/shop-api:v1-production',
+						digest: digestOf('ghcr.io/acme/shop/shop-api:v1-production'),
+						tag: 'v1-production',
 					},
-					history: [{ ref: 'ghcr.io/acme/shop/shop-api:v1' }],
+					history: [{ ref: 'ghcr.io/acme/shop/shop-api:v1-production' }],
 				},
 				web: {
 					current: {
-						ref: 'ghcr.io/acme/shop/shop-web:v1',
-						digest: digestOf('ghcr.io/acme/shop/shop-web:v1'),
+						ref: 'ghcr.io/acme/shop/shop-web:v1-production',
+						digest: digestOf('ghcr.io/acme/shop/shop-web:v1-production'),
 					},
 				},
 			},
@@ -345,7 +345,7 @@ export const web = new StaticSite('Web', {
 		expect(said()).toContain(`Using cached ID: ${applications.api}`);
 		expect(said()).toContain('(existing)');
 		expect(dokploy.images[applications.api]).toBe(
-			'ghcr.io/acme/shop/shop-api:v2',
+			'ghcr.io/acme/shop/shop-api:v2-production',
 		);
 	});
 
@@ -357,6 +357,13 @@ export const web = new StaticSite('Web', {
 		const environments = dokploy.projects[0]!.environments.map((e) => e.name);
 		expect(environments).toEqual([STAGE, 'staging']);
 		expect(said()).toContain('Creating "staging" environment...');
+		// One tag, two stages: each pushed its own image, neither the other's.
+		const pushed = docker()
+			.filter(([, op]) => op === 'push')
+			.map((call) => call.at(-1));
+		expect(pushed).toContain('ghcr.io/acme/shop/shop-api:v1-production');
+		expect(pushed).toContain('ghcr.io/acme/shop/shop-api:v1-staging');
+		expect(pushed).not.toContain('ghcr.io/acme/shop/shop-api:v1');
 		expect(dokploy.domains.map((d) => d.host)).toContain(
 			'api.staging.shop.example.com',
 		);
@@ -489,7 +496,7 @@ export const web = new StaticSite('Web', {
 
 		// The API went out and stays out: it was not what failed.
 		expect(state().releases.api.current.ref).toBe(
-			'ghcr.io/acme/shop/shop-api:v1',
+			'ghcr.io/acme/shop/shop-api:v1-production',
 		);
 		expect(state().releases.web).toBeUndefined();
 		expect(state().applications.web).toBeDefined();
@@ -936,16 +943,16 @@ export const config = new EnvironmentParser(process.env)
 
 			// Their own images, never pushed over each other.
 			expect(acme.releases.api.current.ref).toBe(
-				'ghcr.io/acme/acme/shop-api:v1',
+				'ghcr.io/acme/acme/shop-api:v1-production',
 			);
 			expect(globex.releases.api.current.ref).toBe(
-				'ghcr.io/acme/globex/shop-api:v1',
+				'ghcr.io/acme/globex/shop-api:v1-production',
 			);
 			expect(dokploy.images[acme.applications.api]).toBe(
-				'ghcr.io/acme/acme/shop-api:v1',
+				'ghcr.io/acme/acme/shop-api:v1-production',
 			);
 			expect(dokploy.images[globex.applications.api]).toBe(
-				'ghcr.io/acme/globex/shop-api:v1',
+				'ghcr.io/acme/globex/shop-api:v1-production',
 			);
 
 			// And their own applications, whose names are server-wide.
@@ -1161,7 +1168,7 @@ export const config = new EnvironmentParser(process.env)
 				dokploy.projects[0]!.environments[0]!.applications[0]!.applicationId,
 			);
 			expect(state().releases.api.current.ref).toBe(
-				'ghcr.io/acme/shop/shop-api:v1',
+				'ghcr.io/acme/shop/shop-api:v1-production',
 			);
 			expect(resources()['application:web'].status).toBe('pending');
 		});
@@ -1170,7 +1177,7 @@ export const config = new EnvironmentParser(process.env)
 	describe('a release that does not come up', () => {
 		const API = 'production-shop-api';
 		const ref = (app: string, tag: string) =>
-			`ghcr.io/acme/shop/shop-${app}:${tag}`;
+			`ghcr.io/acme/shop/shop-${app}:${tag}-${STAGE}`;
 		/** The application Dokploy has for `app`, by its name. */
 		const applicationOf = (app: string) =>
 			dokploy.projects[0]!.environments[0]!.applications.find(

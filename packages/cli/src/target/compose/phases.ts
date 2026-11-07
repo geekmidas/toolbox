@@ -123,7 +123,7 @@ import {
 	recordDnsChanges,
 } from '../../deploy/dnsResources.js';
 import type { ResourceChange } from '../../deploy/events';
-import { imageRef } from '../../deploy/identity.js';
+import { imageRef, stageTag } from '../../deploy/identity.js';
 import { DeployJournal } from '../../deploy/journal';
 import type { ResourceRecord } from '../../deploy/StateStore.js';
 import {
@@ -525,7 +525,12 @@ export async function validateCompose(
 	if (!registry && (push || mode === 'pull')) {
 		throw new RegistryRequired(
 			push ? 'push' : 'pull',
-			imageRef(identity, ctx.apps[0] ?? workspace.name, undefined, tag),
+			imageRef(
+				identity,
+				ctx.apps[0] ?? workspace.name,
+				undefined,
+				stageTag(tag, stage),
+			),
 		);
 	}
 
@@ -600,7 +605,8 @@ export async function validateCompose(
 	}
 
 	// No image embeds the stage's secrets: a backend reads them at runtime
-	// from its env file, so one image built at a commit runs on every stage.
+	// from its env file. Each stage still builds and tags its own images
+	// (`stageTag`), so two stages built from one commit never share a tag.
 	// A pinned release runs each image at the digest its push reported.
 	const pinned = (unpinned: ComposeStack) =>
 		options.pin
@@ -612,7 +618,7 @@ export async function validateCompose(
 	// A release is all of its images or none of them. A dry run asks nothing,
 	// so it can be run without a registry login.
 	if (mode === 'pull' && !ctx.dryRun) {
-		await assertImagesExist(deps.docker, tag, [
+		await assertImagesExist(deps.docker, stageTag(tag, stage), [
 			...stack.apps,
 			...stack.workers,
 			...stack.processors,
@@ -1614,7 +1620,7 @@ export async function buildCompose(
 			now.map((image) => image.app),
 		);
 	} else {
-		ctx.logger.info(`\n🐳 Pulling ${ctx.tag}…`);
+		ctx.logger.info(`\n🐳 Pulling ${stageTag(ctx.tag, ctx.stage)}…`);
 		await deps.docker.pull(ref, apps);
 	}
 
@@ -2412,7 +2418,7 @@ export function composeResult(
 		failedCount: 0,
 		stage: ctx.stage,
 		identity: ctx.identity.key,
-		tag: ctx.tag,
+		tag: stageTag(ctx.tag, ctx.stage),
 		dryRun: ctx.dryRun,
 		environmentId: '',
 		skipped: [...ctx.skipped],

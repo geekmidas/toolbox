@@ -54,6 +54,7 @@ import {
 	imageName,
 	imageRef as imageRefFor,
 	projectName,
+	stageTag,
 } from '../../deploy/identity.js';
 import { DeployJournal } from '../../deploy/journal.js';
 import {
@@ -421,7 +422,10 @@ interface Releasing {
 export async function validateDokploy(
 	phase: DeployPhaseContext<unknown>,
 ): Promise<DokployRun> {
-	const { workspace, stage, identity, tag: imageTag } = phase;
+	const { workspace, stage, identity } = phase;
+	// Every image carries the stage, as the compose target's do: a release
+	// tag two stages built would belong to whichever pushed last.
+	const imageTag = stageTag(phase.tag, stage);
 	const ctx: DokployContext = {
 		emit: phase.emit,
 		credentials: phase.credentials,

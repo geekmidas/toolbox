@@ -317,7 +317,8 @@ function registryLogin(): string {
  * drives over SSH.
  *
  * - `build` (on a push): every deployed stage's images, tagged with the
- *   commit, and their digests kept as the artifact `digests-<stage>`.
+ *   commit and the stage (`<sha>-<stage>`, so two stages' builds never share
+ *   a tag), and their digests kept as the artifact `digests-<stage>`.
  * - `deploy`: the commit the event names — a release's tag, a manual run's
  *   `ref` — then that commit's push build, whose digests pin each image. One
  *   `gkm compose` on the runner, with the stage's role and DNS token, creates
@@ -381,8 +382,8 @@ ${registryLogin()}
           role-to-assume: \${{ vars.AWS_ROLE_ARN }}
           aws-region: \${{ needs.stages.outputs.aws-region }}
 
-      # Builds and pushes every image the stage runs, tagged with the commit,
-      # and starts nothing.
+      # Builds and pushes every image the stage runs, tagged with the commit
+      # and the stage (<sha>-<stage>), and starts nothing.
       - name: Build and push
         run: ${pm.exec} gkm compose --stage "$STAGE" --build --push --tag "$SHA" --digests-file digests.json
         env:

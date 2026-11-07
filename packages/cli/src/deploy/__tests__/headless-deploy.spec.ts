@@ -284,7 +284,7 @@ describe('deploy()', { timeout: 30_000 }, () => {
 		expect(result).toMatchObject({
 			stage: STAGE,
 			identity: 'shop/shop',
-			tag: 'v1',
+			tag: 'v1-production',
 			dryRun: false,
 			successCount: 2,
 			failedCount: 0,
@@ -659,7 +659,7 @@ writeFileSync(new URL('../seen.json', import.meta.url), JSON.stringify(process.e
 
 	describe('rolling back', () => {
 		const ref = (app: string, tag: string) =>
-			`ghcr.io/acme/shop/shop-${app}:${tag}`;
+			`ghcr.io/acme/shop/shop-${app}:${tag}-${STAGE}`;
 		const applicationOf = (app: string) =>
 			dokploy.projects[0]!.environments[0]!.applications.find(
 				(a) => a.name === `production-shop-${app}`,
@@ -801,7 +801,7 @@ writeFileSync(new URL('../seen.json', import.meta.url), JSON.stringify(process.e
 
 	describe('a Worker', () => {
 		const ref = (app: string, tag: string) =>
-			`ghcr.io/acme/shop/shop-${app}:${tag}`;
+			`ghcr.io/acme/shop/shop-${app}:${tag}-${STAGE}`;
 		const applicationOf = (app: string) =>
 			dokploy.projects[0]!.environments[0]!.applications.find(
 				(a) => a.name === `production-shop-${app}`,
@@ -930,7 +930,7 @@ export const sweep = jobs.cron('rate(1 hour)').handle(async () => null);
 
 	describe("a file server's processors", () => {
 		const ref = (app: string, tag: string) =>
-			`ghcr.io/acme/shop/shop-${app}:${tag}`;
+			`ghcr.io/acme/shop/shop-${app}:${tag}-${STAGE}`;
 		const applicationOf = (app: string) =>
 			dokploy.projects[0]!.environments[0]!.applications.find(
 				(a) => a.name === `production-shop-${app}`,

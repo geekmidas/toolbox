@@ -354,7 +354,12 @@ describe('gkm compose:server', () => {
 			`'${publicKey}' 'gkm-compose-app-production-deploy' '${shell}'`,
 		);
 		if (step) expect(said()).toContain(step);
-		else expect(said()).not.toContain('zsh');
+		else {
+			// Not a bare 'zsh': the output names the key's path, and a temp
+			// directory's random name can hold those three letters.
+			expect(said()).not.toContain('logs in to zsh');
+			expect(said()).not.toContain('Oh My Zsh');
+		}
 	});
 
 	it('gives GitHub nothing when the network shows another host key', async () => {

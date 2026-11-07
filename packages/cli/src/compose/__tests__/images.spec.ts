@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { stageTag } from '../../deploy/identity';
 import {
 	type ImageLookup,
 	isLoopbackRegistry,
@@ -9,10 +10,11 @@ import {
 	assertImagesExist,
 	ImageDigestsInvalid,
 	ImageTagNotFound,
+	lookupRef,
+	PinnedImageMoved,
 	parseDigests,
 	pinnedRef,
 	RegistryUnreachable,
-	siteTag,
 } from '../images';
 
 /** A registry that holds exactly `present`, or does not answer at all. */
@@ -36,8 +38,16 @@ function registry(
 }
 
 const images = [
-	{ app: 'api', ref: 'ghcr.io/acme/shop/shop-api:v1.4.0', tag: 'v1.4.0' },
-	{ app: 'auth', ref: 'ghcr.io/acme/shop/shop-auth:v1.4.0', tag: 'v1.4.0' },
+	{
+		app: 'api',
+		ref: 'ghcr.io/acme/shop/shop-api:v1.4.0-production',
+		tag: 'v1.4.0-production',
+	},
+	{
+		app: 'auth',
+		ref: 'ghcr.io/acme/shop/shop-auth:v1.4.0-production',
+		tag: 'v1.4.0-production',
+	},
 	{
 		app: 'web',
 		ref: 'ghcr.io/acme/shop/shop-web:v1.4.0-production',
@@ -102,9 +112,12 @@ describe('isMissingManifest', () => {
 	});
 });
 
-describe('siteTag', () => {
-	it('is the release tag and the stage, since a site is built per stage', () => {
-		expect(siteTag('v1.4.0', 'production')).toBe('v1.4.0-production');
+describe('stageTag', () => {
+	it('is the release tag and the stage, for every image a stage builds', () => {
+		expect(stageTag('v1.4.0', 'production')).toBe('v1.4.0-production');
+		expect(stageTag('v1.4.0', 'staging')).not.toBe(
+			stageTag('v1.4.0', 'production'),
+		);
 	});
 });
 
@@ -165,5 +178,86 @@ describe('a registry on loopback', () => {
 		expect(isLoopbackRegistry('localhost.evil.example/a/b:v2')).toBe(false);
 		// A Docker Hub name whose first segment is `localhost`-ish is not one.
 		expect(isLoopbackRegistry('acme/shop-api:v2')).toBe(false);
+	});
+});
+
+describe('a pinned image', () => {
+	const PINNED = `ghcr.io/acme/shop/shop-api:v1.4.0-production@${DIGEST}`;
+	const BY_DIGEST = `ghcr.io/acme/shop/shop-api@${DIGEST}`;
+	const TAG = 'ghcr.io/acme/shop/shop-api:v1.4.0-production';
+	const pinned = [{ app: 'api', ref: PINNED, tag: 'v1.4.0-production' }];
+
+	it('is looked up by its digest alone, whatever its tag says', () => {
+		expect(lookupRef(PINNED)).toBe(BY_DIGEST);
+		expect(lookupRef(`localhost:5000/acme/shop-api:v2@${DIGEST}`)).toBe(
+			`localhost:5000/acme/shop-api@${DIGEST}`,
+		);
+		expect(lookupRef(TAG)).toBe(TAG);
+	});
+
+	it('is found when its tag has moved to another image since the push', async () => {
+		// Another build pushed the tag again; the pinned image is still there.
+		const docker = registry([BY_DIGEST]);
+
+		await expect(
+			assertImagesExist(docker, 'v1.4.0-production', pinned),
+		).resolves.toBeUndefined();
+		expect(docker.asked).toEqual([BY_DIGEST]);
+	});
+
+	it('says the tag resolves elsewhere, not to log in, when only the tag answers', async () => {
+		// The tag answers, so the registry is reachable and lets this machine
+		// in; what it will not give is the pinned image.
+		const asked: string[] = [];
+		const docker = {
+			async lookup(ref: string): Promise<ImageLookup> {
+				asked.push(ref);
+				return ref === TAG
+					? { ref, status: 'found' }
+					: {
+							ref,
+							status: 'unreachable',
+							detail: 'unsupported manifest format',
+						};
+			},
+		};
+
+		const error = await assertImagesExist(
+			docker,
+			'v1.4.0-production',
+			pinned,
+		).catch((e: unknown) => e);
+
+		expect(error).toBeInstanceOf(PinnedImageMoved);
+		expect((error as PinnedImageMoved).ref).toBe(PINNED);
+		expect((error as PinnedImageMoved).detail).toBe(
+			'unsupported manifest format',
+		);
+		expect((error as Error).message).toContain('resolves to a different image');
+		expect((error as Error).message).toContain(DIGEST);
+		expect((error as Error).message).not.toMatch(/docker login/);
+		expect(asked).toEqual([BY_DIGEST, TAG]);
+	});
+
+	it('is a missing image when neither its digest nor its tag is there', async () => {
+		const error = await assertImagesExist(
+			registry([]),
+			'v1.4.0-production',
+			pinned,
+		).catch((e: unknown) => e);
+
+		expect(error).toBeInstanceOf(ImageTagNotFound);
+		expect((error as ImageTagNotFound).refs).toEqual([PINNED]);
+	});
+
+	it('is a registry problem when nothing answers', async () => {
+		const error = await assertImagesExist(
+			registry([], { unreachable: 'unauthorized: authentication required' }),
+			'v1.4.0-production',
+			pinned,
+		).catch((e: unknown) => e);
+
+		expect(error).toBeInstanceOf(RegistryUnreachable);
+		expect((error as RegistryUnreachable).ref).toBe(BY_DIGEST);
 	});
 });

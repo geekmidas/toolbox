@@ -50,7 +50,7 @@ import {
 	suppliedOnly,
 } from '../deploy/devServices.js';
 import { isMainFrontendApp, resolveHost } from '../deploy/domain.js';
-import { type DeployIdentity, imageRef } from '../deploy/identity.js';
+import { type DeployIdentity, imageRef, stageTag } from '../deploy/identity.js';
 import { validateImageRef } from '../docker/imageRef.js';
 import {
 	appDockerfile,
@@ -145,7 +145,7 @@ import type {
 } from '../workspace/types.js';
 import { CADDY_TLS_DIR, edgeCaddyfile } from './caddyfile.js';
 import { isReservedStageKey } from './dnsConfig.js';
-import { type AppImage, siteTag } from './images.js';
+import type { AppImage } from './images.js';
 import {
 	LOGS_SERVICE,
 	logsOnPort,
@@ -802,7 +802,10 @@ export interface StackInput {
 	identity: DeployIdentity;
 	images: {
 		mode: 'build' | 'pull';
-		/** A release tag, or — building — the commit. */
+		/**
+		 * A release tag, or — building — the commit. Each image carries it with
+		 * the stage on (`stageTag`).
+		 */
 		tag: string;
 		registry?: string;
 	};
@@ -2171,12 +2174,7 @@ function stackApps(
 			options,
 		);
 		const site = declaration.kind === 'site';
-		const tag = site
-			? siteTag(options.images.tag, options.stage)
-			: options.images.tag;
-		const ref = validateImageRef(
-			imageRef(options.identity, name, options.images.registry, tag),
-		);
+		const { ref, tag } = stackImage(name, options);
 
 		apps.push({
 			app: name,
@@ -2438,6 +2436,27 @@ function assertHostsUnique(routes: readonly EdgeRoute[]): void {
 	}
 }
 
+/**
+ * The image an app, worker or processor runs on the stage: the release's tag
+ * with the stage on it (`stageTag`), as every target names its images.
+ */
+function stackImage(
+	name: string,
+	options: {
+		stage: string;
+		identity: DeployIdentity;
+		images: StackInput['images'];
+	},
+): Pick<AppImage, 'ref' | 'tag'> {
+	const tag = stageTag(options.images.tag, options.stage);
+	return {
+		ref: validateImageRef(
+			imageRef(options.identity, name, options.images.registry, tag),
+		),
+		tag,
+	};
+}
+
 /** Each processor unit's image, and where it is built from. */
 function stackProcessors(
 	units: readonly ProcessorUnit[],
@@ -2459,15 +2478,7 @@ function stackProcessors(
 			host: unit.app,
 			port: PROCESSOR_PORT,
 			prefixes: [...new Set(processors.map((p) => p.prefix))].sort(),
-			ref: validateImageRef(
-				imageRef(
-					options.identity,
-					unit.name,
-					options.images.registry,
-					options.images.tag,
-				),
-			),
-			tag: options.images.tag,
+			...stackImage(unit.name, options),
 			...(options.images.mode === 'build'
 				? {
 						build: {
@@ -2494,15 +2505,7 @@ function stackWorkers(
 		id: unit.id,
 		host: unit.app,
 		port: WORKER_PORT,
-		ref: validateImageRef(
-			imageRef(
-				options.identity,
-				unit.name,
-				options.images.registry,
-				options.images.tag,
-			),
-		),
-		tag: options.images.tag,
+		...stackImage(unit.name, options),
 		...(options.images.mode === 'build'
 			? {
 					build: {

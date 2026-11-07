@@ -218,8 +218,8 @@ beyond what every target records:
     "releases": {
       "api": {
         "current": {
-          "ref": "ghcr.io/acme/shop-api:v1.4.0",
-          "tag": "v1.4.0",
+          "ref": "ghcr.io/acme/shop-api:v1.4.0-production",
+          "tag": "v1.4.0-production",
           "digest": "sha256:9f2c…",
           "releasedAt": "2026-10-09T09:13:58.020Z",
           "releasedBy": {
@@ -285,7 +285,7 @@ gkm state:history --stage production
 #   9 · 2026-10-08T16:40:11.002Z · ada@ada-laptop · state:push
 #
 # Releases:
-#   api: ghcr.io/acme/shop-api:v1.4.0 (sha256:9f2c…) · 2026-10-09T09:13:58.020Z · octocat (Deploy, …)
+#   api: ghcr.io/acme/shop-api:v1.4.0-production (sha256:9f2c…) · 2026-10-09T09:13:58.020Z · octocat (Deploy, …)
 gkm state:history --stage production --json
 ```
 

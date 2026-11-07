@@ -2,6 +2,7 @@ import { HttpResponse, http } from 'msw';
 import { setupServer } from 'msw/node';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { deployDokploy } from '../dokploy';
+import { stageTag } from '../identity';
 import { generateTag } from '../orchestrate';
 
 // Mock auth functions
@@ -315,31 +316,10 @@ describe('deployDokploy', () => {
 });
 
 describe('generateTag', () => {
-	it('should generate tag with stage and timestamp', () => {
-		const tag = generateTag('production');
+	it('names no stage: each target puts the stage on its images', () => {
+		const tag = generateTag();
 
-		expect(tag).toMatch(/^production-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}$/);
-	});
-
-	it('should use stage prefix', () => {
-		const tag = generateTag('staging');
-
-		expect(tag.startsWith('staging-')).toBe(true);
-	});
-
-	it('should generate unique tags', () => {
-		const tag1 = generateTag('dev');
-		const tag2 = generateTag('dev');
-
-		// Tags generated at the same second should be equal
-		// But the format should be consistent
-		expect(tag1).toMatch(/^dev-/);
-		expect(tag2).toMatch(/^dev-/);
-	});
-
-	it('should handle different stage names', () => {
-		expect(generateTag('prod')).toMatch(/^prod-/);
-		expect(generateTag('development')).toMatch(/^development-/);
-		expect(generateTag('test-env')).toMatch(/^test-env-/);
+		expect(tag).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}$/);
+		expect(stageTag(tag, 'production')).toBe(`${tag}-production`);
 	});
 });
