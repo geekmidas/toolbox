@@ -1,5 +1,71 @@
 # @geekmidas/cli
 
+## 10.0.0-alpha.176
+
+### Patch Changes
+
+- [#438](https://github.com/geekmidas/toolbox/pull/438) [`0f1665a`](https://github.com/geekmidas/toolbox/commit/0f1665a664665341c850dd1e6ab34e857a94f5b2) Thanks [@geekmidas](https://github.com/geekmidas)! - A stage's first deploy from CI can create its IAM users
+
+  The role `gkm deploy:github` writes allows the deploy's IAM user actions on
+  `user/gkm/<name>` only. A deploy first looks the user up with `iam:GetUser`,
+  and IAM authorizes a call on a user that does not exist yet against
+  `user/<name>`: it has no path to know. So a stage whose first deploy ran from
+  CI was denied before the user was created, and only a stage first deployed
+  from an administrator's machine worked from CI afterwards.
+
+  Each user statement (bucket, mail, inbox and backups users) now names both
+  ARNs. Re-run `gkm deploy:github --stage <stage>` to update the role.
+
+- [#440](https://github.com/geekmidas/toolbox/pull/440) [`ede1e2c`](https://github.com/geekmidas/toolbox/commit/ede1e2c227068d8764b206374b6e9e5d09817ba4) Thanks [@geekmidas](https://github.com/geekmidas)! - `backup:restore` downloads the whole file before it loads it
+
+  `backup:restore` streamed each file's S3 response straight into the one-off
+  container's stdin. Over a remote engine (SSH), that stdin holds the response
+  back for as long as psql takes. On a large import (~77 MB gzipped), the
+  response could be cut off partway. The cut-off stream then closed the
+  container's stdin as though the file had ended, so `gunzip` reported
+  `unexpected end of file`, psql failed mid-row, and the only error was
+  `RestoreFailed … psql exited 3`.
+
+  Now the restore downloads the file to a private temporary folder first, checks
+  that every byte of the object's `ContentLength` arrived, and then loads it from
+  disk. A short download stops with `BackupDownloadIncomplete` (the bytes
+  received against those expected) before anything changes. For `--from`, the
+  download also happens before the apps are stopped, so a slow download costs no
+  downtime. A one-off container whose stdin fails partway now rejects with
+  `StdinNotDelivered` instead of passing a short input off as a whole one.
+
+- [#441](https://github.com/geekmidas/toolbox/pull/441) [`094b838`](https://github.com/geekmidas/toolbox/commit/094b8382272370cc904e67c09712f3c26cae1614) Thanks [@geekmidas](https://github.com/geekmidas)! - Each stage's images carry the stage in their tag
+
+  Every image a stage builds, pushes and pulls is now tagged `<tag>-<stage>`
+  (`stageTag`), not only a site's: `shop-api:<sha>-production` and
+  `shop-api:<sha>-staging`. Two builds of one commit are never the same image,
+  so when the deploy workflow's build matrix built two stages at one commit, both
+  pushed `shop-api:<sha>`, the last push owned it, and the other stage's deploy
+  failed with `RegistryUnreachable … unsupported manifest format` depending on
+  which build finished first. The compose and Dokploy targets name their images
+  by the same rule. A deploy given no `--tag` is tagged with its timestamp, and
+  its images `<timestamp>-<stage>` (they were `<stage>-<timestamp>`).
+
+  A pull pinned by `--digests-file` now asks the registry for each image by its
+  digest alone (`<image>@sha256:…`), so a tag moved since the push cannot fail
+  it. When the registry will not give a pinned digest while its tag answers, the
+  deploy stops with `PinnedImageMoved`, saying the tag resolves to a different
+  image than the pinned one, rather than `RegistryUnreachable` and a hint to
+  check the registry login.
+
+- Updated dependencies []:
+  - @geekmidas/cache@10.0.0-alpha.176
+  - @geekmidas/constructs@10.0.0-alpha.176
+  - @geekmidas/db@10.0.0-alpha.176
+  - @geekmidas/envkit@10.0.0-alpha.176
+  - @geekmidas/errors@10.0.0-alpha.176
+  - @geekmidas/logger@10.0.0-alpha.176
+  - @geekmidas/manifest@10.0.0-alpha.176
+  - @geekmidas/schema@10.0.0-alpha.176
+  - @geekmidas/services@10.0.0-alpha.176
+  - @geekmidas/storage@10.0.0-alpha.176
+  - @geekmidas/telescope@10.0.0-alpha.176
+
 ## 10.0.0-alpha.175
 
 ### Patch Changes
