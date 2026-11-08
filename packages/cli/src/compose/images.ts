@@ -19,18 +19,6 @@ export interface AppImage {
 	tag: string;
 }
 
-/**
- * The tag a site's image carries for a release.
- *
- * A site's public URLs are inlined when it is built, so one bundle serves one
- * stage: `v1.4.0-production` and `v1.4.0-staging` are two images of the same
- * commit. A backend reads its URLs at runtime, so one image serves every stage
- * and its tag is the release's alone.
- */
-export function siteTag(tag: string, stage: string): string {
-	return `${tag}-${stage}`;
-}
-
 /** Images a tag names that the registry does not have. */
 export class ImageTagNotFound extends GkmError {
 	constructor(
@@ -63,12 +51,56 @@ export class RegistryUnreachable extends GkmError {
 }
 
 /**
+ * A pinned image whose digest the registry would not give, while its tag it
+ * would: the tag now names another image than the one the release pinned.
+ *
+ * Not a login problem — the registry answered for the tag. The tag was pushed
+ * again (by another build of it), and the pinned image is gone, or cannot be
+ * read, by its digest.
+ */
+export class PinnedImageMoved extends GkmError {
+	constructor(
+		/** The pinned ref: `<image>:<tag>@sha256:…`. */
+		readonly ref: string,
+		/** What asking for the digest said; empty when it was not found. */
+		readonly detail: string,
+	) {
+		const [tagged, digest] = ref.split('@');
+		super(
+			`${tagged} is in the registry, but it resolves to a different image ` +
+				`than the pinned ${digest}, and the registry would not give that ` +
+				`digest${detail ? `: ${detail}` : ''}\n` +
+				`Nothing was pulled or started. The tag was pushed again after this ` +
+				`release's push; deploy with the digests file of a push whose ` +
+				`images are still in the registry, or push this release again.`,
+		);
+		this.name = 'PinnedImageMoved';
+	}
+}
+
+/**
+ * The ref an image is asked of the registry by: a pinned one by its digest
+ * alone (`<image>@sha256:…`), so a tag moved since the push cannot change the
+ * answer; any other by its tag.
+ */
+export function lookupRef(ref: string): string {
+	const [tagged, digest] = ref.split('@');
+	if (!digest) return ref;
+	return `${tagged!.replace(/:[\w][\w.-]*$/, '')}@${digest}`;
+}
+
+/**
  * Assert every image exists, before anything else happens.
  *
  * Asked all at once and reported all at once: a release missing two images is
  * one problem with two names, and finding the second only after fixing the
  * first is a slower way to learn the same thing.
  *
+ * A pinned image is asked for by its digest. When the registry will not give
+ * it, its tag is asked too: a tag that answers means the registry is reachable
+ * and the tag names another image, and that is what is reported.
+ *
+ * @throws {PinnedImageMoved} when a pinned digest fails and its tag answers
  * @throws {RegistryUnreachable} when the registry cannot say
  * @throws {ImageTagNotFound} listing every missing image
  */
@@ -78,17 +110,32 @@ export async function assertImagesExist(
 	images: readonly AppImage[],
 ): Promise<void> {
 	const lookups = await Promise.all(
-		images.map((image) => docker.lookup(image.ref)),
+		images.map(async (image) => ({
+			image,
+			lookup: await docker.lookup(lookupRef(image.ref)),
+		})),
 	);
 
-	const unreachable = lookups.find((lookup) => lookup.status === 'unreachable');
-	if (unreachable?.status === 'unreachable') {
-		throw new RegistryUnreachable(unreachable.ref, unreachable.detail);
+	for (const { image, lookup } of lookups) {
+		if (lookup.status === 'found' || !image.ref.includes('@')) continue;
+		const byTag = await docker.lookup(image.ref.split('@')[0]!);
+		if (byTag.status === 'found') {
+			throw new PinnedImageMoved(
+				image.ref,
+				lookup.status === 'unreachable' ? lookup.detail : '',
+			);
+		}
+	}
+
+	for (const { lookup } of lookups) {
+		if (lookup.status === 'unreachable') {
+			throw new RegistryUnreachable(lookup.ref, lookup.detail);
+		}
 	}
 
 	const missing = lookups
-		.filter((lookup) => lookup.status === 'missing')
-		.map((lookup) => lookup.ref);
+		.filter(({ lookup }) => lookup.status === 'missing')
+		.map(({ image }) => image.ref);
 	if (missing.length > 0) throw new ImageTagNotFound(tag, missing);
 }
 

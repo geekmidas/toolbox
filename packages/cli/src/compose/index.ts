@@ -53,9 +53,10 @@ export {
 	ImageDigestMissing,
 	ImageDigestsInvalid,
 	ImageTagNotFound,
+	lookupRef,
+	PinnedImageMoved,
 	RegistryRequired,
 	RegistryUnreachable,
-	siteTag,
 } from './images';
 export {
 	LogsLoginMissing,

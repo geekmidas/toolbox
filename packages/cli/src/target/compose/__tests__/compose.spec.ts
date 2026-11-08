@@ -274,7 +274,7 @@ describe('the compose target', { timeout: RUN_TIMEOUT }, () => {
 
 		expect(result).toMatchObject({
 			stage: 'development',
-			tag: 'abc1234',
+			tag: 'abc1234-development',
 			dryRun: false,
 			successCount: 4,
 			urls: { web: 'https://compose-app.localhost' },
@@ -285,7 +285,7 @@ describe('the compose target', { timeout: RUN_TIMEOUT }, () => {
 		await serveFrom(dir);
 		const fake = fakeDocker({
 			registry: [
-				'registry.example.com/acme/compose-app/compose-app-api:v1.4.0',
+				'registry.example.com/acme/compose-app/compose-app-api:v1.4.0-production',
 			],
 		});
 		const run = deploy({
@@ -717,7 +717,7 @@ describe("the stage's deploy state", { timeout: RUN_TIMEOUT }, () => {
 		await serveFrom(dir);
 		const fake = fakeDocker({
 			registry: [
-				'registry.example.com/acme/compose-app/compose-app-api:v1.4.0',
+				'registry.example.com/acme/compose-app/compose-app-api:v1.4.0-production',
 			],
 		});
 		const run = deploy({
@@ -1181,9 +1181,9 @@ describe(
 			await serveFrom(dir);
 			const fake = fakeDocker({
 				registry: [
-					'registry.example.com/acme/compose-app/compose-app-api:v1.4.0',
-					'registry.example.com/acme/compose-app/compose-app-auth:v1.4.0',
-					'registry.example.com/acme/compose-app/compose-app-jobs:v1.4.0',
+					'registry.example.com/acme/compose-app/compose-app-api:v1.4.0-production',
+					'registry.example.com/acme/compose-app/compose-app-auth:v1.4.0-production',
+					'registry.example.com/acme/compose-app/compose-app-jobs:v1.4.0-production',
 					'registry.example.com/acme/compose-app/compose-app-web:v1.4.0-production',
 				],
 			});

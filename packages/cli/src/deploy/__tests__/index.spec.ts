@@ -57,27 +57,9 @@ function _emptyProject() {
 }
 
 describe('generateTag', () => {
-	it('should generate tag with stage prefix', () => {
-		const tag = generateTag('production');
-		expect(tag).toMatch(/^production-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}$/);
-	});
-
-	it('should generate tag with staging prefix', () => {
-		const tag = generateTag('staging');
-		expect(tag).toMatch(/^staging-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}$/);
-	});
-
-	it('should generate unique tags', () => {
-		const tag1 = generateTag('test');
-		// Small delay to ensure different timestamp
-		const tag2 = generateTag('test');
-		// Tags should start with same prefix but could be same in fast execution
-		expect(tag1).toMatch(/^test-/);
-		expect(tag2).toMatch(/^test-/);
-	});
-
-	it('should replace colons and periods in timestamp', () => {
-		const tag = generateTag('dev');
+	it('is the moment the deploy started, colons and periods replaced', () => {
+		const tag = generateTag();
+		expect(tag).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}$/);
 		expect(tag).not.toContain(':');
 		expect(tag).not.toContain('.');
 	});
@@ -154,26 +136,6 @@ describe('image reference construction', () => {
 		expect(`123456789.dkr.ecr.us-east-1.amazonaws.com/myapp:latest`).toBe(
 			'123456789.dkr.ecr.us-east-1.amazonaws.com/myapp:latest',
 		);
-	});
-});
-
-describe('generateTag edge cases', () => {
-	it('should handle stage with special characters', () => {
-		const tag = generateTag('prod-us-east');
-		expect(tag).toMatch(/^prod-us-east-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}$/);
-	});
-
-	it('should generate consistent format', () => {
-		const tags = [
-			generateTag('dev'),
-			generateTag('staging'),
-			generateTag('production'),
-		];
-
-		for (const tag of tags) {
-			// Should match ISO 8601 format with dashes instead of colons/periods
-			expect(tag).toMatch(/^[a-z-]+-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}$/);
-		}
 	});
 });
 

@@ -247,10 +247,12 @@ describe('the local stage', () => {
 		});
 	});
 
-	it('builds each image from this checkout, a site per stage', () => {
+	it('builds each image from this checkout, every one per stage', () => {
 		const s = stack();
 
-		expect(app(s, 'api').ref).toBe('compose-app/compose-app-api:abc1234');
+		expect(app(s, 'api').ref).toBe(
+			'compose-app/compose-app-api:abc1234-development',
+		);
 		expect(app(s, 'web').ref).toBe(
 			'compose-app/compose-app-web:abc1234-development',
 		);
@@ -796,11 +798,11 @@ describe('a deployed stage', () => {
 		expect(s.compose.services.caddy?.ports).toEqual(['443:443', '80:80']);
 	});
 
-	it('pulls the tag, and a site at <tag>-<stage>, building nothing', () => {
+	it('pulls every image at <tag>-<stage>, building nothing', () => {
 		const s = deployed();
 
 		expect(app(s, 'api').ref).toBe(
-			'registry.example.com/acme/compose-app/compose-app-api:v1.4.0',
+			'registry.example.com/acme/compose-app/compose-app-api:v1.4.0-production',
 		);
 		expect(app(s, 'web').ref).toBe(
 			'registry.example.com/acme/compose-app/compose-app-web:v1.4.0-production',
@@ -1406,7 +1408,9 @@ describe('a worker', () => {
 	it("is built inside Docker from its host app's slice, and runs its own bundle", () => {
 		const s = stack();
 
-		expect(worker(s).ref).toBe('compose-app/compose-app-jobs:abc1234');
+		expect(worker(s).ref).toBe(
+			'compose-app/compose-app-jobs:abc1234-development',
+		);
 		expect(s.compose.services.jobs?.build).toEqual({
 			context: '../../..',
 			dockerfile: '.gkm/compose/development/Dockerfile.jobs',
@@ -1439,7 +1443,7 @@ describe('a worker', () => {
 		});
 
 		expect(worker(s).ref).toBe(
-			'r.example.com/acme/compose-app/compose-app-jobs:v1.2.0',
+			'r.example.com/acme/compose-app/compose-app-jobs:v1.2.0-development',
 		);
 		expect(s.compose.services.jobs?.build).toBeUndefined();
 		expect(s.dockerfiles).not.toHaveProperty(
@@ -2170,11 +2174,11 @@ describe('a stack that only builds (--build --push)', () => {
 			buildOnly: true,
 		});
 
-	it('builds every image, a backend at the commit and a site at <tag>-<stage>', () => {
+	it('builds every image at <commit>-<stage>, a backend as much as a site', () => {
 		const s = pushing();
 
 		expect(app(s, 'api').ref).toBe(
-			'registry.example.com/acme/compose-app/compose-app-api:abc1234',
+			'registry.example.com/acme/compose-app/compose-app-api:abc1234-production',
 		);
 		expect(app(s, 'web').ref).toBe(
 			'registry.example.com/acme/compose-app/compose-app-web:abc1234-production',

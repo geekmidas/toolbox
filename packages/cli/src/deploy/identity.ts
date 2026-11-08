@@ -150,6 +150,20 @@ export function imageName(identity: DeployIdentity, app: string): string {
 	return `${identity.namespace}/${identity.project}-${slug(kebabCase(app))}`;
 }
 
+/**
+ * The tag every image a stage runs carries for a release: `v1.4.0-production`
+ * and `v1.4.0-staging` are two images of the same commit.
+ *
+ * Each stage builds its own: a site inlines its stage's public URLs, and two
+ * builds of one commit are never byte-for-byte the same image anyway. So a
+ * tag shared by two stages would be owned by whichever push finished last,
+ * and the other stage would deploy, or fail to find, an image it never built.
+ * Every target names every image it builds, pushes and pulls through this.
+ */
+export function stageTag(tag: string, stage: string): string {
+	return `${tag}-${stage}`;
+}
+
 /** The full image ref an app is built, pushed and deployed as. */
 export function imageRef(
 	identity: DeployIdentity,

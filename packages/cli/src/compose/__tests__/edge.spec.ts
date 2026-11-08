@@ -1464,9 +1464,9 @@ describe('gkm compose with proxy: traefik', { timeout: 60_000 }, () => {
 	let dir: string;
 	let home: string;
 	const registry = [
-		'registry.example.com/acme/compose-app/compose-app-api:v1.4.0',
-		'registry.example.com/acme/compose-app/compose-app-auth:v1.4.0',
-		'registry.example.com/acme/compose-app/compose-app-jobs:v1.4.0',
+		'registry.example.com/acme/compose-app/compose-app-api:v1.4.0-production',
+		'registry.example.com/acme/compose-app/compose-app-auth:v1.4.0-production',
+		'registry.example.com/acme/compose-app/compose-app-jobs:v1.4.0-production',
 		'registry.example.com/acme/compose-app/compose-app-web:v1.4.0-production',
 	];
 
