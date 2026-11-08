@@ -105,6 +105,19 @@ const USER_ACTIONS = [
 	'iam:DeleteAccessKey',
 ];
 
+/**
+ * The ARNs a statement over the deploy's IAM users names: each under gkm's
+ * path, and again without one. IAM authorizes a call on a user that does not
+ * exist yet (the first deploy's `GetUser`) against `user/<name>`, since it
+ * has no path to know, so a stage's first deploy from CI is denied without it.
+ */
+function userArns(account: string, users: string[]): string[] {
+	return users.flatMap((user) => [
+		`arn:aws:iam::${account}:user${IAM_USER_PATH}${user}`,
+		`arn:aws:iam::${account}:user/${user}`,
+	]);
+}
+
 /** The name of the inline policy a compose stage's role is given. */
 export const SCOPED_POLICY_NAME = 'gkm-deploy';
 
@@ -374,8 +387,9 @@ export function deployAccess(
 				Sid: 'StageBucketUsers',
 				Effect: 'Allow',
 				Action: USER_ACTIONS,
-				Resource: names.map(
-					(n) => `arn:aws:iam::${account}:user${IAM_USER_PATH}${n.user}`,
+				Resource: userArns(
+					account,
+					names.map((n) => n.user),
 				),
 			},
 		]);
@@ -459,9 +473,7 @@ export function deployAccess(
 				Sid: 'StageMailUsers',
 				Effect: 'Allow',
 				Action: USER_ACTIONS,
-				Resource: users.map(
-					(user) => `arn:aws:iam::${account}:user${IAM_USER_PATH}${user}`,
-				),
+				Resource: userArns(account, users),
 			},
 		]);
 	}
@@ -528,8 +540,9 @@ export function deployAccess(
 				Sid: 'StageInboxUsers',
 				Effect: 'Allow',
 				Action: USER_ACTIONS,
-				Resource: names.map(
-					(n) => `arn:aws:iam::${account}:user${IAM_USER_PATH}${n.user}`,
+				Resource: userArns(
+					account,
+					names.map((n) => n.user),
 				),
 			},
 		]);
@@ -563,7 +576,7 @@ export function deployAccess(
 				Sid: 'StageBackupsUser',
 				Effect: 'Allow',
 				Action: USER_ACTIONS,
-				Resource: `arn:aws:iam::${account}:user${IAM_USER_PATH}${user}`,
+				Resource: userArns(account, [user]),
 			},
 		]);
 	}
