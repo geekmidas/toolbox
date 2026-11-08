@@ -19,6 +19,7 @@ import {
 	projectNetwork,
 	publishedPort,
 	type StackRef,
+	StdinNotDelivered,
 } from '../docker';
 
 /** The suite's own compose project, which runs the test Postgres. */
@@ -196,5 +197,29 @@ describe('a one-off container', () => {
 			{ encoding: 'utf-8' },
 		);
 		expect(left.stdout.trim()).toBe('');
+	}, 60_000);
+
+	it('fails, naming why, when its stdin stops partway — never as a short input', async () => {
+		await dockerCompose.ensureNetwork({}, NETWORK);
+		const stdin = new Readable({
+			read() {
+				this.push(Buffer.from('part of it\n'));
+				this.destroy(new Error('socket hang up'));
+			},
+		});
+		const error = await dockerCompose
+			.runOnce(
+				{},
+				{
+					image: IMAGE,
+					network: NETWORK,
+					command: ['sh', '-c', 'cat > /dev/null'],
+					stdin,
+					output: 'ignore',
+				},
+			)
+			.catch((e) => e);
+		expect(error).toBeInstanceOf(StdinNotDelivered);
+		expect(error.reason.message).toBe('socket hang up');
 	}, 60_000);
 });

@@ -7,9 +7,11 @@
  * The restore that really replays a dump into Postgres is the e2e suite's.
  */
 
-import { realpathSync } from 'node:fs';
+import { existsSync, type ReadStream, realpathSync } from 'node:fs';
+import { Readable } from 'node:stream';
 import {
 	CreateBucketCommand,
+	GetObjectCommand,
 	PutObjectCommand,
 	S3Client,
 } from '@aws-sdk/client-s3';
@@ -42,6 +44,7 @@ import {
 	AppsNotRestarted,
 	BackupDatabaseMissing,
 	BackupDatabaseUnknown,
+	BackupDownloadIncomplete,
 	type BackupRun,
 	BackupRunFailed,
 	BackupRunNotChosen,
@@ -540,6 +543,65 @@ describe('backup:restore --from', () => {
 			RESTORE_DATABASE: 'database_production',
 		});
 		expect(body).toBe('i'.repeat(30));
+	});
+
+	it('downloads the whole file before the apps stop, and loads it from disk, removed after', async () => {
+		const { docker, calls } = fakeDocker({ running: RUNNING });
+		const log: string[] = [];
+		let path = '';
+		const runOnce = docker.runOnce.bind(docker);
+		docker.runOnce = async (engine, run) => {
+			path = String((run.stdin as ReadStream).path);
+			expect(existsSync(path)).toBe(true);
+			for await (const _ of run.stdin as AsyncIterable<Buffer>) {
+				// drained
+			}
+			return runOnce(engine, { ...run, stdin: undefined });
+		};
+
+		await restore({ docker, log: (line) => log.push(line) });
+
+		const downloaded = log.findIndex((l) => l.startsWith('📥 Downloading'));
+		const stopping = log.findIndex((l) => l.startsWith('⏸️'));
+		expect(downloaded).toBeGreaterThan(-1);
+		expect(downloaded).toBeLessThan(stopping);
+		expect(calls.map((c) => c.op)).toContain('runOnce');
+		expect(existsSync(path)).toBe(false);
+	});
+
+	/** S3 whose GetObject body stops after `sent` of the 30 bytes it promises. */
+	function cutShort(sent: number, fail: boolean) {
+		return {
+			send: async (command: unknown) => {
+				if (!(command instanceof GetObjectCommand)) {
+					return s3.send(command as never);
+				}
+				const Body = new Readable({
+					read() {
+						this.push(Buffer.from('i'.repeat(sent)));
+						if (fail) this.destroy(new Error('socket hang up'));
+						else this.push(null);
+					},
+				});
+				return { Body, ContentLength: 30 };
+			},
+		} as unknown as S3Client;
+	}
+
+	it('says the download stopped short, by how much, and stops no app and loads nothing', async () => {
+		for (const fail of [true, false]) {
+			const { docker, calls } = fakeDocker({ running: RUNNING });
+			const error = await restore({ docker, s3: cutShort(10, fail) }).catch(
+				(e) => e,
+			);
+			expect(error).toBeInstanceOf(BackupDownloadIncomplete);
+			expect(error).toMatchObject({
+				url: `s3://${BUCKET}/${PREFIX}/imports/app.sql.gz`,
+				received: 10,
+				expected: 30,
+			});
+			expect(calls.map((c) => c.op)).toEqual(['container', 'exec']);
+		}
 	});
 
 	it('starts the apps again when the file fails, and says the load failed', async () => {

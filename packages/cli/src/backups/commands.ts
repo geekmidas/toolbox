@@ -16,7 +16,12 @@
  *   then the apps are started again, whatever happened.
  */
 
+import { createReadStream, createWriteStream } from 'node:fs';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type { Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 import type { S3Client } from '@aws-sdk/client-s3';
 import type { ConstructManifest } from '@geekmidas/manifest';
 import {
@@ -357,6 +362,25 @@ export class RestoreFailed extends GkmError {
 	}
 }
 
+/**
+ * A file's download from S3 ended before the whole object arrived. Nothing
+ * was run against the database.
+ */
+export class BackupDownloadIncomplete extends GkmError {
+	constructor(
+		readonly url: string,
+		readonly received: number,
+		readonly expected: number,
+	) {
+		super(
+			`Downloading ${url} stopped after ${received} of ${expected} ` +
+				'bytes, so nothing was loaded. Run the restore again; if it keeps ' +
+				'stopping, check the network between here and the bucket.',
+		);
+		this.name = 'BackupDownloadIncomplete';
+	}
+}
+
 /** Every run under the prefix, newest first. Keys that are not a run's are skipped. */
 export async function listBackups(
 	s3: S3Client,
@@ -591,11 +615,17 @@ export async function restoreBackup(
 		options.log(
 			`♻️  Restoring ${target.name} from s3://${options.bucket}/${Key}…`,
 		);
-		const code = await streamInto(options, engine, image, {
-			Key,
-			script: RESTORE_SCRIPT,
-			database: target.name,
-		});
+		const file = await download(options, Key);
+		let code: number;
+		try {
+			code = await loadInto(options, engine, image, {
+				path: file.path,
+				script: RESTORE_SCRIPT,
+				database: target.name,
+			});
+		} finally {
+			await file.remove();
+		}
 		if (code !== 0) throw new RestoreFailed(target.name, code);
 		restored.push(target.file);
 	}
@@ -640,6 +670,25 @@ async function importBackup(
 			'backup is taken first).',
 	);
 
+	// The whole file is here before the apps stop: a slow or broken download
+	// costs no downtime, and never reaches the database half-read.
+	options.log(`📥 Downloading s3://${options.bucket}/${Key}…`);
+	const file = await download(options, Key);
+	try {
+		return await loadImport(options, engine, image, target, file.path);
+	} finally {
+		await file.remove();
+	}
+}
+
+/** Stop the stack's apps, load the downloaded import, start them again. */
+async function loadImport(
+	options: RestoreOptions & { from: string },
+	engine: DockerEngine,
+	image: string,
+	target: BackupDatabase,
+	path: string,
+): Promise<{ from: string; restored: string[] }> {
 	const keep = ['postgres', BACKUPS_SERVICE, ...(options.keep ?? [])];
 	options.log(`⏸️  Stopping ${options.project}'s apps…`);
 	let stopped: string[];
@@ -655,11 +704,9 @@ async function importBackup(
 
 	let code: number;
 	try {
-		options.log(
-			`📥 Loading ${target.name} from s3://${options.bucket}/${Key}…`,
-		);
-		code = await streamInto(options, engine, image, {
-			Key,
+		options.log(`📥 Loading ${target.name} from ${options.from}…`);
+		code = await loadInto(options, engine, image, {
+			path,
 			script: IMPORT_SCRIPT,
 			database: target.name,
 		});
@@ -716,20 +763,62 @@ async function beforeRestore(
 }
 
 /**
- * Stream a file from S3, with the caller's credentials, into `script` in a
- * one-off container of the backups image on the stack's network, signed in
- * as the stack's superuser. Resolves with its exit code.
+ * Download a file from S3, with the caller's credentials, to a private
+ * temporary folder, and check every byte arrived. A restore never streams
+ * straight from S3 into the container: over a remote engine the container's
+ * stdin applies backpressure for as long as psql takes, and an S3 response
+ * held open that long can be cut off — leaving gunzip a truncated file.
+ *
+ * @throws {BackupDownloadIncomplete}
  */
-async function streamInto(
+async function download(
+	options: RestoreOptions,
+	Key: string,
+): Promise<{ path: string; remove: () => Promise<void> }> {
+	const { GetObjectCommand } = await import('@aws-sdk/client-s3');
+	const dir = await mkdtemp(join(tmpdir(), 'gkm-restore-'));
+	const remove = () => rm(dir, { recursive: true, force: true });
+	const path = join(dir, 'file');
+	const url = `s3://${options.bucket}/${Key}`;
+	try {
+		const object = await options.s3.send(
+			new GetObjectCommand({ Bucket: options.bucket, Key }),
+		);
+		let received = 0;
+		const body = object.Body as Readable;
+		body.on('data', (chunk: Buffer) => {
+			received += chunk.length;
+		});
+		await pipeline(body, createWriteStream(path, { mode: 0o600 })).catch(
+			(error) => {
+				if (object.ContentLength === undefined) throw error;
+				throw new BackupDownloadIncomplete(url, received, object.ContentLength);
+			},
+		);
+		if (
+			object.ContentLength !== undefined &&
+			received !== object.ContentLength
+		) {
+			throw new BackupDownloadIncomplete(url, received, object.ContentLength);
+		}
+		return { path, remove };
+	} catch (error) {
+		await remove();
+		throw error;
+	}
+}
+
+/**
+ * Stream a downloaded file into `script` in a one-off container of the
+ * backups image on the stack's network, signed in as the stack's superuser.
+ * Resolves with its exit code.
+ */
+async function loadInto(
 	options: RestoreOptions,
 	engine: DockerEngine,
 	image: string,
-	file: { Key: string; script: string; database: string },
+	file: { path: string; script: string; database: string },
 ): Promise<number> {
-	const { GetObjectCommand } = await import('@aws-sdk/client-s3');
-	const object = await options.s3.send(
-		new GetObjectCommand({ Bucket: options.bucket, Key: file.Key }),
-	);
 	return options.docker.runOnce(engine, {
 		image,
 		network: projectNetwork(options.project),
@@ -742,7 +831,7 @@ async function streamInto(
 			PGDATABASE: 'postgres',
 			RESTORE_DATABASE: file.database,
 		},
-		stdin: object.Body as Readable,
+		stdin: createReadStream(file.path),
 		...(options.output ? { output: options.output } : {}),
 	});
 }
