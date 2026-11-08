@@ -735,7 +735,7 @@ function parentRole(resource: PlannedResource, plan: Plan): string {
 }
 
 /** Whether a kind connects to Postgres and therefore has an owner role. */
-function isDatabase(kind: PlannedResource['kind']): boolean {
+export function isDatabase(kind: PlannedResource['kind']): boolean {
 	return kind === 'database' || kind === 'database-schema';
 }
 
