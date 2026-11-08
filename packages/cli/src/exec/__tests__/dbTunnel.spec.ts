@@ -36,6 +36,7 @@ import {
 	DatabaseNotPublished,
 	type DbTunnelDeps,
 	dbTunnel,
+	loginFields,
 } from '../dbTunnel';
 import { appEnvironment, ExecNotConfirmed } from '../stage';
 
@@ -209,6 +210,20 @@ describe('gkm db:tunnel --stage', () => {
 			expect(url.password.length).toBeGreaterThan(0);
 			expect(url.password).not.toBe(app.password);
 			expect(said()).toContain(login.url);
+			// And field by field, for a client's form: decoded, in full.
+			const fields = Object.fromEntries(loginFields(login.url));
+			expect(fields).toEqual({
+				host: 'localhost',
+				port: String(port),
+				database: decodeURIComponent(url.pathname.slice(1)),
+				user: decodeURIComponent(url.username),
+				password: decodeURIComponent(url.password),
+			});
+			for (const [field, value] of Object.entries(fields)) {
+				expect(said()).toMatch(
+					new RegExp(`${field}:\\s+${RegExp.escape(value)}$`, 'm'),
+				);
+			}
 		}
 		// The api's database's owner is the owner of the role the api runs as.
 		const owner = logins.find((login) => login.construct === 'Database')!;

@@ -2279,6 +2279,11 @@ gkm db:tunnel --stage production Database   # one construct
 
 🔑 Database (DATABASE_OWNER_URL)
    postgresql://database_production_owner:…@localhost:61234/…
+   host:     localhost
+   port:     61234
+   database: …
+   user:     database_production_owner
+   password: …
 
 The tunnel is open. Press Ctrl-C to close it.
 ```

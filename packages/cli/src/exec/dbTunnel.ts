@@ -83,6 +83,18 @@ export interface OwnerLogin {
 	url: string;
 }
 
+/** A login's URL as a SQL client's form asks for it, field by field. */
+export function loginFields(url: string): [string, string][] {
+	const parsed = new URL(url);
+	return [
+		['host', parsed.hostname],
+		['port', parsed.port],
+		['database', decodeURIComponent(parsed.pathname.slice(1))],
+		['user', decodeURIComponent(parsed.username)],
+		['password', decodeURIComponent(parsed.password)],
+	];
+}
+
 /**
  * Each database's owner URL — every one, or the construct asked for — on
  * the port this machine reaches the stack's Postgres by: the same values the
@@ -203,6 +215,9 @@ export async function dbTunnel(
 		for (const login of logins) {
 			logger.log(`\n🔑 ${login.construct} (${login.key})`);
 			logger.log(`   ${login.url}`);
+			for (const [field, value] of loginFields(login.url)) {
+				logger.log(`   ${`${field}:`.padEnd(10)}${value}`);
+			}
 		}
 		logger.log('\nThe tunnel is open. Press Ctrl-C to close it.');
 		await deps.held();
