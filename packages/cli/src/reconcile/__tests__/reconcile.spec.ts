@@ -17,6 +17,7 @@ import {
 	issueLocalCertificate,
 	localAuthorityPaths,
 } from '../../trust/authority';
+import { processEnv } from '../apps';
 import { sitesFor, toCaddyfile } from '../caddyfile';
 import type { Docker } from '../index';
 import { COMPOSE_PATH, reconcile } from '../index';
@@ -392,6 +393,50 @@ describe('reconcile', () => {
 			);
 			expect(sites).toContain(
 				'tls /etc/caddy/sites/development.pem /etc/caddy/sites/development.pem',
+			);
+		});
+
+		it('reaches a site’s own process, with the origins its images load from', async () => {
+			// A Next site showing a file server's objects, as `gkm exec -- next
+			// dev` runs it: scoped to the keys its own process reads.
+			const withSite = {
+				...withApi,
+				Assets: {
+					kind: 'objects',
+					id: 'Assets',
+					provides: ['ASSETS_CONNECTION_STRING'],
+				},
+				AssetsServer: {
+					kind: 'file-server',
+					id: 'AssetsServer',
+					of: 'Assets',
+					provides: ['ASSETS_SERVER_URL'],
+				},
+				Web: {
+					kind: 'site',
+					id: 'Web',
+					variant: 'next',
+					app: { path: 'apps/web' },
+					dependencies: [
+						{ target: 'Api', kind: 'rest-api' },
+						{ target: 'AssetsServer', kind: 'file-server' },
+					],
+					provides: ['WEB_URL'],
+				},
+			} as unknown as ConstructManifest;
+			const result = await edged({
+				manifest: withSite,
+				addresses: {
+					Api: 'http://localhost:3000',
+					Web: 'http://localhost:3001',
+				},
+			});
+
+			const env = processEnv(withSite, { app: 'web' }, {}, result.env);
+
+			expect(env.NODE_EXTRA_CA_CERTS).toBe(authority().certFile);
+			expect(env.NEXT_PUBLIC_GKM_IMAGE_ORIGINS?.split(',')).toContain(
+				new URL(env.ASSETS_URL!).origin,
 			);
 		});
 

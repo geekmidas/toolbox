@@ -30,14 +30,28 @@ import { answering, fakeDocker, fakeServer } from './__helpers__/fakeDocker';
 
 const RUN_TIMEOUT = 120_000;
 
-/** What each command adds of its own — the process, not the stage. */
-const PROCESS_KEYS = new Set(['NODE_ENV', 'PORT', 'STAGE']);
+/**
+ * What each command adds of its own — the process, not the stage. The local
+ * CA among them: a path on the host under `gkm dev`, in the container under
+ * `gkm compose`, which sets it on the service rather than in the env file.
+ */
+const PROCESS_KEYS = new Set([
+	'NODE_ENV',
+	'PORT',
+	'STAGE',
+	'NODE_EXTRA_CA_CERTS',
+]);
 
 let dir: string;
 let home: string;
 let local: Record<string, Record<string, string>>;
 let composed: Record<string, Record<string, string>>;
-let compose: { services: Record<string, { env_file?: unknown }> };
+let compose: {
+	services: Record<
+		string,
+		{ env_file?: unknown; environment?: Record<string, string> }
+	>;
+};
 
 const write = (path: string, source: string) => {
 	mkdirSync(join(dir, path, '..'), { recursive: true });
@@ -173,6 +187,11 @@ describe(
 				expect(web[key]).toMatch(/^https:\/\//);
 				expect(web[key]).toBe(own[key]);
 			}
+			// And trusts the certificate the edge answers with, in both.
+			expect(own.NODE_EXTRA_CA_CERTS).toMatch(/root\.pem$/);
+			expect(
+				compose.services.web?.environment?.NODE_EXTRA_CA_CERTS,
+			).toBeDefined();
 			// And it reads the stage's own secret on its server.
 			expect(web.STRIPE_KEY).toBe('sk_test_parity');
 			// Never the database it has no edge to.

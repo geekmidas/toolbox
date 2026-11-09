@@ -60,7 +60,7 @@ import {
 	serviceAddresses,
 } from './containers';
 import { dockerCli } from './docker';
-import { edgeToken, envFor } from './env';
+import { edgeToken, envFor, LOCAL_CA_KEY } from './env';
 import type { LocalFake } from './fakes';
 import { lanAddress } from './lan';
 import type { LocalCredentials, Login } from './localCredentials';
@@ -526,7 +526,7 @@ export async function reconcile(
 			: scopeTelemetryEnv(resolved, { uses: false, serviceName: project });
 		// gkm's root, which the edge's certificate is issued from — made below,
 		// before anything that reads the environment starts.
-		if (edged) env.NODE_EXTRA_CA_CERTS = authorityPaths.certFile;
+		if (edged) env[LOCAL_CA_KEY] = authorityPaths.certFile;
 		return env;
 	};
 	const env = envWith(options.credentials);

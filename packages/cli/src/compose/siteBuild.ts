@@ -1,8 +1,7 @@
 import {
 	type ConstructManifest,
-	IMAGE_ORIGINS_KEY,
-	imageOriginSources,
 	imageOrigins,
+	imageOriginsFor,
 	PUBLIC_PREFIX,
 	type PublicDeclaration,
 	providedKeyFor,
@@ -132,11 +131,14 @@ export function publicBuildValues(
 			}
 		}
 	}
-	const origins = imageOrigins(
-		imageOriginSources(site, manifest),
-		(source) => resolve(source) ?? derived[source],
-	);
-	if (origins) args[`${prefix}${IMAGE_ORIGINS_KEY}`] = origins;
+	const images = imageOriginsFor(site, manifest);
+	const origins =
+		images &&
+		imageOrigins(
+			images.sources,
+			(source) => resolve(source) ?? derived[source],
+		);
+	if (images && origins) args[images.key] = origins;
 
 	for (const [key, value] of Object.entries(secrets)) {
 		if (key.startsWith(prefix) && args[key] === undefined && value) {

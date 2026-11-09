@@ -23,6 +23,7 @@ import {
 	dependenciesOf,
 	dependentsOf,
 	EDGE_TOKEN_KEY,
+	imageOriginsFor,
 	isPublicDeclaration,
 	providedKeyFor,
 	provisionOrder,
@@ -48,7 +49,7 @@ import type { NormalizedWorkspace } from '../workspace/types.js';
 import type { ComposeService } from './compose.js';
 import { portKeys, portsOf } from './containers.js';
 import { eventsEdgeBucket, workerEdges } from './edges.js';
-import { type EnvOptions, envFor, stageEnv } from './env.js';
+import { type EnvOptions, envFor, LOCAL_CA_KEY, stageEnv } from './env.js';
 import { INBOX_RELAY_TOKEN_KEY } from './inboxRelay.js';
 import type { LocalCredentials } from './localCredentials.js';
 import { type Plan, type PlanOptions, planFor } from './plan.js';
@@ -313,6 +314,10 @@ export function appEnvKeys(
 		// And each unprefixed, for its server half: `<T>_SIGNED_ORIGIN` on
 		// either edge to a bucket, a file server's address.
 		for (const { key } of publicValues(declaration, manifest)) keys.add(key);
+		// The origins its pages load files from, for `next/image` and the like
+		// (`imageRemotePatterns`) — what its image build is given too.
+		const images = imageOriginsFor(declaration, manifest);
+		if (images) keys.add(images.key);
 	}
 
 	return keys;
@@ -426,6 +431,8 @@ export function constructKeys(manifest: ConstructManifest): Set<string> {
  *   signing secret stays with the auth server.
  * - **The stack's edge token** (`EDGE_TOKEN_KEY`), which a call to a
  *   sibling through the edge carries beside the client's address.
+ * - **The local CA** (`NODE_EXTRA_CA_CERTS`), where the stage's certificates
+ *   come from gkm's: without it Node cannot verify a sibling's https address.
  * - **Every one of the stage's own keys** (`stageKeys` no construct
  *   provides): a value set with `gkm secrets:set` that the code reads with
  *   `get('X')`. Nothing declares which process reads it, so every process is
@@ -457,6 +464,8 @@ export function processEnvKeys(
 	// Every process may call a sibling through the edge, with the stack's
 	// token beside the client's address.
 	keys.add(EDGE_TOKEN_KEY);
+	// And trust the certificate it answers with, where gkm's CA issued it.
+	keys.add(LOCAL_CA_KEY);
 
 	const owned = constructKeys(manifest);
 	for (const key of stageKeys) {

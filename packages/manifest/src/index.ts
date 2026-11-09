@@ -86,6 +86,7 @@ export {
 	IMAGE_ORIGINS_KEY,
 	imageOriginSources,
 	imageOrigins,
+	imageOriginsFor,
 	isDerived,
 	PUBLIC_PREFIX,
 	type PublicValue,
