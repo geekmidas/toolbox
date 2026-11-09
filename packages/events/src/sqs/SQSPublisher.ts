@@ -7,21 +7,35 @@ import chunk from 'lodash.chunk';
 import type { EventPublisher, PublishableMessage } from '../types';
 import type { SQSConnection } from './SQSConnection';
 
-export interface SQSPublisherOptions {
+export interface SQSPublisherOptions<
+	TMessage extends PublishableMessage<string, any> = PublishableMessage<
+		string,
+		any
+	>,
+> {
 	maxBatchSize?: number; // Default: 10 (SQS limit)
+	/**
+	 * The FIFO message group for each message. Required to publish to a FIFO
+	 * queue, which refuses a message without one. Messages in one group are
+	 * delivered in order; different groups are processed in parallel. The queue
+	 * must use content-based deduplication, as no deduplication id is sent.
+	 */
+	groupId?: (message: TMessage) => string;
 }
 
 export class SQSPublisher<TMessage extends PublishableMessage<string, any>>
 	implements EventPublisher<TMessage>
 {
-	readonly options: Required<SQSPublisherOptions>;
+	readonly options: Required<Omit<SQSPublisherOptions<TMessage>, 'groupId'>> &
+		Pick<SQSPublisherOptions<TMessage>, 'groupId'>;
 
 	constructor(
 		readonly connection: SQSConnection,
-		options: SQSPublisherOptions = {},
+		options: SQSPublisherOptions<TMessage> = {},
 	) {
 		this.options = {
 			maxBatchSize: options.maxBatchSize ?? 10, // SQS limit
+			groupId: options.groupId,
 		};
 	}
 
@@ -31,7 +45,10 @@ export class SQSPublisher<TMessage extends PublishableMessage<string, any>>
 	 */
 	static async fromConnectionString<
 		TMessage extends PublishableMessage<string, any>,
-	>(connectionString: string): Promise<SQSPublisher<TMessage>> {
+	>(
+		connectionString: string,
+		publisherOptions: Pick<SQSPublisherOptions<TMessage>, 'groupId'> = {},
+	): Promise<SQSPublisher<TMessage>> {
 		const url = new URL(connectionString);
 		const params = url.searchParams;
 
@@ -39,10 +56,11 @@ export class SQSPublisher<TMessage extends PublishableMessage<string, any>>
 		const connection =
 			await SQSConnection.fromConnectionString(connectionString);
 
-		const options: SQSPublisherOptions = {
+		const options: SQSPublisherOptions<TMessage> = {
 			maxBatchSize: params.get('maxBatchSize')
 				? Number.parseInt(params.get('maxBatchSize')!, 10)
 				: undefined,
+			groupId: publisherOptions.groupId,
 		};
 
 		return new SQSPublisher<TMessage>(connection, options);
@@ -76,6 +94,9 @@ export class SQSPublisher<TMessage extends PublishableMessage<string, any>>
 						StringValue: message.type,
 					},
 				},
+				...(this.options.groupId && {
+					MessageGroupId: this.options.groupId(message),
+				}),
 			}),
 		);
 
