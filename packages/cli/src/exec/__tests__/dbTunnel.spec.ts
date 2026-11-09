@@ -219,10 +219,11 @@ describe('gkm db:tunnel --stage', () => {
 				user: decodeURIComponent(url.username),
 				password: decodeURIComponent(url.password),
 			});
+			const lines = said()
+				.split('\n')
+				.map((line) => line.trim().split(/\s+/));
 			for (const [field, value] of Object.entries(fields)) {
-				expect(said()).toMatch(
-					new RegExp(`${field}:\\s+${RegExp.escape(value)}$`, 'm'),
-				);
+				expect(lines).toContainEqual([`${field}:`, value]);
 			}
 		}
 		// The api's database's owner is the owner of the role the api runs as.
