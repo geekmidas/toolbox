@@ -136,6 +136,10 @@ describe('QueueGenerator', () => {
 			expect(content).toContain('eventSubscriber.subscribe([queue.name]');
 			expect(content).toContain("queue.messageSchema['~standard'].validate");
 			expect(content).toContain('messages: [validation.value]');
+			expect(content).toContain('records: [{ id, message: validation.value }]');
+			expect(content).toContain(
+				'isQueueResult(result) && result.failed.includes(id)',
+			);
 		});
 	});
 });
