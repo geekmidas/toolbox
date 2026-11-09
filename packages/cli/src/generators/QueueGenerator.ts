@@ -155,6 +155,8 @@ import type { EnvironmentParser } from '@geekmidas/envkit';
 import type { Logger } from '@geekmidas/logger';
 import { EventConnectionFactory, Subscriber } from '@geekmidas/events';
 import type { EventConnection, EventSubscriber } from '@geekmidas/events';
+import { randomUUID } from 'node:crypto';
+import { isQueueResult } from '@geekmidas/constructs/queue';
 import { ServiceDiscovery } from '@geekmidas/services';
 ${imports}
 
@@ -207,11 +209,20 @@ export async function setupQueues(
             return;
           }
 
-          await queue.handler({
+          // One message per delivery locally, so it gets an id of its own for
+          // the handler to report it by, as SQS's message id is deployed.
+          const id = randomUUID();
+          const result = await queue.handler({
             messages: [validation.value],
+            records: [{ id, message: validation.value }],
             services: services,
             logger: queue.logger,
           });
+
+          if (isQueueResult(result) && result.failed.includes(id)) {
+            logger.error({ queue: queue.name }, 'Queue handler reported the message as failed');
+            return;
+          }
 
           logger.debug({ queue: queue.name }, 'Successfully processed queue message');
         } catch (error) {

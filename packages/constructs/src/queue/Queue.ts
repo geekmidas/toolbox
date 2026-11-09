@@ -108,13 +108,47 @@ export class Queue<
 	}
 }
 
-/** The context a queue handler receives — a batch of typed messages. */
+/**
+ * One message in a batch, with the id its transport gave it: the SQS message id
+ * deployed, a generated id locally. The id is what a handler returns in
+ * {@link QueueResult} to have that message retried.
+ */
+export type QueueRecord<TMessage extends StandardSchemaV1> = {
+	id: string;
+	message: InferStandardSchema<TMessage>;
+};
+
+/**
+ * What a handler returns to retry only part of a batch: the ids of the records
+ * that failed. The rest are acknowledged. Throwing instead retries the whole
+ * batch.
+ */
+export type QueueResult = {
+	failed: readonly string[];
+};
+
+/** Whether a handler's return value reports failed records. */
+export function isQueueResult(value: unknown): value is QueueResult {
+	return Boolean(
+		value &&
+			typeof value === 'object' &&
+			Array.isArray((value as { failed?: unknown }).failed),
+	);
+}
+
+/**
+ * The context a queue handler receives — a batch of typed messages.
+ *
+ * `messages` and `records` are the same batch in the same order; `records`
+ * carries each message's id, for a handler that reports failures per message.
+ */
 export type QueueContext<
 	TMessage extends StandardSchemaV1,
 	TServices extends Service[] = [],
 	TLogger extends Logger = Logger,
 > = {
 	messages: InferStandardSchema<TMessage>[];
+	records: QueueRecord<TMessage>[];
 	services: ServiceRecord<TServices>;
 	logger: TLogger;
 };

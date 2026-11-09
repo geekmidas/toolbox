@@ -12,7 +12,7 @@ import type {
 	SQSEvent,
 	SQSRecord,
 } from 'aws-lambda';
-import type { Queue } from './Queue';
+import { isQueueResult, type Queue, type QueueRecord } from './Queue';
 
 export type AWSLambdaHandler<TEvent = any, TResult = any> = Handler<
 	TEvent,
@@ -26,9 +26,10 @@ export type AWSLambdaHandler<TEvent = any, TResult = any> = Handler<
  * unwrapped to its `payload`, validated against the queue's `messageSchema`, and
  * the whole batch is handed to the handler as `messages`.
  *
- * Uses SQS partial-batch responses: a record that fails to parse, validate, or
- * (when the handler throws) process is returned in `batchItemFailures` so SQS
- * retries only those records.
+ * Uses SQS partial-batch responses: a record that fails to parse or validate
+ * is returned in `batchItemFailures`, so SQS retries only it. After that, the
+ * handler decides: returning a {@link QueueResult} retries only the records it
+ * names, and throwing retries every record in the batch.
  */
 export class AWSLambdaQueue<
 	TName extends string = string,
@@ -100,7 +101,7 @@ export class AWSLambdaQueue<
 		const schema = this.queue.messageSchema;
 
 		const batchItemFailures: { itemIdentifier: string }[] = [];
-		const messages: InferStandardSchema<TMessage>[] = [];
+		const records: QueueRecord<TMessage>[] = [];
 
 		for (const record of event.Records) {
 			try {
@@ -114,7 +115,10 @@ export class AWSLambdaQueue<
 					batchItemFailures.push({ itemIdentifier: record.messageId });
 					continue;
 				}
-				messages.push(validation.value as InferStandardSchema<TMessage>);
+				records.push({
+					id: record.messageId,
+					message: validation.value as InferStandardSchema<TMessage>,
+				});
 			} catch (error) {
 				logger.error(
 					{ error, messageId: record.messageId },
@@ -124,12 +128,33 @@ export class AWSLambdaQueue<
 			}
 		}
 
-		if (messages.length === 0) {
+		if (records.length === 0) {
 			return { batchItemFailures };
 		}
 
 		try {
-			await this.queue.handler({ messages, services, logger });
+			const result = await this.queue.handler({
+				messages: records.map((r) => r.message),
+				records,
+				services,
+				logger,
+			});
+
+			if (isQueueResult(result)) {
+				const handed = new Set(records.map((r) => r.id));
+				const unknown = result.failed.filter((id) => !handed.has(id));
+				if (unknown.length > 0) {
+					logger.warn(
+						{ unknown },
+						'Queue handler reported records not in its batch',
+					);
+				}
+				for (const id of result.failed) {
+					if (handed.has(id)) {
+						batchItemFailures.push({ itemIdentifier: id });
+					}
+				}
+			}
 		} catch (error) {
 			logger.error(wrapError(error), 'Queue handler failed; retrying batch');
 			// Handler processes the batch atomically — fail the whole batch so SQS
