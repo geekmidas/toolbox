@@ -200,36 +200,6 @@ describe('gkm db:tunnel --stage', () => {
 			'AuthDatabase',
 			'Database',
 		]);
-		const app = await appLogin();
-		for (const login of logins) {
-			const url = new URL(login.url);
-			expect(url.hostname).toBe('localhost');
-			expect(url.port).toBe(String(port));
-			// An owner, with its password in full — not the app's login.
-			expect(url.username).toMatch(/_owner$/);
-			expect(url.password.length).toBeGreaterThan(0);
-			expect(url.password).not.toBe(app.password);
-			expect(said()).toContain(login.url);
-			// And field by field, for a client's form: decoded, in full.
-			const fields = Object.fromEntries(loginFields(login.url));
-			expect(fields).toEqual({
-				host: 'localhost',
-				port: String(port),
-				database: decodeURIComponent(url.pathname.slice(1)),
-				user: decodeURIComponent(url.username),
-				password: decodeURIComponent(url.password),
-			});
-			const lines = said()
-				.split('\n')
-				.map((line) => line.trim().split(/\s+/));
-			for (const [field, value] of Object.entries(fields)) {
-				expect(lines).toContainEqual([`${field}:`, value]);
-			}
-		}
-		// The api's database's owner is the owner of the role the api runs as.
-		const owner = logins.find((login) => login.construct === 'Database')!;
-		expect(new URL(owner.url).username).toBe(ownerRole(app.username));
-
 		// Asked of the server's Docker, over SSH, and tunneled to what it said.
 		expect(calls).toContainEqual({
 			op: 'published',
@@ -241,6 +211,50 @@ describe('gkm db:tunnel --stage', () => {
 			{ op: 'tunnel-closed', args: 54_321 },
 		]);
 		expect(await connects(port)).toBe(false);
+	});
+
+	it.for([
+		'Database',
+		'AuthDatabase',
+	])("prints %s's owner login whole and field by field, decoded", async (construct) => {
+		await deployed();
+		const [login] = await dbTunnel(
+			{ stage: 'production', cwd: dir, construct },
+			deps([]),
+		);
+		const url = new URL(login!.url);
+		const app = await appLogin();
+
+		// An owner, with its password in full — not the app's login.
+		expect({
+			host: url.hostname,
+			user: url.username.endsWith('_owner'),
+			password: url.password.length > 0 && url.password !== app.password,
+		}).toEqual({ host: 'localhost', user: true, password: true });
+		expect(
+			said()
+				.split('\n')
+				.map((line) => line.trim()),
+		).toEqual(
+			expect.arrayContaining([
+				login!.url,
+				`host:     localhost`,
+				`port:     ${url.port}`,
+				`database: ${decodeURIComponent(url.pathname.slice(1))}`,
+				`user:     ${decodeURIComponent(url.username)}`,
+				`password: ${decodeURIComponent(url.password)}`,
+			]),
+		);
+	});
+
+	it("prints the api's database as the owner of the role the api runs as", async () => {
+		await deployed();
+		const [login] = await dbTunnel(
+			{ stage: 'production', cwd: dir, construct: 'Database' },
+			deps([]),
+		);
+		const app = await appLogin();
+		expect(new URL(login!.url).username).toBe(ownerRole(app.username));
 	});
 
 	it('prints only the construct asked for', async () => {
@@ -299,5 +313,30 @@ describe('gkm db:tunnel --stage', () => {
 			deps(calls, { confirm: async () => false }),
 		);
 		expect(logins.length).toBeGreaterThan(0);
+	});
+});
+
+describe('loginFields', () => {
+	const url =
+		'postgresql://acme_owner:p%40ss%3Aw%2Frd@localhost:61234/acme%20production';
+
+	it.for([
+		['host', 'localhost'],
+		['port', '61234'],
+		['database', 'acme production'],
+		['user', 'acme_owner'],
+		['password', 'p@ss:w/rd'],
+	] as const)('reads %s, decoded, as %s', ([field, value]) => {
+		expect(Object.fromEntries(loginFields(url))[field]).toBe(value);
+	});
+
+	it('lists them in the order a client asks for them', () => {
+		expect(loginFields(url).map(([field]) => field)).toEqual([
+			'host',
+			'port',
+			'database',
+			'user',
+			'password',
+		]);
 	});
 });
