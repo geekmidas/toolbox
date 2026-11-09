@@ -132,6 +132,7 @@
 		"@geekmidas/cache": "workspace:*",
 		"@geekmidas/constructs": "workspace:~",
 		"@geekmidas/db": "workspace:*",
+		"@geekmidas/edge": "workspace:*",
 		"@geekmidas/envkit": "workspace:~",
 		"@geekmidas/errors": "workspace:~",
 		"@geekmidas/logger": "workspace:~",

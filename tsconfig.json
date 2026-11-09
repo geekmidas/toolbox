@@ -10,6 +10,7 @@
     { "path": "./packages/cloud" },
     { "path": "./packages/constructs" },
     { "path": "./packages/db" },
+    { "path": "./packages/edge" },
     { "path": "./packages/emailkit" },
     { "path": "./packages/envkit" },
     { "path": "./packages/errors" },

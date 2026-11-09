@@ -78,7 +78,9 @@ const {
 	trustCommand,
 	UnsupportedPlatform,
 } = await import('../index');
-const { localAuthorityPaths } = await import('../authority');
+const { localAuthorityPaths } = await import(
+	'@geekmidas/edge/certificates/local'
+);
 
 const DEBIAN = '/usr/local/share/ca-certificates';
 

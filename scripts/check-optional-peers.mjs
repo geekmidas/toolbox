@@ -64,6 +64,13 @@ export const ALLOWED = {
 		'./redis': ['ioredis'],
 		'./upstash': ['@upstash/redis'],
 	},
+	'@geekmidas/edge': {
+		// Route 53's DNS provider: the only entry that needs the AWS SDK.
+		'./dns/route53': [
+			'@aws-sdk/client-route-53',
+			'@aws-sdk/credential-providers',
+		],
+	},
 	'@geekmidas/client': {
 		// React Query hooks: typed per endpoint, per OpenAPI path, and the
 		// query client itself.

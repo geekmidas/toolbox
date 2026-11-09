@@ -6,6 +6,12 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import {
+	type DnsRecord,
+	HostingerApi,
+	HostingerApiError,
+	type HostingerProvider,
+} from '@geekmidas/edge/dns/hostinger';
 import { HttpResponse, http } from 'msw';
 import { setupServer } from 'msw/node';
 import {
@@ -18,16 +24,17 @@ import {
 	it,
 	vi,
 } from 'vitest';
+import { createDnsProvider } from '../../dns/providers';
 import { MissingCredential } from '../credentials';
-import { HostingerProvider } from '../dns/HostingerProvider';
-import {
-	type DnsRecord,
-	HostingerApi,
-	HostingerApiError,
-} from '../dns/hostinger-api';
 
 const ZONE = 'https://developers.hostinger.com/api/dns/v1/zones/:domain';
 const TOKEN = 'hostinger-token';
+
+/** The provider as a `dns` domain gets it: its token read where the CLI reads one. */
+const hostinger = async () =>
+	(await createDnsProvider({
+		config: { provider: 'hostinger' },
+	})) as HostingerProvider;
 
 describe('Hostinger zone', () => {
 	let zone: DnsRecord[];
@@ -178,7 +185,7 @@ describe('Hostinger zone', () => {
 
 	describe('HostingerProvider.deleteRecords', () => {
 		it('deletes what exists and reports the rest as not found', async () => {
-			const results = await new HostingerProvider().deleteRecords('shop.com', [
+			const results = await (await hostinger()).deleteRecords('shop.com', [
 				{ name: 'api', type: 'A' },
 				{ name: 'gone', type: 'A' },
 			]);
@@ -197,7 +204,7 @@ describe('Hostinger zone', () => {
 				}),
 			);
 
-			const results = await new HostingerProvider().deleteRecords('shop.com', [
+			const results = await (await hostinger()).deleteRecords('shop.com', [
 				{ name: 'gone', type: 'CNAME' },
 			]);
 
@@ -217,7 +224,7 @@ describe('Hostinger zone', () => {
 				),
 			);
 
-			const results = await new HostingerProvider().deleteRecords('shop.com', [
+			const results = await (await hostinger()).deleteRecords('shop.com', [
 				{ name: 'api', type: 'A' },
 				{ name: 'www', type: 'A' },
 			]);
@@ -233,7 +240,7 @@ describe('Hostinger zone', () => {
 	it('says how to log in when no token is configured', async () => {
 		vi.stubEnv('HOSTINGER_API_TOKEN', undefined);
 
-		const error = await new HostingerProvider()
+		const error = await (await hostinger())
 			.getRecords('shop.com')
 			.catch((e: unknown) => e);
 

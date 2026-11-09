@@ -34,6 +34,11 @@
 
 import { lookup as dnsLookup } from 'node:dns/promises';
 import { isIPv4, isIPv6 } from 'node:net';
+import {
+	type DnsProvider,
+	type DnsRecord,
+	DnsRecordsUnreadable,
+} from '@geekmidas/edge/dns';
 import type {
 	CredentialProvider,
 	GoDaddyCredential,
@@ -41,18 +46,15 @@ import type {
 } from '../deploy/credentials';
 import type { DnsResourceRecord } from '../deploy/dnsResources';
 import {
-	createDnsProvider,
-	type DnsProvider,
-	type DnsRecord,
-	DnsRecordsUnreadable,
-	type DnsConfig as SchemaDnsConfig,
-} from '../target/dokploy/dns/DnsProvider';
-import type { GoDaddyProviderOptions } from '../target/dokploy/dns/GoDaddyProvider';
-import {
 	extractSubdomain,
 	findRootDomain,
 	normalizeDnsConfig,
-} from '../target/dokploy/dns/index';
+} from '../dns/index';
+import {
+	createDnsProvider,
+	type GoDaddyOptions,
+	type DnsConfig as SchemaDnsConfig,
+} from '../dns/providers';
 import type {
 	DnsProvider as DnsProviderConfig,
 	WorkspaceDnsConfig,
@@ -67,8 +69,8 @@ import {
 
 export { isReservedStageKey, SERVER_IPV4_KEY, SERVER_IPV6_KEY };
 
+import { routeHosts } from '@geekmidas/edge/routes';
 import { GkmError } from '../errors';
-import { routeHosts } from './routes.js';
 import type { ComposeStack } from './stack';
 
 /** A deployed stage's server: what its hosts' records point at. */
@@ -366,7 +368,7 @@ export interface ApplyStackDnsOptions {
 	dryRun?: boolean;
 	log?: (line: string) => void;
 	/** Where the GoDaddy provider reads its key: the environment and the CLI's home. */
-	credentials?: GoDaddyProviderOptions;
+	credentials?: GoDaddyOptions;
 	/** The Hostinger token, when the caller already has it. */
 	hostinger?: HostingerCredential;
 	/** The provider for a domain — `createDnsProvider` by default. */
@@ -1242,7 +1244,7 @@ export interface StageDnsInput {
 	/** The provider for a domain — `createDnsProvider` by default. */
 	providerFor?: (config: DnsProviderConfig) => Promise<DnsProvider | null>;
 	/** GoDaddy's API, for tests: its base URL and how a 429 is waited out. */
-	godaddy?: Pick<GoDaddyProviderOptions, 'baseUrl' | 'sleep' | 'maxAttempts'>;
+	godaddy?: Pick<GoDaddyOptions, 'baseUrl' | 'sleep' | 'maxAttempts'>;
 	/** The records the stage's state says gkm wrote: the stale ones are pruned. */
 	recorded?: readonly RecordedDnsRecord[];
 	/** The stage's wildcard site's `*.<domain>`, the one wildcard written. */

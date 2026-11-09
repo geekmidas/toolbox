@@ -1,7 +1,7 @@
+import { edgeCaddyfile } from '@geekmidas/edge/proxy/caddy';
+import { traefikDynamic } from '@geekmidas/edge/proxy/traefik';
+import type { EdgeRoute } from '@geekmidas/edge/routes';
 import { describe, expect, it } from 'vitest';
-import { edgeCaddyfile } from '../caddyfile';
-import type { EdgeRoute } from '../routes';
-import { traefikDynamic } from '../traefik';
 
 const realtime: EdgeRoute = {
 	name: 'realtime',

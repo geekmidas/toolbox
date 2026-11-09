@@ -9,45 +9,60 @@
  * record's is `<priority> <host>` (see {@link mxValue}).
  */
 
-import type { z } from 'zod/v4';
-import { GkmError } from '../../../errors';
-import type {
-	CloudflareDnsProviderSchema,
-	CustomDnsProviderSchema,
-	DnsProviderSchema,
-	DnsRecordSchema,
-	DnsRecordTypeSchema,
-	GoDaddyDnsProviderSchema,
-	HostingerDnsProviderSchema,
-	ManualDnsProviderSchema,
-	Route53DnsProviderSchema,
-	UpsertDnsRecordSchema,
-	UpsertResultSchema,
-} from '../../../workspace/schema';
+import { EdgeError } from '../errors';
 
 // =============================================================================
 // DNS Record Types (derived from Zod schemas)
 // =============================================================================
 
-/**
- * DNS record types supported across providers.
- */
-export type DnsRecordType = z.infer<typeof DnsRecordTypeSchema>;
+/** DNS record types supported across providers. */
+export type DnsRecordType =
+	| 'A'
+	| 'AAAA'
+	| 'CNAME'
+	| 'MX'
+	| 'TXT'
+	| 'NS'
+	| 'SRV'
+	| 'CAA';
 
-/**
- * A DNS record as returned by the provider.
- */
-export type DnsRecord = z.infer<typeof DnsRecordSchema>;
+/** A DNS record as returned by the provider. */
+export interface DnsRecord {
+	/** Subdomain name (e.g., 'api' for api.example.com, '@' for root) */
+	name: string;
+	type: DnsRecordType;
+	/** TTL in seconds */
+	ttl: number;
+	/**
+	 * Record values, as a zone file writes them: an MX record's is
+	 * `<priority> <host>` (`10 inbound-smtp.eu-west-1.amazonaws.com`).
+	 */
+	values: string[];
+}
 
-/**
- * A DNS record to create or update.
- */
-export type UpsertDnsRecord = z.infer<typeof UpsertDnsRecordSchema>;
+/** A DNS record to create or update. */
+export interface UpsertDnsRecord {
+	/** Subdomain name (e.g., 'api' for api.example.com, '@' for root) */
+	name: string;
+	type: DnsRecordType;
+	/** TTL in seconds */
+	ttl: number;
+	/**
+	 * Record value (IP address, hostname, etc.), as a zone file writes it: an
+	 * MX record's is `<priority> <host>` — see `mxValue`.
+	 */
+	value: string;
+}
 
-/**
- * Result of an upsert operation.
- */
-export type UpsertResult = z.infer<typeof UpsertResultSchema>;
+/** Result of an upsert operation. */
+export interface UpsertResult {
+	/** The record that was upserted */
+	record: UpsertDnsRecord;
+	/** Whether the record was created (true) or updated (false) */
+	created: boolean;
+	/** Whether the record already existed with the same value */
+	unchanged: boolean;
+}
 
 // =============================================================================
 // MX values
@@ -64,7 +79,7 @@ export function mxValue(priority: number, host: string): string {
 }
 
 /** An MX value that is not `<priority> <host>`. */
-export class MxValueInvalid extends GkmError {
+export class MxValueInvalid extends EdgeError {
 	constructor(readonly value: string) {
 		super(
 			`'${value}' is not an MX record's value: it is written ` +
@@ -177,23 +192,6 @@ export interface DnsProvider {
 	): Promise<DeleteResult[]>;
 }
 
-// =============================================================================
-// DNS Provider Config Types (derived from Zod schemas)
-// =============================================================================
-
-export type HostingerDnsConfig = z.infer<typeof HostingerDnsProviderSchema>;
-export type Route53DnsConfig = z.infer<typeof Route53DnsProviderSchema>;
-export type GoDaddyDnsConfig = z.infer<typeof GoDaddyDnsProviderSchema>;
-export type CloudflareDnsConfig = z.infer<typeof CloudflareDnsProviderSchema>;
-export type ManualDnsConfig = z.infer<typeof ManualDnsProviderSchema>;
-export type CustomDnsConfig = z.infer<typeof CustomDnsProviderSchema>;
-/** Single DNS provider config (for one domain) */
-export type DnsConfig = z.infer<typeof DnsProviderSchema>;
-
-// =============================================================================
-// DNS Provider Factory
-// =============================================================================
-
 /**
  * Check if value is a DnsProvider implementation.
  */
@@ -208,75 +206,12 @@ export function isDnsProvider(value: unknown): value is DnsProvider {
 	);
 }
 
-export interface CreateDnsProviderOptions {
-	/** DNS config from workspace */
-	config: DnsConfig;
-	/** Where the GoDaddy provider reads its key — the environment and the CLI's home. */
-	godaddy?: import('./GoDaddyProvider').GoDaddyProviderOptions;
-	/** The Hostinger token, when the caller already has it. */
-	hostinger?: import('../../../deploy/credentials').HostingerCredential;
-}
-
-/**
- * Create a DNS provider based on configuration.
- *
- * - 'hostinger': HostingerProvider
- * - 'route53': Route53Provider
- * - 'godaddy': GoDaddyProvider
- * - 'manual': Returns null (user handles DNS)
- * - Custom: Use provided DnsProvider implementation
- */
-export async function createDnsProvider(
-	options: CreateDnsProviderOptions,
-): Promise<DnsProvider | null> {
-	const { config } = options;
-
-	// Manual mode - no provider needed
-	if (config.provider === 'manual') {
-		return null;
-	}
-
-	// Custom provider implementation
-	if (isDnsProvider(config.provider)) {
-		return config.provider;
-	}
-
-	// Built-in providers
-	const provider = config.provider;
-
-	if (provider === 'hostinger') {
-		const { HostingerProvider } = await import('./HostingerProvider');
-		return new HostingerProvider(options.hostinger);
-	}
-
-	if (provider === 'route53') {
-		const { Route53Provider } = await import('./Route53Provider');
-		const route53Config = config as Route53DnsConfig;
-		return new Route53Provider({
-			region: route53Config.region,
-			profile: route53Config.profile,
-			hostedZoneId: route53Config.hostedZoneId,
-		});
-	}
-
-	if (provider === 'godaddy') {
-		const { GoDaddyProvider } = await import('./GoDaddyProvider');
-		return new GoDaddyProvider(options.godaddy ?? {});
-	}
-
-	if (provider === 'cloudflare') {
-		throw new DnsProviderNotImplemented('cloudflare');
-	}
-
-	throw new DnsProviderUnknown(config);
-}
-
 /**
  * The provider's credentials can write records and not read them — a key
  * scoped to updates only. What reads them falls back to writing every record,
  * which is idempotent, without a diff.
  */
-export class DnsRecordsUnreadable extends GkmError {
+export class DnsRecordsUnreadable extends EdgeError {
 	constructor(
 		readonly provider: string,
 		readonly domain: string,
@@ -288,28 +223,5 @@ export class DnsRecordsUnreadable extends GkmError {
 				'written, which leaves one that already has its value as it was.',
 		);
 		this.name = 'DnsRecordsUnreadable';
-	}
-}
-
-/** A DNS provider gkm names and does not have yet. */
-export class DnsProviderNotImplemented extends Error {
-	constructor(readonly provider: string) {
-		super(
-			`The ${provider} DNS provider is not implemented yet. Use 'route53', ` +
-				"'godaddy', 'hostinger' or 'manual' for this domain in dns, or " +
-				'pass your own DnsProvider object.',
-		);
-		this.name = 'DnsProviderNotImplemented';
-	}
-}
-
-/** A `provider:` that is none of the built-ins, nor a DnsProvider object. */
-export class DnsProviderUnknown extends GkmError {
-	constructor(readonly config: unknown) {
-		super(
-			`Unknown DNS provider: ${JSON.stringify(config)}. dns takes ` +
-				"'route53', 'godaddy', 'hostinger', 'manual', or an object implementing DnsProvider.",
-		);
-		this.name = 'DnsProviderUnknown';
 	}
 }

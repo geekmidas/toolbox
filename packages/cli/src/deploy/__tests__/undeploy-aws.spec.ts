@@ -19,11 +19,11 @@ import {
 	PutObjectCommand,
 	S3Client,
 } from '@aws-sdk/client-s3';
+import type { DnsProvider } from '@geekmidas/edge/dns';
 import { HttpResponse, http } from 'msw';
 import { setupServer } from 'msw/node';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { LOCALSTACK_URL } from '../../../../testkit/test/ports';
-import type { DnsProvider } from '../dns/DnsProvider';
 import { DokployApi } from '../dokploy-api';
 import { createEmptyState, type DokployStageState } from '../state';
 import { undeploy } from '../undeploy';

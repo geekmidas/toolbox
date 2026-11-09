@@ -14,20 +14,20 @@ import { request } from 'node:https';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { RandomPassword } from '@geekmidas/constructs/random-password';
+import {
+	ensureLocalAuthority,
+	issueLocalCertificate,
+	localAuthorityPaths,
+} from '@geekmidas/edge/certificates/local';
+import { CADDY_TLS_DIR, edgeCaddyfile } from '@geekmidas/edge/proxy/caddy';
+import { TRAEFIK_IMAGE, traefikDynamic } from '@geekmidas/edge/proxy/traefik';
+import type { EdgeRoute } from '@geekmidas/edge/routes';
 import { drawSecret, type SecretDeclaration } from '@geekmidas/manifest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { stringify } from 'yaml';
 import { cleanupDir, createTempDir } from '../../__tests__/test-helpers';
 import { DEFAULT_IMAGES } from '../../reconcile/containers';
-import {
-	ensureLocalAuthority,
-	issueLocalCertificate,
-	localAuthorityPaths,
-} from '../../trust/authority';
-import { CADDY_TLS_DIR, edgeCaddyfile } from '../caddyfile';
-import type { EdgeRoute } from '../routes';
 import { siteAuth } from '../sitePassword';
-import { TRAEFIK_IMAGE, traefikDynamic } from '../traefik';
 
 const run = promisify(execFile);
 const docker = async (...args: string[]) =>

@@ -5,6 +5,7 @@ import {
 	ListResourceRecordSetsCommand,
 	Route53Client,
 } from '@aws-sdk/client-route-53';
+import { Route53Provider } from '@geekmidas/edge/dns/route53';
 import {
 	afterAll,
 	afterEach,
@@ -16,7 +17,6 @@ import {
 } from 'vitest';
 import { LOCALSTACK_URL } from '../../../../testkit/test/ports';
 import { writeProviderDns } from '../../providers/dnsWriter';
-import { Route53Provider } from '../dns/Route53Provider';
 
 /**
  * Route53Provider Tests

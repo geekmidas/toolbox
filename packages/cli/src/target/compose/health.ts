@@ -11,7 +11,7 @@
 
 import { request as httpRequest } from 'node:http';
 import { request as httpsRequest } from 'node:https';
-import { EDGE_PROJECT } from '../../compose/traefik';
+import { EDGE_PROJECT } from '@geekmidas/edge/proxy/traefik';
 import { GkmError } from '../../errors';
 
 /** One request to the edge. */

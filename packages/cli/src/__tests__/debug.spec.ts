@@ -109,6 +109,17 @@ describe('formatError for an error gkm raised on purpose', () => {
 		);
 	});
 
+	it("prints the edge's own the same way: its name and message, and no stack", async () => {
+		vi.stubEnv('GKM_DEBUG', '');
+		const { formatError } = await fresh();
+		const { LocalCertificateWithoutNames } = await import(
+			'@geekmidas/edge/certificates/local'
+		);
+		const error = new LocalCertificateWithoutNames();
+
+		expect(formatError(error)).toBe(`${error.name}: ${error.message}`);
+	});
+
 	it('names what it wraps by its message alone', async () => {
 		vi.stubEnv('GKM_DEBUG', '');
 		const { formatError } = await fresh();

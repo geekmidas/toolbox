@@ -1,15 +1,17 @@
-import { describe, expect, it } from 'vitest';
 import {
-	createDnsProvider,
 	type DeleteDnsRecord,
 	type DeleteResult,
 	type DnsProvider,
-	DnsProviderNotImplemented,
 	type DnsRecord,
 	isDnsProvider,
 	type UpsertDnsRecord,
 	type UpsertResult,
-} from '../dns/DnsProvider';
+} from '@geekmidas/edge/dns';
+import { describe, expect, it } from 'vitest';
+import {
+	createDnsProvider,
+	DnsProviderNotImplemented,
+} from '../../dns/providers';
 
 describe('isDnsProvider', () => {
 	it('should return true for valid provider', () => {

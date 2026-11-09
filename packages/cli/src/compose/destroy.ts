@@ -25,6 +25,8 @@
 
 import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import type { DnsProvider } from '@geekmidas/edge/dns';
+import { EDGE_PROJECT } from '@geekmidas/edge/proxy/traefik';
 import { loadWorkspaceConfig } from '../config';
 import {
 	type CredentialProvider,
@@ -33,6 +35,11 @@ import {
 import { dnsRecordFqdn, dnsResources } from '../deploy/dnsResources.js';
 import { deployIdentity } from '../deploy/identity.js';
 import { createStateStore, type StateStore } from '../deploy/StateStore.js';
+import {
+	extractSubdomain,
+	findRootDomain,
+	normalizeDnsConfig,
+} from '../dns/index';
 import { GkmError } from '../errors';
 import { canPrompt, prompt } from '../prompt';
 import {
@@ -47,12 +54,6 @@ import {
 } from '../providers/s3/destroy.js';
 import { secretsStoreFor } from '../secrets/store.js';
 import { stackOverrideFile } from '../target/compose/index';
-import type { DnsProvider } from '../target/dokploy/dns/DnsProvider.js';
-import {
-	extractSubdomain,
-	findRootDomain,
-	normalizeDnsConfig,
-} from '../target/dokploy/dns/index.js';
 import { assertDeployedStage } from '../workspace/stages.js';
 import type {
 	DnsProvider as DnsProviderConfig,
@@ -68,7 +69,6 @@ import { type ComposeDocker, dockerCompose, type StackRef } from './docker';
 import { edgeRef, removeEdgeRoutes } from './edge';
 import { composeServer, dockerHost, sshTarget } from './server';
 import { composeProject, stackDir } from './stack';
-import { EDGE_PROJECT } from './traefik';
 
 export interface ComposeDestroyOptions {
 	cwd?: string;

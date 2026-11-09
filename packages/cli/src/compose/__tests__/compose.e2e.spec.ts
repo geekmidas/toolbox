@@ -61,20 +61,21 @@ import { request as httpRequest } from 'node:http';
 import { request as httpsRequest } from 'node:https';
 import { createServer } from 'node:net';
 import { join } from 'node:path';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { cleanupDir, createTempDir } from '../../__tests__/test-helpers';
-import { loadWorkspaceSettings } from '../../config';
-import { FileSecretsStore } from '../../secrets/file';
-import { keystoreProject } from '../../secrets/keystore';
-import { initStageSecrets } from '../../secrets/storage';
-import { localAuthorityPaths } from '../../trust/authority';
+import { localAuthorityPaths } from '@geekmidas/edge/certificates/local';
 import {
 	DEFAULT_EDGE_PROJECT,
 	EDGE_DYNAMIC_DIR,
 	EDGE_NETWORK,
 	EDGE_PROJECT,
 	EDGE_PROJECT_ENV,
-} from '../traefik';
+} from '@geekmidas/edge/proxy/traefik';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { cleanupDir, createTempDir } from '../../__tests__/test-helpers';
+import { loadWorkspaceSettings } from '../../config';
+import { gkmHome } from '../../home';
+import { FileSecretsStore } from '../../secrets/file';
+import { keystoreProject } from '../../secrets/keystore';
+import { initStageSecrets } from '../../secrets/storage';
 import { writeComposeApp } from './__helpers__/composeApp';
 import { type SshServer, startSshServer } from './__helpers__/sshServer';
 
@@ -545,7 +546,7 @@ function endToEnd(entry: (typeof ENTRY_POINTS)[number]): void {
 
 				// gkm's root, which issued the edge's certificate: the child ran
 				// with this suite's GKM_HOME.
-				ca = readFileSync(localAuthorityPaths().certFile, 'utf-8');
+				ca = readFileSync(localAuthorityPaths(gkmHome()).certFile, 'utf-8');
 			}, BUILD_TIMEOUT);
 
 			afterAll(async () => {
@@ -2185,7 +2186,7 @@ describe.runIf(RUN)(
 			output = await gkm(['compose', '--stage', 'development']);
 			// gkm's root, which issued the edge's certificate: the child ran
 			// with this suite's GKM_HOME.
-			ca = readFileSync(localAuthorityPaths().certFile, 'utf-8');
+			ca = readFileSync(localAuthorityPaths(gkmHome()).certFile, 'utf-8');
 		}, BUILD_TIMEOUT);
 
 		afterAll(async () => {

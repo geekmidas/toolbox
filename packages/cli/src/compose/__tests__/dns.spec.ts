@@ -1,7 +1,3 @@
-import { HttpResponse, http } from 'msw';
-import { setupServer } from 'msw/node';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { initStageSecrets, toEmbeddableSecrets } from '../../secrets/storage';
 import type {
 	DeleteDnsRecord,
 	DeleteResult,
@@ -9,8 +5,12 @@ import type {
 	DnsRecord,
 	UpsertDnsRecord,
 	UpsertResult,
-} from '../../target/dokploy/dns/DnsProvider';
-import { GoDaddyProvider } from '../../target/dokploy/dns/GoDaddyProvider';
+} from '@geekmidas/edge/dns';
+import { GoDaddyProvider } from '@geekmidas/edge/dns/godaddy';
+import { HttpResponse, http } from 'msw';
+import { setupServer } from 'msw/node';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { initStageSecrets, toEmbeddableSecrets } from '../../secrets/storage';
 import { resolveEnvVar } from '../../target/dokploy/env-resolver';
 import type { WorkspaceDnsConfig } from '../../workspace/types';
 import {
@@ -460,7 +460,7 @@ describe('applying it through GoDaddy with a token that may only update', () => 
 	const run = (dryRun: boolean) => {
 		const lines: string[] = [];
 		const provider = new GoDaddyProvider({
-			credential: { token: 'pat' },
+			credential: async () => ({ token: 'pat' }),
 			log: (line) => lines.push(line),
 		});
 		return applyStackDns(

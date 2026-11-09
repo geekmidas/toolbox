@@ -16,14 +16,14 @@ import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
-import { type ConstructManifest, provisionOrder } from '@geekmidas/manifest';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
 	ensureLocalAuthority,
 	ensureLocalCertificate,
 	localAuthorityPaths,
 	localCertificateNames,
-} from '../../trust/authority';
+} from '@geekmidas/edge/certificates/local';
+import { type ConstructManifest, provisionOrder } from '@geekmidas/manifest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
 	CADDY_SITES_IN_CONTAINER,
 	caddyfileRoot,

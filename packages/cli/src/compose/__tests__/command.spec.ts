@@ -10,6 +10,7 @@ import {
 	writeFileSync,
 } from 'node:fs';
 import { join } from 'node:path';
+import { localAuthorityPaths } from '@geekmidas/edge/certificates/local';
 import { migrationTargets } from '@geekmidas/manifest';
 import {
 	afterAll,
@@ -25,6 +26,7 @@ import { parse } from 'yaml';
 import { cleanupDir, createTempDir } from '../../__tests__/test-helpers';
 import { loadWorkspaceSettings } from '../../config';
 import { ExternalServicesNotConfigured } from '../../deploy/devServices';
+import { gkmHome } from '../../home';
 import { SeedFailed } from '../../migrate/databases';
 import { ProviderCredentialsMissing } from '../../providers/index';
 import type { SqlClient } from '../../reconcile/provision';
@@ -37,7 +39,6 @@ import { initStageSecrets } from '../../secrets/storage';
 import { ensureStageSecrets } from '../../setup/index';
 import { HealthRequestTimedOut } from '../../target/compose/health';
 import { DeploySeedsFailed } from '../../target/seeds';
-import { localAuthorityPaths } from '../../trust/authority';
 import { DnsCredentialMissing } from '../dns';
 import {
 	ComposeModeConflict,
@@ -298,7 +299,7 @@ describe(
 			const compose = parse(
 				readFileSync(join(stack, 'docker-compose.yml'), 'utf-8'),
 			);
-			const authority = localAuthorityPaths();
+			const authority = localAuthorityPaths(gkmHome());
 			const root = new X509Certificate(
 				readFileSync(authority.certFile, 'utf-8'),
 			);
@@ -796,7 +797,7 @@ describe('mail and storage', { timeout: RUN_TIMEOUT }, () => {
 		expect(
 			leaf.checkIssued(
 				new X509Certificate(
-					readFileSync(localAuthorityPaths().certFile, 'utf-8'),
+					readFileSync(localAuthorityPaths(gkmHome()).certFile, 'utf-8'),
 				),
 			),
 		).toBe(true);

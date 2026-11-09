@@ -9,11 +9,6 @@
  * another value would end up holding both.
  */
 
-import { getHostingerToken } from '../../../auth/credentials';
-import {
-	type HostingerCredential,
-	MissingCredential,
-} from '../../../deploy/credentials';
 import type {
 	DeleteDnsRecord,
 	DeleteResult,
@@ -21,8 +16,13 @@ import type {
 	DnsRecord,
 	UpsertDnsRecord,
 	UpsertResult,
-} from './DnsProvider';
-import { HostingerApi } from './hostinger-api';
+} from '../index';
+import { HostingerApi } from './api';
+
+/** A Hostinger API token, from hpanel.hostinger.com/profile/api. */
+export interface HostingerCredential {
+	token: string;
+}
 
 /** A value compared the way DNS does: case, a trailing dot and spacing aside. */
 function normalize(value: string): string {
@@ -36,8 +36,14 @@ export class HostingerProvider implements DnsProvider {
 	readonly name = 'hostinger';
 	private api: HostingerApi | null = null;
 
-	/** `credential`: the token, when the caller already has it. */
-	constructor(private readonly credential?: HostingerCredential) {}
+	/**
+	 * `credential`: where the token comes from, asked the first time the API
+	 * is called. It throws when there is none: what to do about a missing
+	 * token is the caller's to say.
+	 */
+	constructor(
+		private readonly credential: () => Promise<HostingerCredential>,
+	) {}
 
 	/**
 	 * Get or create the Hostinger API client.
@@ -47,8 +53,7 @@ export class HostingerProvider implements DnsProvider {
 			return this.api;
 		}
 
-		const token = this.credential?.token ?? (await getHostingerToken());
-		if (!token) throw new MissingCredential('hostinger', undefined);
+		const { token } = await this.credential();
 
 		this.api = new HostingerApi(token);
 		return this.api;
@@ -193,3 +198,5 @@ export class HostingerProvider implements DnsProvider {
 		return results;
 	}
 }
+
+export { HostingerApi, HostingerApiError } from './api';

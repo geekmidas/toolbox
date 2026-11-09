@@ -21,7 +21,7 @@ import {
 	localAuthorityPaths,
 	localCertificateNames,
 	readLocalAuthority,
-} from '../authority';
+} from '../local';
 
 /** GET `/` from a server on this machine as `host`, trusting only `ca`. */
 function get(port: number, host: string, ca: string): Promise<string> {

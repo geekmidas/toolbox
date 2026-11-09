@@ -9,7 +9,7 @@ import {
 	expect,
 	it,
 } from 'vitest';
-import { HostingerProvider } from '../dns/HostingerProvider';
+import { HostingerProvider } from '../hostinger';
 
 /**
  * HostingerProvider Tests
@@ -17,10 +17,15 @@ import { HostingerProvider } from '../dns/HostingerProvider';
  * Uses MSW to mock the Hostinger DNS API.
  * API Base: https://developers.hostinger.com
  */
+const TEST_TOKEN = 'test-hostinger-token';
+
+/** A provider whose token resolver answers with the test token. */
+const hostinger = () =>
+	new HostingerProvider(async () => ({ token: TEST_TOKEN }));
+
 describe('HostingerProvider', () => {
 	const HOSTINGER_API_BASE = 'https://developers.hostinger.com';
 	const TEST_DOMAIN = 'example.com';
-	const TEST_TOKEN = 'test-hostinger-token';
 
 	// Track current mock records for realistic API simulation
 	let mockRecords: Array<{
@@ -101,8 +106,6 @@ describe('HostingerProvider', () => {
 	);
 
 	beforeAll(() => {
-		// Set the token via environment variable
-		process.env.HOSTINGER_API_TOKEN = TEST_TOKEN;
 		server.listen({ onUnhandledRequest: 'error' });
 	});
 
@@ -117,13 +120,12 @@ describe('HostingerProvider', () => {
 	});
 
 	afterAll(() => {
-		delete process.env.HOSTINGER_API_TOKEN;
 		server.close();
 	});
 
 	describe('name', () => {
 		it('should have name "hostinger"', () => {
-			const provider = new HostingerProvider();
+			const provider = hostinger();
 			expect(provider.name).toBe('hostinger');
 		});
 	});
@@ -153,7 +155,7 @@ describe('HostingerProvider', () => {
 				),
 			);
 
-			const records = await new HostingerProvider().getRecords('example.com');
+			const records = await hostinger().getRecords('example.com');
 
 			expect(records).toEqual([
 				{ name: 'www', type: 'CNAME', ttl: 300, values: ['example.com.'] },
@@ -179,7 +181,7 @@ describe('HostingerProvider', () => {
 				),
 			);
 
-			const records = await new HostingerProvider().getRecords('example.com');
+			const records = await hostinger().getRecords('example.com');
 
 			expect(records).toEqual([
 				{ name: 'api', type: 'A', ttl: 300, values: ['1.2.3.4'] },
@@ -193,29 +195,20 @@ describe('HostingerProvider', () => {
 				),
 			);
 
-			expect(await new HostingerProvider().getRecords('example.com')).toEqual(
-				[],
-			);
+			expect(await hostinger().getRecords('example.com')).toEqual([]);
 		});
 
 		it('should throw error when token is invalid', async () => {
-			// Use an invalid token
-			const savedToken = process.env.HOSTINGER_API_TOKEN;
-			process.env.HOSTINGER_API_TOKEN = 'invalid-token';
-
-			try {
-				const provider = new HostingerProvider();
-				await expect(provider.getRecords(TEST_DOMAIN)).rejects.toThrow(
-					'Hostinger API error',
-				);
-			} finally {
-				// Restore the token
-				process.env.HOSTINGER_API_TOKEN = savedToken;
-			}
+			const provider = new HostingerProvider(async () => ({
+				token: 'invalid-token',
+			}));
+			await expect(provider.getRecords(TEST_DOMAIN)).rejects.toThrow(
+				'Hostinger API error',
+			);
 		});
 
 		it('should return empty array when no records exist', async () => {
-			const provider = new HostingerProvider();
+			const provider = hostinger();
 			const records = await provider.getRecords(TEST_DOMAIN);
 
 			expect(records).toEqual([]);
@@ -238,7 +231,7 @@ describe('HostingerProvider', () => {
 				},
 			];
 
-			const provider = new HostingerProvider();
+			const provider = hostinger();
 			const records = await provider.getRecords(TEST_DOMAIN);
 
 			expect(records).toHaveLength(2);
@@ -269,7 +262,7 @@ describe('HostingerProvider', () => {
 				},
 			];
 
-			const provider = new HostingerProvider();
+			const provider = hostinger();
 			const records = await provider.getRecords(TEST_DOMAIN);
 
 			expect(records).toHaveLength(1);
@@ -280,7 +273,7 @@ describe('HostingerProvider', () => {
 		});
 
 		it('should cache API client after first call', async () => {
-			const provider = new HostingerProvider();
+			const provider = hostinger();
 
 			// Make two calls
 			await provider.getRecords(TEST_DOMAIN);
@@ -294,7 +287,7 @@ describe('HostingerProvider', () => {
 
 	describe('upsertRecords', () => {
 		it('should create new records', async () => {
-			const provider = new HostingerProvider();
+			const provider = hostinger();
 			const results = await provider.upsertRecords(TEST_DOMAIN, [
 				{ name: 'api', type: 'A', ttl: 300, value: '1.2.3.4' },
 			]);
@@ -327,7 +320,7 @@ describe('HostingerProvider', () => {
 				},
 			];
 
-			const provider = new HostingerProvider();
+			const provider = hostinger();
 			const results = await provider.upsertRecords(TEST_DOMAIN, [
 				{ name: 'api', type: 'A', ttl: 300, value: '1.2.3.4' },
 			]);
@@ -351,7 +344,7 @@ describe('HostingerProvider', () => {
 				},
 			];
 
-			const provider = new HostingerProvider();
+			const provider = hostinger();
 			const results = await provider.upsertRecords(TEST_DOMAIN, [
 				{ name: 'api', type: 'A', ttl: 300, value: '5.6.7.8' },
 			]);
@@ -378,7 +371,7 @@ describe('HostingerProvider', () => {
 				},
 			];
 
-			const provider = new HostingerProvider();
+			const provider = hostinger();
 			const results = await provider.upsertRecords(TEST_DOMAIN, [
 				{ name: 'api', type: 'A', ttl: 300, value: '1.2.3.4' }, // Unchanged
 				{ name: 'www', type: 'A', ttl: 300, value: '1.2.3.4' }, // New
@@ -402,7 +395,7 @@ describe('HostingerProvider', () => {
 		};
 
 		it('writes "<priority> <host>" as the content, and leaves a matching one alone', async () => {
-			const provider = new HostingerProvider();
+			const provider = hostinger();
 			const [created] = await provider.upsertRecords(TEST_DOMAIN, [mx]);
 
 			expect(created).toMatchObject({ created: true, unchanged: false });
@@ -439,7 +432,7 @@ describe('HostingerProvider', () => {
 				},
 			];
 
-			const provider = new HostingerProvider();
+			const provider = hostinger();
 			await provider.upsertRecords(TEST_DOMAIN, [mx]);
 
 			expect(await provider.getRecords(TEST_DOMAIN)).toEqual([
@@ -465,7 +458,7 @@ describe('HostingerProvider', () => {
 				}),
 			);
 
-			const provider = new HostingerProvider();
+			const provider = hostinger();
 
 			await expect(provider.getRecords(TEST_DOMAIN)).rejects.toThrow(
 				'Hostinger API error',
@@ -480,7 +473,7 @@ describe('HostingerProvider', () => {
 				}),
 			);
 
-			const provider = new HostingerProvider();
+			const provider = hostinger();
 
 			await expect(provider.getRecords(TEST_DOMAIN)).rejects.toThrow();
 		});

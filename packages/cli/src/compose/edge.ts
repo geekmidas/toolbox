@@ -17,14 +17,6 @@
 
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
-import { GkmError } from '../errors';
-import type {
-	ComposeDocker,
-	DockerEngine,
-	PortHolder,
-	StackRef,
-} from './docker.js';
-import type { ComposeProxy } from './routes.js';
 import {
 	claimsOverlap,
 	EDGE_CERTS_DIR,
@@ -37,7 +29,15 @@ import {
 	edgeComposeFile,
 	readEdgeClaims,
 	traefikStaticFile,
-} from './traefik.js';
+} from '@geekmidas/edge/proxy/traefik';
+import type { ComposeProxy } from '@geekmidas/edge/routes';
+import { GkmError } from '../errors';
+import type {
+	ComposeDocker,
+	DockerEngine,
+	PortHolder,
+	StackRef,
+} from './docker.js';
 
 /** The edge's compose project, as docker is asked about it. */
 export function edgeRef(

@@ -1,4 +1,3 @@
-import { describe, expect, it } from 'vitest';
 import type {
 	DeleteDnsRecord,
 	DeleteResult,
@@ -6,7 +5,8 @@ import type {
 	DnsRecord,
 	UpsertDnsRecord,
 	UpsertResult,
-} from '../../target/dokploy/dns/DnsProvider';
+} from '@geekmidas/edge/dns';
+import { describe, expect, it } from 'vitest';
 import { writeProviderDns } from '../dnsWriter';
 
 /** One zone, in memory, recording each write. */

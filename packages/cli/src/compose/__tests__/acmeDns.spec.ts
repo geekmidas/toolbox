@@ -13,6 +13,7 @@ import {
 	DeleteHostedZoneCommand,
 	Route53Client,
 } from '@aws-sdk/client-route-53';
+import { EDGE_AWS_CREDENTIALS } from '@geekmidas/edge/proxy/traefik';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { LOCALSTACK_URL } from '../../../../testkit/test/ports';
 import {
@@ -23,7 +24,6 @@ import {
 	ensureEdgeAcmeKey,
 } from '../acmeDns';
 import type { StackRef } from '../docker';
-import { EDGE_AWS_CREDENTIALS } from '../traefik';
 import { fakeDocker } from './__helpers__/fakeDocker';
 
 /**

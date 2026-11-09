@@ -2,6 +2,7 @@ import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
+import { EDGE_PROJECT } from '@geekmidas/edge/proxy/traefik';
 import type {
 	ComposeDocker,
 	ExecResult,
@@ -10,7 +11,6 @@ import type {
 	StackRef,
 } from '../../docker';
 import type { ServerAccess } from '../../server';
-import { EDGE_PROJECT } from '../../traefik';
 
 /**
  * Docker, the registry and the health probe as recorders, for asserting the

@@ -11,9 +11,14 @@
  * wrapped — is a failure nobody explained, and keeps its stack. `--debug` or
  * `GKM_DEBUG=1` shows the stack of both.
  */
+import { type EdgeError, isEdgeError } from '@geekmidas/edge';
+
 export class GkmError extends Error {}
 
-/** Whether `error` is one gkm raised on purpose — see {@link GkmError}. */
-export function isGkmError(error: unknown): error is GkmError {
-	return error instanceof GkmError;
+/**
+ * Whether `error` is one gkm raised on purpose — see {@link GkmError}. The
+ * edge's own (`EdgeError`, from `@geekmidas/edge`) are explained the same way.
+ */
+export function isGkmError(error: unknown): error is GkmError | EdgeError {
+	return error instanceof GkmError || isEdgeError(error);
 }

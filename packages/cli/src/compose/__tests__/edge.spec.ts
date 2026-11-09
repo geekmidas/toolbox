@@ -10,6 +10,27 @@ import {
 	writeFileSync,
 } from 'node:fs';
 import { join } from 'node:path';
+import {
+	ensureLocalAuthority,
+	issueLocalCertificate,
+	localAuthorityPaths,
+} from '@geekmidas/edge/certificates/local';
+import { edgeCaddyfile } from '@geekmidas/edge/proxy/caddy';
+import {
+	claimsOverlap,
+	DEFAULT_EDGE_PROJECT,
+	EDGE_NETWORK,
+	EDGE_PROJECT,
+	edgeClaims,
+	edgeCompose,
+	edgeProject,
+	readEdgeClaims,
+	TRAEFIK_IMAGE,
+	traefikDynamic,
+	traefikDynamicFile,
+	traefikStatic,
+} from '@geekmidas/edge/proxy/traefik';
+import { type EdgeRoute, EdgeRouteConflict } from '@geekmidas/edge/routes';
 import type { ConstructManifest } from '@geekmidas/manifest';
 import {
 	afterAll,
@@ -30,17 +51,11 @@ import { initStageSecrets } from '../../secrets/storage';
 import type { StageSecrets } from '../../secrets/types';
 import { ComposeAppsUnhealthy } from '../../target/compose/health';
 import { verifyAuthority } from '../../target/compose/phases';
-import {
-	ensureLocalAuthority,
-	issueLocalCertificate,
-	localAuthorityPaths,
-} from '../../trust/authority';
 import { safeValidateWorkspaceConfig } from '../../workspace/schema';
 import type {
 	ComposeWorkspaceConfig,
 	NormalizedWorkspace,
 } from '../../workspace/types';
-import { edgeCaddyfile } from '../caddyfile';
 import { type ComposeDocker, portHolders, publishedPorts } from '../docker';
 import {
 	assertEdgeHostsFree,
@@ -61,22 +76,7 @@ import {
 	checkComposeStages,
 	proxyFor,
 } from '../proxy';
-import { type EdgeRoute, EdgeRouteConflict } from '../routes';
 import { type ComposeStack, composeStack, type StackInput } from '../stack';
-import {
-	claimsOverlap,
-	DEFAULT_EDGE_PROJECT,
-	EDGE_NETWORK,
-	EDGE_PROJECT,
-	edgeClaims,
-	edgeCompose,
-	edgeProject,
-	readEdgeClaims,
-	TRAEFIK_IMAGE,
-	traefikDynamic,
-	traefikDynamicFile,
-	traefikStatic,
-} from '../traefik';
 import {
 	loadComposeApp,
 	resolvesHere,

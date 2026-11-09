@@ -29,7 +29,7 @@ import {
 	type EdgeTls,
 	routeHosts,
 	type Upstream,
-} from './routes.js';
+} from '../routes';
 
 /**
  * The image, pinned: the edge is every stack's way in, so a new version is a

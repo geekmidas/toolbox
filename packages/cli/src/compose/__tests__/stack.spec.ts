@@ -1,4 +1,5 @@
 import { realpathSync } from 'node:fs';
+import { localAuthorityPaths } from '@geekmidas/edge/certificates/local';
 import { EnvironmentParser } from '@geekmidas/envkit';
 import {
 	type ConstructManifest,
@@ -17,6 +18,7 @@ import {
 } from 'vitest';
 import { cleanupDir, createTempDir } from '../../__tests__/test-helpers';
 import { deployIdentity } from '../../deploy/identity';
+import { gkmHome } from '../../home';
 import { TEST_CREDENTIALS } from '../../reconcile/__tests__/__helpers__/credentials';
 import { localRolePassword } from '../../reconcile/env';
 import { postgresSuperuser } from '../../reconcile/localCredentials';
@@ -24,7 +26,6 @@ import { postgresStatements } from '../../reconcile/provision';
 import { initStageSecrets } from '../../secrets/storage';
 import type { StageSecrets } from '../../secrets/types';
 import { NoDomainForStage } from '../../target/dokploy/domain';
-import { localAuthorityPaths } from '../../trust/authority';
 import type { NormalizedWorkspace } from '../../workspace/types';
 import { REDIS_IMAGE, RedisPasswordMissing } from '../redis';
 import {
@@ -243,7 +244,7 @@ describe('the local stage', () => {
 		});
 
 		it("uses the CLI's home's authority when none is given", () => {
-			expect(stack().authority).toEqual(localAuthorityPaths());
+			expect(stack().authority).toEqual(localAuthorityPaths(gkmHome()));
 		});
 	});
 

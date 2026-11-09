@@ -93,6 +93,7 @@ export default defineConfig({
           { text: '@geekmidas/cache', link: '/packages/cache' },
           { text: '@geekmidas/cloud', link: '/packages/cloud' },
           { text: '@geekmidas/db', link: '/packages/db' },
+          { text: '@geekmidas/edge', link: '/packages/edge' },
           { text: '@geekmidas/events', link: '/packages/events' },
           { text: '@geekmidas/logger', link: '/packages/logger' },
           { text: '@geekmidas/storage', link: '/packages/storage' },

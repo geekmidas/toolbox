@@ -1,0 +1,134 @@
+{
+	"name": "@geekmidas/edge",
+	"version": "10.0.0-alpha.177",
+	"description": "The edge in front of a gkm stack: routes, reverse proxies, certificates and DNS providers.",
+	"type": "module",
+	"exports": {
+		".": {
+			"import": {
+				"types": "./dist/index.d.mts",
+				"default": "./dist/index.mjs"
+			},
+			"require": {
+				"types": "./dist/index.d.cts",
+				"default": "./dist/index.cjs"
+			}
+		},
+		"./routes": {
+			"import": {
+				"types": "./dist/routes/index.d.mts",
+				"default": "./dist/routes/index.mjs"
+			},
+			"require": {
+				"types": "./dist/routes/index.d.cts",
+				"default": "./dist/routes/index.cjs"
+			}
+		},
+		"./proxy/caddy": {
+			"import": {
+				"types": "./dist/proxy/caddy.d.mts",
+				"default": "./dist/proxy/caddy.mjs"
+			},
+			"require": {
+				"types": "./dist/proxy/caddy.d.cts",
+				"default": "./dist/proxy/caddy.cjs"
+			}
+		},
+		"./proxy/traefik": {
+			"import": {
+				"types": "./dist/proxy/traefik.d.mts",
+				"default": "./dist/proxy/traefik.mjs"
+			},
+			"require": {
+				"types": "./dist/proxy/traefik.d.cts",
+				"default": "./dist/proxy/traefik.cjs"
+			}
+		},
+		"./certificates/local": {
+			"import": {
+				"types": "./dist/certificates/local.d.mts",
+				"default": "./dist/certificates/local.mjs"
+			},
+			"require": {
+				"types": "./dist/certificates/local.d.cts",
+				"default": "./dist/certificates/local.cjs"
+			}
+		},
+		"./dns": {
+			"import": {
+				"types": "./dist/dns/index.d.mts",
+				"default": "./dist/dns/index.mjs"
+			},
+			"require": {
+				"types": "./dist/dns/index.d.cts",
+				"default": "./dist/dns/index.cjs"
+			}
+		},
+		"./dns/route53": {
+			"import": {
+				"types": "./dist/dns/route53.d.mts",
+				"default": "./dist/dns/route53.mjs"
+			},
+			"require": {
+				"types": "./dist/dns/route53.d.cts",
+				"default": "./dist/dns/route53.cjs"
+			}
+		},
+		"./dns/hostinger": {
+			"import": {
+				"types": "./dist/dns/hostinger/index.d.mts",
+				"default": "./dist/dns/hostinger/index.mjs"
+			},
+			"require": {
+				"types": "./dist/dns/hostinger/index.d.cts",
+				"default": "./dist/dns/hostinger/index.cjs"
+			}
+		},
+		"./dns/godaddy": {
+			"import": {
+				"types": "./dist/dns/godaddy/index.d.mts",
+				"default": "./dist/dns/godaddy/index.mjs"
+			},
+			"require": {
+				"types": "./dist/dns/godaddy/index.d.cts",
+				"default": "./dist/dns/godaddy/index.cjs"
+			}
+		}
+	},
+	"files": [
+		"dist"
+	],
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/geekmidas/toolbox"
+	},
+	"publishConfig": {
+		"registry": "https://registry.npmjs.org/",
+		"access": "public"
+	},
+	"dependencies": {
+		"@geekmidas/manifest": "workspace:*",
+		"node-forge": "~1.4.2",
+		"yaml": "~2.9.1"
+	},
+	"peerDependencies": {
+		"@aws-sdk/client-route-53": ">=3.1136.0",
+		"@aws-sdk/credential-providers": ">=3.1136.0"
+	},
+	"peerDependenciesMeta": {
+		"@aws-sdk/client-route-53": {
+			"optional": true
+		},
+		"@aws-sdk/credential-providers": {
+			"optional": true
+		}
+	},
+	"devDependencies": {
+		"@aws-sdk/client-route-53": "~3.1136.0",
+		"@aws-sdk/credential-providers": "~3.1136.0",
+		"@types/node-forge": "~1.3.14"
+	},
+	"scripts": {
+		"build": "tsdown --config ../../tsdown.config.ts --filter ."
+	}
+}
