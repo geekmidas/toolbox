@@ -358,3 +358,25 @@ export function imageOrigins(
 	}
 	return origins.size > 0 ? [...origins].sort().join(',') : undefined;
 }
+
+/**
+ * Where a frontend lists the origins its pages load files from: the
+ * {@link IMAGE_ORIGINS_KEY} under its public prefix
+ * (`NEXT_PUBLIC_GKM_IMAGE_ORIGINS`), and the keys whose origins make it up
+ * ({@link imageOriginSources}). `undefined` for one that shows no files —
+ * then it is handed no such key at all.
+ *
+ * The one place the key is named for a declaration: the dev env, a process's
+ * keys and an image build's arguments all read it from here.
+ */
+export function imageOriginsFor(
+	declaration: PublicDeclaration,
+	manifest: ConstructManifest,
+): { key: string; sources: string[] } | undefined {
+	const sources = imageOriginSources(declaration, manifest);
+	if (sources.length === 0) return undefined;
+	return {
+		key: `${PUBLIC_PREFIX[declaration.variant]}${IMAGE_ORIGINS_KEY}`,
+		sources,
+	};
+}

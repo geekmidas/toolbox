@@ -18,13 +18,11 @@ import {
 	type DeclarationKind,
 	dependentsOf,
 	hostLabels,
-	IMAGE_ORIGINS_KEY,
-	imageOriginSources,
+	imageOriginsFor,
 	isHostedDeclaration,
 	isPublicDeclaration,
 	isWildcardSite,
 	type PostgresVersion,
-	PUBLIC_PREFIX,
 	providedKeyFor,
 	publicEnvFor,
 	type SecretFormat,
@@ -609,6 +607,9 @@ export function planFor(
 				containers.add(required);
 		}
 
+		const images = isPublicDeclaration(declaration)
+			? imageOriginsFor(declaration, manifest)
+			: undefined;
 		resources.push({
 			id,
 			kind: declaration.kind,
@@ -635,15 +636,7 @@ export function planFor(
 			...(declaration.kind === 'site'
 				? { publicEnv: publicEnvFor(declaration, manifest) }
 				: {}),
-			...(isPublicDeclaration(declaration) &&
-			imageOriginSources(declaration, manifest).length > 0
-				? {
-						imageOrigins: {
-							key: `${PUBLIC_PREFIX[declaration.variant]}${IMAGE_ORIGINS_KEY}`,
-							sources: imageOriginSources(declaration, manifest),
-						},
-					}
-				: {}),
+			...(images ? { imageOrigins: images } : {}),
 			...(declaration.kind === 'mobile-app'
 				? {
 						publicEnv: publicEnvFor(declaration, manifest),

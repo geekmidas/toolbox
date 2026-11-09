@@ -48,6 +48,9 @@ import { PgBossNeedsDatabase, type Plan, type PlannedResource } from './plan';
 import type { PortAssignments } from './ports';
 import { signedOrigins } from './signedOrigins';
 
+/** Where Node reads extra roots from: gkm's local CA, behind the local edge. */
+export const LOCAL_CA_KEY = 'NODE_EXTRA_CA_CERTS';
+
 /** The host containers are published on. */
 const LOCAL_HOST = 'localhost';
 
