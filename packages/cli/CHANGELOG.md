@@ -1,5 +1,29 @@
 # @geekmidas/cli
 
+## 10.0.0-alpha.177
+
+### Minor Changes
+
+- [#442](https://github.com/geekmidas/toolbox/pull/442) [`323bc89`](https://github.com/geekmidas/toolbox/commit/323bc89ef944816fb90b63923f99a6b39efc7d85) Thanks [@geekmidas](https://github.com/geekmidas)! - `gkm db:tunnel --stage <stage> [construct]` opens an SSH tunnel to a deployed
+  compose stage's Postgres and prints each database's owner URL through it, password
+  included, until Ctrl-C. Until now a deployed stage's database password was never
+  shown anywhere, so a SQL client couldn't sign in to it.
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/cache@10.0.0-alpha.177
+  - @geekmidas/constructs@10.0.0-alpha.177
+  - @geekmidas/db@10.0.0-alpha.177
+  - @geekmidas/envkit@10.0.0-alpha.177
+  - @geekmidas/errors@10.0.0-alpha.177
+  - @geekmidas/logger@10.0.0-alpha.177
+  - @geekmidas/manifest@10.0.0-alpha.177
+  - @geekmidas/schema@10.0.0-alpha.177
+  - @geekmidas/services@10.0.0-alpha.177
+  - @geekmidas/storage@10.0.0-alpha.177
+  - @geekmidas/telescope@10.0.0-alpha.177
+
 ## 10.0.0-alpha.176
 
 ### Patch Changes

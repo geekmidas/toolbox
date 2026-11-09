@@ -97,6 +97,7 @@
     "database-extensions",
     "database-hygiene",
     "db-connection-observability",
+    "db-tunnel-owner-login",
     "depend-on-public-urls",
     "deploy-creates-resources",
     "deploy-domains-subdomains",
