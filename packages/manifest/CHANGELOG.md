@@ -1,5 +1,7 @@
 # @geekmidas/manifest
 
+## 9.5.0
+
 ## 9.4.0
 
 ### Minor Changes

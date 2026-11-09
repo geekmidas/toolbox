@@ -1,5 +1,45 @@
 # @geekmidas/cli
 
+## 9.5.0
+
+### Minor Changes
+
+- [#462](https://github.com/geekmidas/toolbox/pull/462) [`9a4cef0`](https://github.com/geekmidas/toolbox/commit/9a4cef04d59cf001b597c697cdf1a0e096109347) Thanks [@geekmidas](https://github.com/geekmidas)! - Queue handlers can retry only the messages that failed
+
+  A handler now receives `records` beside `messages`: the same batch, each message with the id its transport gave it (the SQS message id deployed, a generated id under `gkm dev`). Returning `{ failed: [...ids] }` retries only those records; the rest of the batch is acknowledged.
+
+  ```ts
+  export const ordersQueue = q
+    .queue("orders")
+    .message(OrderSchema)
+    .handle(async ({ records, services }) => {
+      const failed: string[] = [];
+      for (const { id, message } of records) {
+        try {
+          await services.orders.fulfil(message);
+        } catch {
+          failed.push(id);
+        }
+      }
+      return { failed };
+    });
+  ```
+
+  Before, a handler could only retry the whole batch by throwing, so one bad message redelivered every message that had already succeeded. Throwing still does that, and a handler that returns nothing still acknowledges the batch, so existing queues behave as before.
+
+  `TestQueueAdaptor.invoke` takes `records` as well as `messages`, to drive a handler with chosen ids. `QueueRecord`, `QueueResult` and `isQueueResult` are exported from `@geekmidas/constructs/queue`.
+
+### Patch Changes
+
+- Updated dependencies [[`9a4cef0`](https://github.com/geekmidas/toolbox/commit/9a4cef04d59cf001b597c697cdf1a0e096109347)]:
+  - @geekmidas/constructs@9.5.0
+  - @geekmidas/envkit@9.5.0
+  - @geekmidas/errors@9.5.0
+  - @geekmidas/logger@9.5.0
+  - @geekmidas/manifest@9.5.0
+  - @geekmidas/schema@9.5.0
+  - @geekmidas/telescope@9.5.0
+
 ## 9.4.0
 
 ### Minor Changes
