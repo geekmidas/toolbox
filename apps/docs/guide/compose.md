@@ -2263,6 +2263,39 @@ The stage must have been deployed: one whose secrets lack what its first
 deploy generates is refused with `ExecStageNotDeployed`, since what its apps
 run with is not decided yet.
 
+## Connecting to a deployed stage's database
+
+`gkm exec --stage` runs a script as the app, with the app's own login. To sign
+in to the database yourself, from `psql` or a SQL client, as its owner, use
+`gkm db:tunnel`:
+
+```bash
+gkm db:tunnel --stage production            # every database
+gkm db:tunnel --stage production Database   # one construct
+```
+
+```
+🚇 'production' postgres → 127.0.0.1:61234 (over SSH to 203.0.113.10)
+
+🔑 Database (DATABASE_OWNER_URL)
+   postgresql://database_production_owner:…@localhost:61234/…
+   host:     localhost
+   port:     61234
+   database: …
+   user:     database_production_owner
+   password: …
+
+The tunnel is open. Press Ctrl-C to close it.
+```
+
+- **The deploy's own tunnel.** Postgres is published on the server's loopback
+  alone. The tunnel is SSH on the deploy's login, or yours with `--ssh-user`.
+- **The owner's login, printed in full.** It's the same URL the deploy's
+  migrations connect with, derived from the stage's secrets. Nothing is
+  stored, and nothing is written to disk. The owner can create, alter and
+  drop, so a protected stage asks first. `--yes` skips the question.
+- **Open until Ctrl-C.** The URL works only while the tunnel is open.
+
 ## What is not included yet
 
 - **Mobile apps** ship through their own toolchain and are skipped.

@@ -319,7 +319,7 @@ export async function loadStage(
 }
 
 /** The stage's server, as SSH reaches it: `--ssh-user` over the config's. */
-function stageServer(
+export function stageServer(
 	loaded: LoadedStage,
 	options: StageExecOptions,
 ): ComposeServer {

@@ -341,6 +341,40 @@ program
 	);
 
 program
+	.command('db:tunnel')
+	.description(
+		"Open an SSH tunnel to a deployed compose stage's Postgres and print each database's owner login, until Ctrl-C",
+	)
+	.argument('[construct]', 'Only this database construct, by name')
+	.requiredOption('--stage <stage>', 'A deployed compose stage')
+	.option('--profile <profile>', "AWS profile for the stage's account")
+	.option('-y, --yes', 'Open it on a protected stage without asking')
+	.option(
+		'--ssh-user <user>',
+		"SSH login for the stage's server (default: deploy.compose.server.<stage>.user)",
+	)
+	.action(
+		async (
+			construct: string | undefined,
+			options: {
+				stage: string;
+				profile?: string;
+				yes?: boolean;
+				sshUser?: string;
+			},
+		) => {
+			try {
+				const globalOptions = program.opts();
+				if (globalOptions.cwd) process.chdir(globalOptions.cwd);
+				const { dbTunnel } = await import('./exec/dbTunnel.js');
+				await dbTunnel({ ...options, ...(construct ? { construct } : {}) });
+			} catch (error) {
+				exitWithError(error);
+			}
+		},
+	);
+
+program
 	.command('eas:sync')
 	.description(
 		"Set up a mobile app's EAS project for a deployed stage: its eas.json profiles, and its public values in the stage's EAS environment",

@@ -320,6 +320,23 @@ export const web = new StaticSite('Web', { path: 'apps/web' }).dependsOn([api, a
 }
 ```
 
+### `gkm db:tunnel`
+
+Open an SSH tunnel to a deployed compose stage's Postgres and print each
+database's owner login through it, until Ctrl-C.
+
+```bash
+gkm db:tunnel --stage <stage> [construct]
+
+Options:
+  --stage <name>         A deployed compose stage
+  --profile <profile>    AWS profile for the stage's account, where its secrets are kept
+  -y, --yes              Open it on a protected stage without asking
+  --ssh-user <user>      SSH login for the stage's server (default: deploy.compose.server.<stage>.user)
+```
+
+See [Connecting to a deployed stage's database](./compose.md#connecting-to-a-deployed-stage-s-database).
+
 ### `gkm deploy`
 
 Deploy a stage through its target.
