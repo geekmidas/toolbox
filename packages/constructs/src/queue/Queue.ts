@@ -63,6 +63,12 @@ export class Queue<
 		public readonly batchSize?: number,
 		/** Whether the queue is FIFO (deployed). */
 		public readonly fifo?: boolean,
+		/**
+		 * Whether bodies are `{ type, payload }`, as the queue's publisher writes
+		 * them. `false` for a queue fed by something else (an IoT rule, a webhook
+		 * forwarder): each body is the message as it stands, never unwrapped.
+		 */
+		public readonly envelope: boolean = true,
 	) {
 		super(
 			ConstructType.Queue,

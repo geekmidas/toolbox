@@ -52,6 +52,13 @@ describe('QueueBuilder', () => {
 		expect(queue.fifo).toBe(true);
 	});
 
+	it('keeps the envelope unless told otherwise', () => {
+		const base = new QueueBuilder().queue('jobs').message(schema);
+
+		expect(base.handle(async () => {}).envelope).toBe(true);
+		expect(base.envelope(false).handle(async () => {}).envelope).toBe(false);
+	});
+
 	it('throws when the name is missing', () => {
 		expect(() =>
 			new QueueBuilder().message(schema).handle(async () => {}),

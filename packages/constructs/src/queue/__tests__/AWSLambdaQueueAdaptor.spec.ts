@@ -128,4 +128,69 @@ describe('AWSLambdaQueue', () => {
 
 		expect(seen).toEqual([[{ orderId: 'raw' }]]);
 	});
+
+	describe('.envelope(false)', () => {
+		/** A relay message shaped like an IoT rule writes it: its own `payload`. */
+		const RELAY_MESSAGE = {
+			relayId: 'relay-1',
+			csvFileName: '1664869213563_sensor_vitals.csv',
+			payload: '1664450907670,,,36.0,4000,Sitting,,',
+		};
+
+		const relaySchema = z.object({
+			relayId: z.string(),
+			csvFileName: z.string(),
+			payload: z.string(),
+		});
+
+		/** A queue fed by something other than its publisher. */
+		const runRawQueue = <TSchema extends z.ZodType>(
+			messageSchema: TSchema,
+			bodies: unknown[],
+		) => {
+			const seen: unknown[][] = [];
+			const queue = new QueueBuilder()
+				.queue('relay')
+				.envelope(false)
+				.message(messageSchema)
+				.handle(({ messages }) => {
+					seen.push(messages);
+				});
+			const adaptor = new AWSLambdaQueue(new EnvironmentParser({}), queue);
+
+			return adaptor
+				.handler(createEvent(bodies), context, () => {})
+				.then((response) => ({ seen, response }));
+		};
+
+		it('keeps a body with its own payload field whole', async () => {
+			const { seen, response } = await runRawQueue(relaySchema, [
+				RELAY_MESSAGE,
+			]);
+
+			expect(response).toEqual({ batchItemFailures: [] });
+			expect(seen).toEqual([[RELAY_MESSAGE]]);
+		});
+
+		it('passes a body that is not JSON through as a string', async () => {
+			const { seen } = await runRawQueue(z.string(), ['not,json']);
+
+			expect(seen).toEqual([['not,json']]);
+		});
+
+		it('unwraps the same body when the queue keeps its envelope', async () => {
+			const seen: unknown[][] = [];
+			const queue = new QueueBuilder()
+				.queue('relay')
+				.message(z.string())
+				.handle(({ messages }) => {
+					seen.push(messages);
+				});
+			const adaptor = new AWSLambdaQueue(new EnvironmentParser({}), queue);
+
+			await adaptor.handler(createEvent([RELAY_MESSAGE]), context, () => {});
+
+			expect(seen).toEqual([[RELAY_MESSAGE.payload]]);
+		});
+	});
 });

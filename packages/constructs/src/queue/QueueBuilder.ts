@@ -22,6 +22,7 @@ export class QueueBuilder<
 	private _timeout = 30000;
 	private _batchSize?: number;
 	private _fifo?: boolean;
+	private _envelope = true;
 	private _services: TServices = [] as Service[] as TServices;
 	private _logger: TLogger = DEFAULT_LOGGER as TLogger;
 
@@ -49,6 +50,17 @@ export class QueueBuilder<
 	/** Mark the queue as FIFO (deployed). */
 	fifo(fifo = true): this {
 		return cloneWith(this, { _fifo: fifo });
+	}
+
+	/**
+	 * Whether messages arrive in the `{ type, payload }` envelope the queue's
+	 * publisher writes. Pass `false` for a queue fed by something else — an IoT
+	 * rule, a webhook forwarder — whose bodies are the message as they stand: a
+	 * body is then never unwrapped, even one that has a `payload` field of its
+	 * own, and one that is not JSON is the message as a string.
+	 */
+	envelope(envelope = true): this {
+		return cloneWith(this, { _envelope: envelope });
 	}
 
 	services<T extends Service[]>(
@@ -104,6 +116,7 @@ export class QueueBuilder<
 			this._logger,
 			this._batchSize,
 			this._fifo,
+			this._envelope,
 		);
 
 		// No reset. `.handle()` reads this builder and leaves it alone, so a
