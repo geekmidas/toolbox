@@ -119,6 +119,7 @@
     "dev-edge-other-checkout",
     "dev-package-manager",
     "dev-port-holder-ancestors",
+    "dev-process-ca-and-image-origins",
     "dev-progress",
     "dev-reads-the-surface",
     "dev-runs-the-build",

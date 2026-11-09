@@ -1,5 +1,23 @@
 # @geekmidas/manifest
 
+## 10.0.0-alpha.178
+
+### Patch Changes
+
+- [#459](https://github.com/geekmidas/toolbox/pull/459) [`8b944c3`](https://github.com/geekmidas/toolbox/commit/8b944c31c3839325cb7497f4573eedb4d81d0986) Thanks [@geekmidas](https://github.com/geekmidas)! - `gkm dev` and `gkm exec` now hand each app gkm's local CA and its site's image origins
+
+  Reconcile already resolved both, `NODE_EXTRA_CA_CERTS` and a site's
+  `NEXT_PUBLIC_GKM_IMAGE_ORIGINS`, but neither was among the keys an app's own
+  process is narrowed to, so scoping dropped them. A Next server component
+  fetching a sibling's `https://*.localhost` address failed with
+  `UNABLE_TO_VERIFY_LEAF_SIGNATURE`, and `imageRemotePatterns()` returned `[]`, so
+  `next/image` refused every file-server image.
+
+  Every process now keeps the local CA, as it keeps the edge token. A site keeps
+  its image-origins key. That key is named in one place now, `imageOriginsFor` in
+  `@geekmidas/manifest`, which the dev environment, an app's keys and an image
+  build's arguments all read.
+
 ## 10.0.0-alpha.177
 
 ## 10.0.0-alpha.176
