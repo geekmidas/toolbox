@@ -5,6 +5,14 @@ import type {
 } from './types';
 import { EventPublisherType } from './types';
 
+/** Options a transport uses when it supports them, ignored by the rest. */
+export interface PublisherOptions<
+	TMessage extends PublishableMessage<string, any>,
+> {
+	/** The FIFO message group for each message (SQS). */
+	groupId?: (message: TMessage) => string;
+}
+
 export class Publisher {
 	/**
 	 * Create a publisher from a connection string
@@ -14,6 +22,7 @@ export class Publisher {
 		TMessage extends PublishableMessage<string, any>,
 	>(
 		connectionStr: EventPublisherConnectionString,
+		options: PublisherOptions<TMessage> = {},
 	): Promise<EventPublisher<TMessage>> {
 		const url = new URL(connectionStr);
 		switch (url.protocol.replace(':', '')) {
@@ -29,7 +38,9 @@ export class Publisher {
 			}
 			case EventPublisherType.SQS: {
 				const { SQSPublisher } = await import('./sqs');
-				return SQSPublisher.fromConnectionString<TMessage>(connectionStr);
+				return SQSPublisher.fromConnectionString<TMessage>(connectionStr, {
+					groupId: options.groupId,
+				});
 			}
 			case EventPublisherType.SNS: {
 				const { SNSPublisher } = await import('./sns');

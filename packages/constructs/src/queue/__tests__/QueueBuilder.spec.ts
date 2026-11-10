@@ -52,6 +52,25 @@ describe('QueueBuilder', () => {
 		expect(queue.fifo).toBe(true);
 	});
 
+	it('marks a queue FIFO with the group each message is sent in', () => {
+		const groupId = (message: { orderId: string }) => message.orderId;
+		const queue = new QueueBuilder()
+			.queue('orders')
+			.message(schema)
+			.fifo({ groupId })
+			.handle(async () => {});
+
+		expect(queue.fifo).toBe(true);
+		expect(queue.groupId).toBe(groupId);
+	});
+
+	it('keeps the envelope unless told otherwise', () => {
+		const base = new QueueBuilder().queue('jobs').message(schema);
+
+		expect(base.handle(async () => {}).envelope).toBe(true);
+		expect(base.envelope(false).handle(async () => {}).envelope).toBe(false);
+	});
+
 	it('throws when the name is missing', () => {
 		expect(() =>
 			new QueueBuilder().message(schema).handle(async () => {}),

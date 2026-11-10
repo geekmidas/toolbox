@@ -128,4 +128,69 @@ describe('AWSLambdaQueue', () => {
 
 		expect(seen).toEqual([[{ orderId: 'raw' }]]);
 	});
+
+	describe('.envelope(false)', () => {
+		/** A device message as an IoT rule forwards it: its own `payload`. */
+		const DEVICE_MESSAGE = {
+			deviceId: 'device-1',
+			topic: 'devices/device-1/telemetry',
+			payload: 'temperature=21.5',
+		};
+
+		const deviceSchema = z.object({
+			deviceId: z.string(),
+			topic: z.string(),
+			payload: z.string(),
+		});
+
+		/** A queue fed by something other than its publisher. */
+		const runRawQueue = <TSchema extends z.ZodType>(
+			messageSchema: TSchema,
+			bodies: unknown[],
+		) => {
+			const seen: unknown[][] = [];
+			const queue = new QueueBuilder()
+				.queue('devices')
+				.envelope(false)
+				.message(messageSchema)
+				.handle(({ messages }) => {
+					seen.push(messages);
+				});
+			const adaptor = new AWSLambdaQueue(new EnvironmentParser({}), queue);
+
+			return adaptor
+				.handler(createEvent(bodies), context, () => {})
+				.then((response) => ({ seen, response }));
+		};
+
+		it('keeps a body with its own payload field whole', async () => {
+			const { seen, response } = await runRawQueue(deviceSchema, [
+				DEVICE_MESSAGE,
+			]);
+
+			expect(response).toEqual({ batchItemFailures: [] });
+			expect(seen).toEqual([[DEVICE_MESSAGE]]);
+		});
+
+		it('passes a body that is not JSON through as a string', async () => {
+			const { seen } = await runRawQueue(z.string(), ['not,json']);
+
+			expect(seen).toEqual([['not,json']]);
+		});
+
+		it('unwraps the same body when the queue keeps its envelope', async () => {
+			const seen: unknown[][] = [];
+			const queue = new QueueBuilder()
+				.queue('devices')
+				.message(z.string())
+				.handle(({ messages }) => {
+					seen.push(messages);
+				});
+			const adaptor = new AWSLambdaQueue(new EnvironmentParser({}), queue);
+
+			await adaptor.handler(createEvent([DEVICE_MESSAGE]), context, () => {});
+
+			expect(seen).toEqual([[DEVICE_MESSAGE.payload]]);
+		});
+	});
 });

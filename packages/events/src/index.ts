@@ -1,7 +1,10 @@
 // Generic types and interfaces
 
 export { EventConnectionFactory } from './EventConnection';
-export type { EventPublisherConnectionString } from './Publisher';
+export type {
+	EventPublisherConnectionString,
+	PublisherOptions,
+} from './Publisher';
 
 // Generic factories
 export { Publisher } from './Publisher';

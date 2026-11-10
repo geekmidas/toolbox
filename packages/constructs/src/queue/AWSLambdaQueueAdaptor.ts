@@ -75,10 +75,14 @@ export class AWSLambdaQueue<
 
 	/**
 	 * Unwrap the queue payload from an SQS record. The SQS publisher writes
-	 * `{ type, payload }`; a payload-only body is also accepted as-is.
+	 * `{ type, payload }`; a payload-only body is also accepted as-is. A queue
+	 * built with `.envelope(false)` is never unwrapped: its body is the message.
 	 */
 	private extractPayload(record: SQSRecord): unknown {
 		const body = this.safeJsonParse(record.body);
+		if (!this.queue.envelope) {
+			return body ?? record.body;
+		}
 		if (body && typeof body === 'object' && 'payload' in body) {
 			return (body as { payload: unknown }).payload;
 		}

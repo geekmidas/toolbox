@@ -63,6 +63,20 @@ export class Queue<
 		public readonly batchSize?: number,
 		/** Whether the queue is FIFO (deployed). */
 		public readonly fifo?: boolean,
+		/**
+		 * Whether bodies are `{ type, payload }`, as the queue's publisher writes
+		 * them. `false` for a queue fed by something else (an IoT rule, a webhook
+		 * forwarder): each body is the message as it stands, never unwrapped.
+		 */
+		public readonly envelope: boolean = true,
+		/**
+		 * The FIFO message group for each message, from the message itself. Used
+		 * by {@link Queue.publisher} on a FIFO queue, which refuses a message
+		 * without a group.
+		 */
+		public readonly groupId?: (
+			message: InferStandardSchema<TMessage>,
+		) => string,
 	) {
 		super(
 			ConstructType.Queue,
@@ -91,6 +105,7 @@ export class Queue<
 		EventPublisher<QueueMessage<TName, TMessage>>
 	> {
 		const envVar = `${environmentCase(this.name)}_PUBLISHER_CONNECTION_STRING`;
+		const groupId = this.groupId;
 		return {
 			serviceName: `${this.name}Publisher`,
 			async register({ envParser }) {
@@ -102,6 +117,7 @@ export class Queue<
 
 				return Publisher.fromConnectionString<QueueMessage<TName, TMessage>>(
 					connectionString as EventPublisherConnectionString,
+					{ groupId: groupId && ((message) => groupId(message.payload)) },
 				);
 			},
 		};

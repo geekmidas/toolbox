@@ -1,5 +1,6 @@
 import type { Logger } from '@geekmidas/logger';
 import { DEFAULT_LOGGER } from '@geekmidas/logger/console';
+import type { InferStandardSchema } from '@geekmidas/schema';
 import type { Service } from '@geekmidas/services';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import { cloneWith } from '../clone';
@@ -22,6 +23,8 @@ export class QueueBuilder<
 	private _timeout = 30000;
 	private _batchSize?: number;
 	private _fifo?: boolean;
+	private _envelope = true;
+	private _groupId?: (message: any) => string;
 	private _services: TServices = [] as Service[] as TServices;
 	private _logger: TLogger = DEFAULT_LOGGER as TLogger;
 
@@ -46,9 +49,37 @@ export class QueueBuilder<
 		return cloneWith(this, { _batchSize: batchSize });
 	}
 
-	/** Mark the queue as FIFO (deployed). */
-	fifo(fifo = true): this {
-		return cloneWith(this, { _fifo: fifo });
+	/**
+	 * Mark the queue as FIFO (deployed). Pass `{ groupId }` to give each message
+	 * its message group, which the queue's publisher then sends: a FIFO queue
+	 * refuses a message without one. Messages in one group keep their order.
+	 */
+	fifo(
+		fifo:
+			| boolean
+			| {
+					groupId: (
+						message: TMessage extends StandardSchemaV1
+							? InferStandardSchema<TMessage>
+							: never,
+					) => string;
+			  } = true,
+	): this {
+		if (typeof fifo === 'boolean') {
+			return cloneWith(this, { _fifo: fifo });
+		}
+		return cloneWith(this, { _fifo: true, _groupId: fifo.groupId });
+	}
+
+	/**
+	 * Whether messages arrive in the `{ type, payload }` envelope the queue's
+	 * publisher writes. Pass `false` for a queue fed by something else — an IoT
+	 * rule, a webhook forwarder — whose bodies are the message as they stand: a
+	 * body is then never unwrapped, even one that has a `payload` field of its
+	 * own, and one that is not JSON is the message as a string.
+	 */
+	envelope(envelope = true): this {
+		return cloneWith(this, { _envelope: envelope });
 	}
 
 	services<T extends Service[]>(
@@ -104,6 +135,8 @@ export class QueueBuilder<
 			this._logger,
 			this._batchSize,
 			this._fifo,
+			this._envelope,
+			this._groupId,
 		);
 
 		// No reset. `.handle()` reads this builder and leaves it alone, so a
