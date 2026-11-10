@@ -1,5 +1,28 @@
 # @geekmidas/events
 
+## 9.6.0
+
+### Minor Changes
+
+- [#466](https://github.com/geekmidas/toolbox/pull/466) [`6ca73be`](https://github.com/geekmidas/toolbox/commit/6ca73be57c19d21b7e14048968674a5fea9debd5) Thanks [@geekmidas](https://github.com/geekmidas)! - FIFO queues can be published to, with a message group per message
+
+  `q(...).fifo({ groupId })` gives each message its FIFO group, and the queue's `publisher` sends it as `MessageGroupId`. Before, the SQS publisher set no group, so publishing to a FIFO queue was refused. Messages in one group keep their order; different groups are processed in parallel.
+
+  ```ts
+  export const conversationQueue = q
+    .queue('processConversation')
+    .message(ConversationEventSchema)
+    .fifo({ groupId: (message) => message.conversationId })
+    .handle(async ({ records }) => { … });
+  ```
+
+  Underneath, `SQSPublisherOptions.groupId` and the new `PublisherOptions` argument to `Publisher.fromConnectionString` carry it; other transports ignore it. The queue must use content-based deduplication, since no deduplication id is sent. `.fifo()` and `.fifo(true)` work as before.
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/schema@9.6.0
+
 ## 9.5.0
 
 ### Patch Changes

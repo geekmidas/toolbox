@@ -1,5 +1,58 @@
 # @geekmidas/constructs
 
+## 9.6.0
+
+### Minor Changes
+
+- [#466](https://github.com/geekmidas/toolbox/pull/466) [`6ca73be`](https://github.com/geekmidas/toolbox/commit/6ca73be57c19d21b7e14048968674a5fea9debd5) Thanks [@geekmidas](https://github.com/geekmidas)! - FIFO queues can be published to, with a message group per message
+
+  `q(...).fifo({ groupId })` gives each message its FIFO group, and the queue's `publisher` sends it as `MessageGroupId`. Before, the SQS publisher set no group, so publishing to a FIFO queue was refused. Messages in one group keep their order; different groups are processed in parallel.
+
+  ```ts
+  export const conversationQueue = q
+    .queue('processConversation')
+    .message(ConversationEventSchema)
+    .fifo({ groupId: (message) => message.conversationId })
+    .handle(async ({ records }) => { … });
+  ```
+
+  Underneath, `SQSPublisherOptions.groupId` and the new `PublisherOptions` argument to `Publisher.fromConnectionString` carry it; other transports ignore it. The queue must use content-based deduplication, since no deduplication id is sent. `.fifo()` and `.fifo(true)` work as before.
+
+- [#466](https://github.com/geekmidas/toolbox/pull/466) [`6ca73be`](https://github.com/geekmidas/toolbox/commit/6ca73be57c19d21b7e14048968674a5fea9debd5) Thanks [@geekmidas](https://github.com/geekmidas)! - Queues fed by something other than their publisher can take bodies as they come
+
+  `q(...).envelope(false)` marks a queue whose messages are not the `{ type, payload }` envelope its publisher writes: an IoT rule, a webhook forwarder, any sender outside gkm. `AWSLambdaQueue` then takes each record's body as the message, parsed when it is JSON and as a string when it is not, and never unwraps it.
+
+  Before, every body with a top-level `payload` field was unwrapped, so a message that had a `payload` field of its own reached the handler as just that field:
+
+  ```ts
+  // A device message, as an IoT rule forwards it to the queue
+  { "deviceId": "device-1", "topic": "devices/device-1/telemetry", "payload": "temperature=21.5" }
+  ```
+
+  ```ts
+  export const deviceQueue = q
+    .queue('processDeviceMessages')
+    .envelope(false)
+    .message(DeviceMessageSchema)
+    .handle(async ({ records }) => { … });
+  ```
+
+  The default stays `true`, so existing queues are unchanged.
+
+### Patch Changes
+
+- Updated dependencies [[`6ca73be`](https://github.com/geekmidas/toolbox/commit/6ca73be57c19d21b7e14048968674a5fea9debd5)]:
+  - @geekmidas/events@9.6.0
+  - @geekmidas/audit@9.6.0
+  - @geekmidas/cache@9.6.0
+  - @geekmidas/db@9.6.0
+  - @geekmidas/envkit@9.6.0
+  - @geekmidas/errors@9.6.0
+  - @geekmidas/logger@9.6.0
+  - @geekmidas/rate-limit@9.6.0
+  - @geekmidas/schema@9.6.0
+  - @geekmidas/services@9.6.0
+
 ## 9.5.0
 
 ### Minor Changes

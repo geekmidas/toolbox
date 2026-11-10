@@ -1,5 +1,13 @@
 # @geekmidas/audit
 
+## 9.6.0
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/cache@9.6.0
+  - @geekmidas/schema@9.6.0
+
 ## 9.5.0
 
 ### Patch Changes

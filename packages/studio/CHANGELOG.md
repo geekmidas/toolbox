@@ -1,5 +1,13 @@
 # @geekmidas/studio
 
+## 9.6.0
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/db@9.6.0
+  - @geekmidas/telescope@9.6.0
+
 ## 9.5.0
 
 ### Patch Changes
