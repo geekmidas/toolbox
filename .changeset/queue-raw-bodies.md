@@ -9,15 +9,15 @@ Queues fed by something other than their publisher can take bodies as they come
 Before, every body with a top-level `payload` field was unwrapped, so a message that had a `payload` field of its own reached the handler as just that field:
 
 ```ts
-// An MBS relay message, as an IoT rule writes it to the queue
-{ "relayId": "relay-1", "csvFileName": "…_vitals.csv", "payload": "1664450907670,,,36.0,…" }
+// A device message, as an IoT rule forwards it to the queue
+{ "deviceId": "device-1", "topic": "devices/device-1/telemetry", "payload": "temperature=21.5" }
 ```
 
 ```ts
-export const relayQueue = q
-  .queue('processRelayVitals')
+export const deviceQueue = q
+  .queue('processDeviceMessages')
   .envelope(false)
-  .message(RelayMessageSchema)
+  .message(DeviceMessageSchema)
   .handle(async ({ records }) => { … });
 ```
 

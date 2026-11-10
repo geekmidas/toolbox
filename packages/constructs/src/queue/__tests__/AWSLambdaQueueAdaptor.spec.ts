@@ -130,16 +130,16 @@ describe('AWSLambdaQueue', () => {
 	});
 
 	describe('.envelope(false)', () => {
-		/** A relay message shaped like an IoT rule writes it: its own `payload`. */
-		const RELAY_MESSAGE = {
-			relayId: 'relay-1',
-			csvFileName: '1664869213563_sensor_vitals.csv',
-			payload: '1664450907670,,,36.0,4000,Sitting,,',
+		/** A device message as an IoT rule forwards it: its own `payload`. */
+		const DEVICE_MESSAGE = {
+			deviceId: 'device-1',
+			topic: 'devices/device-1/telemetry',
+			payload: 'temperature=21.5',
 		};
 
-		const relaySchema = z.object({
-			relayId: z.string(),
-			csvFileName: z.string(),
+		const deviceSchema = z.object({
+			deviceId: z.string(),
+			topic: z.string(),
 			payload: z.string(),
 		});
 
@@ -150,7 +150,7 @@ describe('AWSLambdaQueue', () => {
 		) => {
 			const seen: unknown[][] = [];
 			const queue = new QueueBuilder()
-				.queue('relay')
+				.queue('devices')
 				.envelope(false)
 				.message(messageSchema)
 				.handle(({ messages }) => {
@@ -164,12 +164,12 @@ describe('AWSLambdaQueue', () => {
 		};
 
 		it('keeps a body with its own payload field whole', async () => {
-			const { seen, response } = await runRawQueue(relaySchema, [
-				RELAY_MESSAGE,
+			const { seen, response } = await runRawQueue(deviceSchema, [
+				DEVICE_MESSAGE,
 			]);
 
 			expect(response).toEqual({ batchItemFailures: [] });
-			expect(seen).toEqual([[RELAY_MESSAGE]]);
+			expect(seen).toEqual([[DEVICE_MESSAGE]]);
 		});
 
 		it('passes a body that is not JSON through as a string', async () => {
@@ -181,16 +181,16 @@ describe('AWSLambdaQueue', () => {
 		it('unwraps the same body when the queue keeps its envelope', async () => {
 			const seen: unknown[][] = [];
 			const queue = new QueueBuilder()
-				.queue('relay')
+				.queue('devices')
 				.message(z.string())
 				.handle(({ messages }) => {
 					seen.push(messages);
 				});
 			const adaptor = new AWSLambdaQueue(new EnvironmentParser({}), queue);
 
-			await adaptor.handler(createEvent([RELAY_MESSAGE]), context, () => {});
+			await adaptor.handler(createEvent([DEVICE_MESSAGE]), context, () => {});
 
-			expect(seen).toEqual([[RELAY_MESSAGE.payload]]);
+			expect(seen).toEqual([[DEVICE_MESSAGE.payload]]);
 		});
 	});
 });
