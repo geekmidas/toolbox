@@ -64,6 +64,10 @@ const OPTIONAL = new Set([
 	'@aws-sdk/client-apigatewaymanagementapi',
 	'@aws-sdk/client-dynamodb',
 	'@aws-sdk/client-kms',
+	// `@geekmidas/edge/dns/route53`: a workspace on Hostinger or GoDaddy never
+	// installs the Route 53 SDK or the profile resolver it signs with.
+	'@aws-sdk/client-route-53',
+	'@aws-sdk/credential-providers',
 	'@aws-sdk/client-s3',
 	'@aws-sdk/client-sns',
 	'@aws-sdk/client-sqs',
