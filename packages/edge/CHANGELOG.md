@@ -1,5 +1,12 @@
 # @geekmidas/edge
 
+## 10.0.0-alpha.181
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/manifest@10.0.0-alpha.181
+
 ## 10.0.0-alpha.180
 
 ### Patch Changes

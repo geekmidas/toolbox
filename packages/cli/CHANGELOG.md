@@ -1,5 +1,31 @@
 # @geekmidas/cli
 
+## 10.0.0-alpha.181
+
+### Patch Changes
+
+- [#515](https://github.com/geekmidas/toolbox/pull/515) [`58e6f4c`](https://github.com/geekmidas/toolbox/commit/58e6f4cb049eb3026a4ea25660647510378c3042) Thanks [@geekmidas](https://github.com/geekmidas)! - Switching a deployed stage from `proxy: 'caddy'` to `proxy: 'traefik'` moves
+  the stack itself. The first deploy after the switch failed with
+  `ComposeProxyClash` because the stack's own Caddy still held 80 and 443, and it
+  could only pass once someone had stopped that Caddy on the server. Now the
+  deploy removes the stack's Caddy container just before it starts the shared
+  edge, and says the stage's hosts are offline until the edge is up and the stack
+  is registered. Any other container holding 80 or 443 is still refused, as
+  before.
+- Updated dependencies []:
+  - @geekmidas/cache@10.0.0-alpha.181
+  - @geekmidas/constructs@10.0.0-alpha.181
+  - @geekmidas/db@10.0.0-alpha.181
+  - @geekmidas/edge@10.0.0-alpha.181
+  - @geekmidas/envkit@10.0.0-alpha.181
+  - @geekmidas/errors@10.0.0-alpha.181
+  - @geekmidas/logger@10.0.0-alpha.181
+  - @geekmidas/manifest@10.0.0-alpha.181
+  - @geekmidas/schema@10.0.0-alpha.181
+  - @geekmidas/services@10.0.0-alpha.181
+  - @geekmidas/storage@10.0.0-alpha.181
+  - @geekmidas/telescope@10.0.0-alpha.181
+
 ## 10.0.0-alpha.180
 
 ### Patch Changes

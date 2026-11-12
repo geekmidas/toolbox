@@ -77,6 +77,7 @@
     "compose-local-mail-inbox",
     "compose-local-traefik",
     "compose-logs",
+    "compose-move-own-caddy",
     "compose-planned-signed-origin",
     "compose-redis-cache",
     "compose-remote-docker",
