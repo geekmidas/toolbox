@@ -196,6 +196,19 @@ export interface ComposeDocker {
 	 */
 	start(engine: DockerEngine, ids: readonly string[]): Promise<void>;
 	/**
+	 * Stop and remove every container of one service of a compose project,
+	 * found by its labels — a service the stack's compose file no longer
+	 * defines, so `docker compose` cannot name it. Resolves with the ids it
+	 * removed.
+	 *
+	 * @throws {ContainersNotRemoved} with every id it meant to remove
+	 */
+	remove(
+		engine: DockerEngine,
+		project: string,
+		service: string,
+	): Promise<string[]>;
+	/**
 	 * Run `command` once on the engine, in a new container of `image` on
 	 * `network`, removed when it ends, with `stdin` streamed in. Each of `env`
 	 * is passed by name, never on the command line. Resolves with its exit
@@ -670,6 +683,38 @@ export const dockerCompose: ComposeDocker = {
 		}
 	},
 
+	async remove(engine, project, service) {
+		const env = engineEnv(engine);
+		const options = env ? { env } : {};
+		const listed = await capture(
+			'docker',
+			[
+				'ps',
+				'--all',
+				'--filter',
+				`label=com.docker.compose.project=${project}`,
+				'--filter',
+				`label=com.docker.compose.service=${service}`,
+				'--format',
+				'{{.ID}}',
+			],
+			options,
+		);
+		if (listed.code !== 0) {
+			throw new DockerUnreachable(engine.host ?? 'this machine', listed.stderr);
+		}
+		const ids = listed.stdout.split('\n').filter(Boolean);
+		if (ids.length === 0) return [];
+		const removed = await capture('docker', ['rm', '--force', ...ids], {
+			...options,
+			timeoutMs: 120_000,
+		});
+		if (removed.code !== 0) {
+			throw new ContainersNotRemoved(project, service, ids, removed.stderr);
+		}
+		return ids;
+	},
+
 	runOnce(engine, options) {
 		return dockerExit(
 			[
@@ -767,6 +812,23 @@ export class ContainersNotStarted extends GkmError {
 				`\`docker start ${ids.join(' ')}\`, or deploy the stage.`,
 		);
 		this.name = 'ContainersNotStarted';
+	}
+}
+
+/** `docker rm` failed for a service's containers. */
+export class ContainersNotRemoved extends GkmError {
+	constructor(
+		readonly project: string,
+		readonly service: string,
+		readonly ids: readonly string[],
+		readonly output: string,
+	) {
+		super(
+			`Could not remove ${project}'s ${service} containers ${ids.join(', ')} ` +
+				`(docker said: ${output.trim() || 'nothing'}). Remove them on the ` +
+				`stage's server with \`docker rm --force ${ids.join(' ')}\`, and deploy again.`,
+		);
+		this.name = 'ContainersNotRemoved';
 	}
 }
 

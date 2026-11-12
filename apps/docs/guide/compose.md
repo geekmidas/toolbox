@@ -1383,19 +1383,17 @@ a tenant's host, which only the app knows.
 
 ### Switching a server from Caddy to the shared edge
 
-A stack that ran with its own Caddy still holds 80 and 443. Moving it is a
-one-time step:
+Set `proxy: 'traefik'` for the stage and deploy it. A stack that ran with its
+own Caddy still holds 80 and 443; the deploy moves it. Just before it starts
+the edge, it removes the stack's Caddy container, then the edge takes 80 and
+443 and the stack registers with it. The stage's hosts are offline from the
+moment Caddy goes until the edge is up and the stack is registered, and the
+deploy says so when it removes it. There is nothing to do on the server first.
 
-1. Set `proxy: 'traefik'` for the stage.
-2. Stop the stack's Caddy: `docker compose -p <project> stop caddy` (or
-   `gkm compose --stage <stage> --down`, which stops the whole stack).
-3. Run `gkm compose --stage <stage>` again. It starts the edge, which takes
-   80 and 443, and registers the stack; the stack's old Caddy container is
-   removed with it.
-
-Run with Caddy still holding the ports, `gkm compose` refuses before it writes
-or starts anything, with `ComposeProxyClash` naming the container and the
-command that stops it. The reverse is refused the same way: a stage with
+Only the stack's own Caddy is moved. Anything else holding 80 or 443 (another
+stack's Caddy, a container compose did not start) is refused before the deploy
+writes or starts anything, with `ComposeProxyClash` naming the container and
+how to free the port. The reverse is refused the same way: a stage with
 `proxy: 'caddy'` on a server where the shared edge holds 80 and 443. The
 certificates do not move — Traefik obtains its own — so expect each host's
 first request after the switch to wait for one.

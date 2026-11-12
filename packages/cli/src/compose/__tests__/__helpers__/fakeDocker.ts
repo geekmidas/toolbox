@@ -133,6 +133,10 @@ export function fakeDocker(
 		async start(engine, ids) {
 			calls.push({ op: 'start', args: [...ids], ...on(engine) });
 		},
+		async remove(engine, project, service) {
+			calls.push({ op: 'remove', args: [project, service], ...on(engine) });
+			return [`${project}-${service}-1`];
+		},
 		async runOnce(engine, run) {
 			calls.push({ op: 'runOnce', args: run, ...on(engine) });
 			return 0;

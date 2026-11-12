@@ -114,6 +114,55 @@ describe("a service's container", () => {
 		});
 	});
 
+	it('is removed by its compose labels, alone, and only once', async () => {
+		// A service no compose file defines — a stack's Caddy after a switch to
+		// the shared edge — beside one of the same project that stays.
+		const project = `gkm-docker-spec-${Date.now().toString(36)}`;
+		const run = (service: string) =>
+			spawnSync(
+				'docker',
+				[
+					'run',
+					'--detach',
+					'--label',
+					`com.docker.compose.project=${project}`,
+					'--label',
+					`com.docker.compose.service=${service}`,
+					'--entrypoint',
+					'sleep',
+					IMAGE,
+					'300',
+				],
+				{ encoding: 'utf-8' },
+			).stdout.trim();
+		const caddy = run('caddy');
+		const kept = run('api');
+		try {
+			const removed = await dockerCompose.remove({}, project, 'caddy');
+
+			expect(removed.map((id) => id.slice(0, 12))).toEqual([
+				caddy.slice(0, 12),
+			]);
+			expect(await dockerCompose.container({}, project, 'caddy')).toBe(
+				undefined,
+			);
+			expect(await dockerCompose.container({}, project, 'api')).toMatchObject({
+				id: kept.slice(0, 12),
+			});
+			expect(await dockerCompose.remove({}, project, 'caddy')).toEqual([]);
+		} finally {
+			spawnSync('docker', ['rm', '--force', caddy, kept]);
+		}
+
+		await expect(
+			dockerCompose.remove(
+				{ host: 'unix:///nonexistent/docker.sock' },
+				project,
+				'caddy',
+			),
+		).rejects.toThrow(DockerUnreachable);
+	});
+
 	it("resolves to the image's id or digest", async () => {
 		expect(await dockerCompose.digest({}, IMAGE)).toMatch(/^sha256:/);
 		expect(

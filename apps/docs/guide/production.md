@@ -261,10 +261,10 @@ instead: the edge owns 80 and 443, Let's Encrypt and the redirect to HTTPS, and
 APIs and sites — and MinIO or OpenObserve when they are public — join the
 edge's network; databases, Redis and workers never do.
 
-Moving a running server from per-stack Caddy to the shared edge is a one-time
-step: stop the stack's Caddy, then run `gkm compose` again. Until then it
-refuses with `ComposeProxyClash`. See
-[Proxy: Caddy or Traefik](./compose.md#proxy-caddy-or-traefik).
+Moving a running server from per-stack Caddy to the shared edge is a deploy
+like any other: the deploy removes the stack's Caddy just before the edge takes
+80 and 443, so the stage's hosts are offline only while the edge starts. See
+[Switching a server from Caddy to the shared edge](./compose.md#switching-a-server-from-caddy-to-the-shared-edge).
 
 ## State
 
