@@ -32,7 +32,8 @@
     "@geekmidas/websocket-load": "0.0.0",
     "@file-drop/workspace": "0.0.0",
     "@file-drop/api": "0.0.0",
-    "@file-drop/web": "0.0.0"
+    "@file-drop/web": "0.0.0",
+    "@geekmidas/edge": "10.0.0-alpha.177"
   },
   "changesets": [
     "align-deps-tranche-1",
@@ -137,6 +138,7 @@
     "drop-lodash-pick-set",
     "eas-workflow",
     "edge-host-claimed",
+    "edge-package",
     "edge-project-override",
     "edge-root-site",
     "edge-token-client-ip",
