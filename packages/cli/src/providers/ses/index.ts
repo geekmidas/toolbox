@@ -9,9 +9,10 @@
  *   allowed to write under `messages/` and an IAM user of its own whose key
  *   is the inbox's `<ID>_URL`;
  * - **its topic** on SNS, publishable by SES alone, whose `sns://` address —
- *   signed by the same key — is the topic's connection string. The deploy's
- *   push subscriptions for a topic on SNS (`topicPushes`) then subscribe each
- *   inbox subscriber at its worker's route, unfiltered;
+ *   signed by the same key — is the topic's connection string. That key may
+ *   only confirm a subscription: the deploy's push subscriptions for a topic
+ *   on SNS (`topicPushes`) subscribe each inbox subscriber at its worker's
+ *   route, unfiltered, with the deploy's own credentials, as a bucket's are;
  * - **the stage's domain as an SES identity**, verified through Easy DKIM's
  *   CNAMEs, and **MX records** pointing the domain — or every subdomain of it,
  *   with `subdomains: true` — at the region's inbound endpoint, both through

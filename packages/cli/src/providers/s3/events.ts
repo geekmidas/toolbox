@@ -30,6 +30,7 @@ import * as s3Url from '@geekmidas/storage/s3-url';
 import {
 	subscriptionKey,
 	subscriptionResource,
+	TOPIC_TYPE,
 } from '../../deploy/snsSubscriptions.js';
 import { GkmError } from '../../errors';
 import { subscriberRoute } from '../../generators/subscriberRoute.js';
@@ -320,7 +321,7 @@ export async function ensureTopic(
 	const { SNS, sns, account, region } = clients;
 	const { id, topicName } = input;
 	const topicArn = `arn:aws:sns:${region}:${account}:${topicName}`;
-	const topicEntry = { key: `sns-topic:${id}`, type: 'sns-topic' };
+	const topicEntry = { key: `${TOPIC_TYPE}:${id}`, type: TOPIC_TYPE };
 	const topic = await readOr(
 		() => sns.send(new SNS.GetTopicAttributesCommand({ TopicArn: topicArn })),
 		['NotFound', 'NotFoundException'],

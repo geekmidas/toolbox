@@ -28,6 +28,27 @@ import type { ResourceInput, ResourceRecord } from './StateStore.js';
 /** The type every recorded subscription has in the stage's state. */
 export const SUBSCRIPTION_TYPE = 'sns-subscription';
 
+/**
+ * The type a topic the stage's providers made has in its state — a watched
+ * bucket's, an inbox's. Written by `ensureTopic`, with the topic's ARN as id.
+ */
+export const TOPIC_TYPE = 'sns-topic';
+
+/**
+ * The ARNs of the topics the stage's providers made. The deploy manages
+ * their subscriptions with its own credentials: the key in such a topic's
+ * connection string is the running app's, and may only confirm.
+ */
+export function provisionedTopics(
+	resources: Readonly<Record<string, ResourceRecord>> | undefined,
+): Set<string> {
+	return new Set(
+		Object.values(resources ?? {})
+			.filter((record) => record.type === TOPIC_TYPE && record.id)
+			.map((record) => record.id!),
+	);
+}
+
 /** The state key a subscriber's SNS subscription is recorded under. */
 export const subscriptionKey = (worker: string, name: string) =>
 	`${SUBSCRIPTION_TYPE}:${worker}/${name}`;
@@ -43,9 +64,11 @@ export interface RecordedSubscription {
 	/** The `type` filter of a topic subscriber; absent for a bucket's. */
 	events?: readonly string[];
 	/**
-	 * The stage secret whose connection string the subscription was made
-	 * with — a topic set by hand, whose credentials are its own. Absent for a
-	 * bucket's, made with the deploy's provisioning credentials.
+	 * The stage secret naming the topic — a topic subscribed to by its
+	 * connection string. Made with that string's keys when the stage set it
+	 * by hand; with the deploy's provisioning credentials when the stage's
+	 * providers made the topic (an inbox's). Absent for a bucket's, made with
+	 * the deploy's provisioning credentials.
 	 */
 	connectionKey?: string;
 	/** SNS still waits for the worker to confirm it. */
@@ -114,14 +137,32 @@ export class TopicSubscriptionUnsigned extends GkmError {
 	}
 }
 
+/** A topic the stage made, with no deploy credentials to manage it with. */
+export class ProvisionedTopicUnsigned extends GkmError {
+	constructor(readonly topicArn: string) {
+		super(
+			`${topicArn} is a topic this stage's deploy made, and its ` +
+				`subscriptions are managed with the deploy's own AWS credentials — ` +
+				`the key in its connection string is the app's, which may only ` +
+				`confirm. Sign in with \`gkm login\`, or set AWS credentials in the ` +
+				`environment, and deploy again.`,
+		);
+		this.name = 'ProvisionedTopicUnsigned';
+	}
+}
+
 /**
  * A connection to the topic a stage's connection string names, signed with
- * its own keys — or, carrying none, the deploy's.
+ * its own keys — or, carrying none, the deploy's. A topic the stage's
+ * providers made (`provisioned`) is always signed with the deploy's: its
+ * string carries the app's key, which may only confirm a subscription.
  *
  * The emulator the environment points the SDK at stands in for SNS, as it
  * does for every provider: a string with no `endpoint` is SNS itself.
  *
  * @throws {TopicSubscriptionUnsigned} with no keys from either
+ * @throws {ProvisionedTopicUnsigned} for a provisioned topic, with no
+ *   deploy credentials
  */
 export async function topicConnection(input: {
 	connectionKey: string;
@@ -129,6 +170,8 @@ export async function topicConnection(input: {
 	stage: string;
 	env: NodeJS.ProcessEnv;
 	home?: string;
+	/** The stage's providers made the topic: sign with the deploy's keys. */
+	provisioned?: boolean;
 }): Promise<SNSConnection> {
 	const { SNSConnection, snsUrl } = await import('@geekmidas/events/sns');
 	const { topicArn, region, endpoint } = snsUrl.parse(input.connectionString);
@@ -139,7 +182,7 @@ export async function topicConnection(input: {
 	const where = region ?? topicArn.split(':')[3];
 
 	let credentials: SNSConnectionCredentials | undefined;
-	if (accessKeyId && secretAccessKey) {
+	if (accessKeyId && secretAccessKey && !input.provisioned) {
 		const sessionToken = params.get('sessionToken');
 		credentials = {
 			accessKeyId,
@@ -152,7 +195,11 @@ export async function topicConnection(input: {
 			env: input.env,
 			...(input.home ? { home: input.home } : {}),
 		});
-		if (!provisioning) throw new TopicSubscriptionUnsigned(input.connectionKey);
+		if (!provisioning) {
+			throw input.provisioned
+				? new ProvisionedTopicUnsigned(topicArn)
+				: new TopicSubscriptionUnsigned(input.connectionKey);
+		}
 		credentials = (await awsClientConfig(provisioning, where ?? 'us-east-1'))
 			.credentials;
 	}
@@ -191,9 +238,10 @@ export class PushSubscriptionsUnconfirmed extends GkmError {
  * The first deploy needs it: the subscription is made before the worker
  * starts, so SNS's first confirmation finds nobody.
  *
- * A bucket's subscriptions are reached with the deploy's provisioning
- * credentials; a hand-set topic's with the connection string they were made
- * with, read from the stage's secrets.
+ * A bucket's subscriptions, and those to any topic the stage's providers
+ * made, are reached with the deploy's provisioning credentials; a hand-set
+ * topic's with the connection string they were made with, read from the
+ * stage's secrets.
  *
  * @returns what is still pending when the wait ran out — none, normally.
  */
@@ -224,6 +272,7 @@ export async function confirmPendingSubscriptions(input: {
 	);
 	const endpoint = awsEndpoint(env, 'SNS');
 	let provisioning: AwsProvisioning | undefined | null = null;
+	const provisioned = provisionedTopics(input.resources);
 
 	// Every subscription to the same topic on the same host, not only the
 	// pending ones: the reconcile removes what it is not handed.
@@ -244,7 +293,7 @@ export async function confirmPendingSubscriptions(input: {
 
 		let connection: SNSConnection;
 		const connectionKey = members[0]!.data?.connectionKey;
-		if (typeof connectionKey === 'string') {
+		if (typeof connectionKey === 'string' && !provisioned.has(topicArn)) {
 			const connectionString = input.secrets?.[connectionKey];
 			if (!connectionString?.startsWith('sns:')) {
 				unreachable();

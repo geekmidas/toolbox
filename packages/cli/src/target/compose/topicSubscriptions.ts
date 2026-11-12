@@ -1,14 +1,20 @@
 /**
  * The SNS subscriptions a compose deploy makes for a topic whose connection
- * string the stage set by hand.
+ * string names an SNS topic.
  *
  * On a compose stage a topic is pg-boss unless the stage says otherwise; one
- * that names an SNS topic is the stage's own, made somewhere this deploy does
- * not provision. Its subscribers are still pushed to — the worker answers on
- * its host — and the worker cannot subscribe itself, so the deploy does: with
- * the connection string's own keys, one subscription per subscriber, filtered
- * on the event types it names, each ARN recorded for the worker to accept
- * deliveries under. A bucket's subscriptions are the `s3` provider's.
+ * that names an SNS topic is either set by hand — made somewhere this deploy
+ * does not provision — or made by the stage's providers, as an inbox's topic
+ * is. Its subscribers are still pushed to — the worker answers on its host —
+ * and the worker cannot subscribe itself, so the deploy does: one
+ * subscription per subscriber, filtered on the event types it names, each
+ * ARN recorded for the worker to accept deliveries under.
+ *
+ * A hand-set topic is reached with its connection string's own keys. A topic
+ * the providers made is reached with the deploy's credentials: its string is
+ * signed with the app's key, which may only confirm a subscription — letting
+ * it subscribe would let the app choose who receives the topic's messages.
+ * A bucket's subscriptions are the `s3` provider's.
  */
 
 import type { ConstructManifest } from '@geekmidas/manifest';
@@ -16,6 +22,7 @@ import { providedKeyFor } from '@geekmidas/manifest';
 import type { ComposeStack } from '../../compose/stack.js';
 import type { ResourceInput, ResourceRecord } from '../../deploy/StateStore.js';
 import {
+	provisionedTopics,
 	SUBSCRIPTION_TYPE,
 	subscriptionKey,
 	subscriptionResource,
@@ -155,6 +162,8 @@ export async function ensureTopicSubscriptions(input: {
 		).recorded.push(record);
 	}
 
+	// Topics the stage's providers made: never managed with the app's key.
+	const provisioned = provisionedTopics(input.recorded);
 	const wanted = new Set(
 		input.pushes.map(({ worker, name }) => subscriptionKey(worker, name)),
 	);
@@ -184,6 +193,7 @@ export async function ensureTopicSubscriptions(input: {
 			connectionString: address.toString(),
 			stage: input.stage,
 			env: input.env,
+			provisioned: provisioned.has(topicArn),
 		});
 		const result = await reconcileHttpSubscriptions(connection, {
 			endpoints: members.pushes.map((push) => ({
