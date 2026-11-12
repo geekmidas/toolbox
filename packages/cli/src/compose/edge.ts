@@ -69,10 +69,11 @@ export class EdgeWriteFailed extends GkmError {
 /**
  * Something other than the proxy a stack is set to holds the edge's ports.
  *
- * With `proxy: 'traefik'`, the stack's own Caddy — still running from before
- * the switch — or any other container; with `proxy: 'caddy'`, the shared
- * edge, or another stack's Caddy. Refused before anything is started, so the
- * stack is never left half on one proxy and half on the other.
+ * With `proxy: 'traefik'`, any container but the shared edge and the stack's
+ * own Caddy, which the deploy moves (see {@link assertEdgePorts}); with
+ * `proxy: 'caddy'`, the shared edge, or another stack's Caddy. Refused before
+ * anything is started, so the stack is never left half on one proxy and half
+ * on the other.
  */
 export class ComposeProxyClash extends GkmError {
 	constructor(
@@ -86,9 +87,7 @@ export class ComposeProxyClash extends GkmError {
 			: holder.container;
 		const fix =
 			proxy === 'traefik'
-				? holder.project === project && holder.service === 'caddy'
-					? `That is this stack's own Caddy, from before it was switched to proxy: 'traefik'. Move it once: stop it (docker compose -p ${project} stop caddy), then run gkm compose again — the shared edge takes 80/443 and the stack registers with it.`
-					: `The shared edge needs ports 80 and 443. Stop ${holder.container}${holder.project ? ` (docker compose -p ${holder.project} down, or its own gkm compose --down)` : ''}, or move the edge with GKM_COMPOSE_HTTPS_PORT/GKM_COMPOSE_HTTP_PORT.`
+				? `The shared edge needs ports 80 and 443. Stop ${holder.container}${holder.project ? ` (docker compose -p ${holder.project} down, or its own gkm compose --down)` : ''}, or move the edge with GKM_COMPOSE_HTTPS_PORT/GKM_COMPOSE_HTTP_PORT.`
 				: holder.project === EDGE_PROJECT
 					? `That is the server's shared Traefik edge, which other stacks register with. Set deploy.compose.proxy to 'traefik' for this stage so the stack registers with it too, or stop the edge once nothing uses it (docker compose -p ${EDGE_PROJECT} down).`
 					: `Stop ${holder.container}, or publish this stack's Caddy elsewhere with GKM_COMPOSE_HTTPS_PORT/GKM_COMPOSE_HTTP_PORT.`;
@@ -102,6 +101,12 @@ export class ComposeProxyClash extends GkmError {
 /**
  * Refuse a stack whose edge ports are held by anything but its own proxy:
  * the shared edge for `'traefik'`, the stack's own Caddy for `'caddy'`.
+ *
+ * One holder is not refused: with `'traefik'`, the stack's own Caddy, still
+ * running from before the stage was switched. It is this stack's to move and
+ * no other's, so it is returned for the deploy to remove just before the edge
+ * takes the ports — the moment's downtime the switch costs. Undefined when
+ * there is nothing to move.
  */
 export async function assertEdgePorts(
 	docker: ComposeDocker,
@@ -111,17 +116,25 @@ export async function assertEdgePorts(
 		ports: EdgePorts;
 		engine: DockerEngine;
 	},
-): Promise<void> {
+): Promise<PortHolder | undefined> {
 	const { project, proxy, ports } = options;
+	const ownCaddy = (holder: PortHolder) =>
+		holder.project === project && holder.service === 'caddy';
+	let move: PortHolder | undefined;
 	for (const port of [ports.https, ports.http]) {
 		for (const holder of await docker.publishers(options.engine, port)) {
+			if (proxy === 'traefik' && ownCaddy(holder)) {
+				move = holder;
+				continue;
+			}
 			const own =
 				proxy === 'traefik'
 					? holder.project === EDGE_PROJECT
-					: holder.project === project && holder.service === 'caddy';
+					: ownCaddy(holder);
 			if (!own) throw new ComposeProxyClash(project, proxy, port, holder);
 		}
 	}
+	return move;
 }
 
 /**

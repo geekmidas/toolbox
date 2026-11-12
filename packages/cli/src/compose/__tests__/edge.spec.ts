@@ -1085,13 +1085,31 @@ describe('a clash over the edge ports', () => {
 		]);
 	});
 
-	it("refuses traefik while the stack's own Caddy still holds 443", async () => {
+	it("hands back the stack's own Caddy under traefik, to be moved", async () => {
+		const caddy = {
+			container: 'shop-production-caddy-1',
+			project: 'shop-production',
+			service: 'caddy',
+		};
+		const { docker } = fakeDocker({ holders: { 443: [caddy], 80: [caddy] } });
+
+		const move = await assertEdgePorts(docker, {
+			project: 'shop-production',
+			proxy: 'traefik',
+			ports,
+			engine: {},
+		});
+
+		expect(move).toEqual(caddy);
+	});
+
+	it("refuses traefik while another stack's Caddy holds 443", async () => {
 		const { docker } = fakeDocker({
 			holders: {
 				443: [
 					{
-						container: 'shop-production-caddy-1',
-						project: 'shop-production',
+						container: 'blog-production-caddy-1',
+						project: 'blog-production',
 						service: 'caddy',
 					},
 				],
@@ -1108,8 +1126,24 @@ describe('a clash over the edge ports', () => {
 		expect(error).toBeInstanceOf(ComposeProxyClash);
 		expect(error).toMatchObject({ port: 443, proxy: 'traefik' });
 		expect((error as Error).message).toContain(
-			'docker compose -p shop-production stop caddy',
+			'docker compose -p blog-production down',
 		);
+	});
+
+	it('refuses traefik while a container outside compose holds 80', async () => {
+		const { docker } = fakeDocker({
+			holders: { 80: [{ container: 'nginx' }] },
+		});
+
+		const error = await assertEdgePorts(docker, {
+			project: 'shop-production',
+			proxy: 'traefik',
+			ports,
+			engine: {},
+		}).catch((e: unknown) => e);
+
+		expect(error).toBeInstanceOf(ComposeProxyClash);
+		expect(error).toMatchObject({ port: 80 });
 	});
 
 	it('refuses caddy while the shared edge holds the ports', async () => {
@@ -1652,12 +1686,45 @@ describe('gkm compose with proxy: traefik', { timeout: 60_000 }, () => {
 		expect(error).toBe(failed);
 	});
 
-	it("refuses to start while the stack's own Caddy holds the ports, touching nothing", async () => {
+	it('moves a stack off its own Caddy: removed just before the edge starts', async () => {
+		const caddy = {
+			container: 'compose-app-production-caddy-1',
+			project: 'compose-app-production',
+			service: 'caddy',
+		};
+		const { calls } = await release({ 443: [caddy], 80: [caddy] });
+
+		const removed = calls.findIndex((call) => call.op === 'remove');
+		const edge = calls.findIndex((call) => call.op === 'up' && call.edge);
+		expect(calls[removed]).toEqual({
+			op: 'remove',
+			args: ['compose-app-production', 'caddy'],
+			host: `ssh://deploy@${SERVER_IPV4}`,
+		});
+		// The last thing before the edge takes the ports — only the edge's own
+		// network comes between — so the stage is down only while it starts.
+		expect(removed).toBeGreaterThan(-1);
+		expect(calls.slice(removed + 1, edge).map((call) => call.op)).toEqual([
+			'network',
+		]);
+		// And the stack goes on to register with the edge.
+		expect(readdirSync(join(volumes(), 'dynamic'))).toContain(
+			'compose-app-production.yml',
+		);
+	});
+
+	it('removes nothing when no Caddy of its own is left', async () => {
+		const { ops } = await release();
+
+		expect(ops()).not.toContain('remove');
+	});
+
+	it("refuses to start while another stack's Caddy holds the ports, touching nothing", async () => {
 		const error = await release({
 			443: [
 				{
-					container: 'compose-app-production-caddy-1',
-					project: 'compose-app-production',
+					container: 'blog-production-caddy-1',
+					project: 'blog-production',
 					service: 'caddy',
 				},
 			],

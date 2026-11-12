@@ -1289,9 +1289,10 @@ export async function provisionCompose(
 	}
 
 	// Nothing but the stack's own proxy may hold the edge's ports — checked
-	// before a file is written or a container started.
+	// before a file is written or a container started. The stack's own Caddy,
+	// from before a switch to the shared edge, is moved below instead.
 	const ports = edgePorts(deps.env);
-	await assertEdgePorts(deps.docker, {
+	const ownCaddy = await assertEdgePorts(deps.docker, {
 		project: run.stack.project,
 		proxy: run.stack.proxy,
 		ports,
@@ -1309,6 +1310,17 @@ export async function provisionCompose(
 	// The shared edge, and the network the stack's public services join —
 	// before any of them, MinIO among them, is started.
 	if (stack.proxy === 'traefik') {
+		// Switched from its own Caddy: that Caddy goes as late as it can, just
+		// before the edge takes its ports, so the stage is offline only while
+		// the edge starts and the stack registers with it.
+		if (ownCaddy) {
+			ctx.logger.warn(
+				`\n↪ Moving ${stack.project} from its own Caddy to the shared edge: ` +
+					`removing ${ownCaddy.container}. Its hosts are offline until the ` +
+					`edge is up and the stack is registered with it.`,
+			);
+			await deps.docker.remove(ref, stack.project, 'caddy');
+		}
 		ctx.logger.info(`\n🌐 Starting the shared edge (${EDGE_PROJECT})…`);
 		run.files.push(
 			...(await ensureEdge(deps.docker, {
