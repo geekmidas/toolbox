@@ -11,6 +11,7 @@
  * create and reported back, so the provider can say what it is waiting on.
  */
 
+import { type DnsProvider, mxValue } from '@geekmidas/edge/dns';
 import {
 	type DnsChange,
 	type DomainDnsPlan,
@@ -21,14 +22,10 @@ import {
 } from '../compose/dns.js';
 import type { CredentialProvider } from '../deploy/credentials.js';
 import {
-	type DnsProvider,
-	mxValue,
-} from '../target/dokploy/dns/DnsProvider.js';
-import {
 	extractSubdomain,
 	findRootDomain,
 	normalizeDnsConfig,
-} from '../target/dokploy/dns/index.js';
+} from '../dns/index';
 import type {
 	DnsProvider as DnsProviderConfig,
 	NormalizedWorkspace,

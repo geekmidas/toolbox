@@ -12,6 +12,7 @@
 import { existsSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
+import { EDGE_PROJECT } from '@geekmidas/edge/proxy/traefik';
 import { loadWorkspaceConfig } from '../config';
 import { deploy } from '../deploy/deploy';
 import type { DeployResult } from '../deploy/types';
@@ -29,8 +30,16 @@ import { edgeRef, removeEdgeRoutes } from './edge';
 import { type ImageDigests, parseDigests, pinnedRef } from './images';
 import { sshTarget } from './server';
 import type { ComposeStack } from './stack';
-import { EDGE_PROJECT } from './traefik';
 
+export {
+	DEFAULT_EDGE_PROJECT,
+	EDGE_NETWORK,
+	EDGE_PROJECT,
+	EDGE_PROJECT_ENV,
+	edgeProject,
+	TRAEFIK_IMAGE,
+	traefikDynamic,
+} from '@geekmidas/edge/proxy/traefik';
 export {
 	ComposeAppsUnhealthy,
 	ComposePinNeedsPull,
@@ -96,15 +105,6 @@ export {
 	StageSecretMissing,
 	StageSeedMissing,
 } from './stack';
-export {
-	DEFAULT_EDGE_PROJECT,
-	EDGE_NETWORK,
-	EDGE_PROJECT,
-	EDGE_PROJECT_ENV,
-	edgeProject,
-	TRAEFIK_IMAGE,
-	traefikDynamic,
-} from './traefik';
 
 export interface ComposeOptions {
 	/** The stage to run. Always named: nothing defaults to the local stage. */

@@ -13,6 +13,11 @@ import {
 	DeleteHostedZoneCommand,
 	Route53Client,
 } from '@aws-sdk/client-route-53';
+import type {
+	DnsProvider,
+	DnsRecord,
+	UpsertDnsRecord,
+} from '@geekmidas/edge/dns';
 import { HttpResponse, http, passthrough } from 'msw';
 import { setupServer } from 'msw/node';
 import {
@@ -52,11 +57,6 @@ import { DeployJournal } from '../../../deploy/journal';
 import { createStateStore } from '../../../deploy/StateStore';
 import { createComposeState } from '../../../deploy/state';
 import type { SqlClient } from '../../../reconcile/provision';
-import type {
-	DnsProvider,
-	DnsRecord,
-	UpsertDnsRecord,
-} from '../../dokploy/dns/DnsProvider';
 import { ComposeAppsUnhealthy } from '../health';
 import { type ComposeDeps, composeTarget } from '../index';
 import { recordedForStack } from '../phases';

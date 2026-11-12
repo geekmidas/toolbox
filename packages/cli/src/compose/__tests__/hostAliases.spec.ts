@@ -1,4 +1,13 @@
 import { realpathSync } from 'node:fs';
+import { localCertificateNames } from '@geekmidas/edge/certificates/local';
+import { edgeCaddyfile } from '@geekmidas/edge/proxy/caddy';
+import {
+	edgeClaims,
+	readEdgeClaims,
+	traefikDynamic,
+	traefikDynamicFile,
+} from '@geekmidas/edge/proxy/traefik';
+import type { EdgeRoute } from '@geekmidas/edge/routes';
 import { type ConstructManifest, EDGE_TOKEN_HEADER } from '@geekmidas/manifest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
@@ -6,18 +15,9 @@ import { cleanupDir, createTempDir } from '../../__tests__/test-helpers';
 import { deployIdentity } from '../../deploy/identity';
 import { TEST_CREDENTIALS } from '../../reconcile/__tests__/__helpers__/credentials';
 import { initStageSecrets } from '../../secrets/storage';
-import { localCertificateNames } from '../../trust/authority';
 import type { NormalizedWorkspace } from '../../workspace/types';
-import { edgeCaddyfile } from '../caddyfile';
 import { planStackDns, stackHosts } from '../dns';
-import type { EdgeRoute } from '../routes';
 import { type ComposeStack, composeStack } from '../stack';
-import {
-	edgeClaims,
-	readEdgeClaims,
-	traefikDynamic,
-	traefikDynamicFile,
-} from '../traefik';
 import { loadComposeApp, writeComposeApp } from './__helpers__/composeApp';
 
 /**

@@ -6,7 +6,7 @@ import {
 	groupHostnamesByDomain,
 	isLegacyDnsConfig,
 	normalizeDnsConfig,
-} from '../dns/index';
+} from '../../dns/index';
 
 describe('DNS orchestration helpers', () => {
 	describe('isLegacyDnsConfig', () => {

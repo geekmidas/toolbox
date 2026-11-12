@@ -5,23 +5,22 @@
  */
 
 import { lookup } from 'node:dns/promises';
+import type { DnsProvider, UpsertDnsRecord } from '@geekmidas/edge/dns';
 import {
 	type DokployStageState,
 	isDnsVerified,
 	setDnsRecord,
 	setDnsVerification,
-} from '../../../deploy/state';
-import { output } from '../../../output';
+} from '../deploy/state';
+import { output } from '../output';
 import type {
 	DnsConfig,
 	DnsProvider as DnsProviderConfig,
-} from '../../../workspace/types';
+} from '../workspace/types';
 import {
 	createDnsProvider,
-	type DnsProvider,
 	type DnsConfig as SchemaDnsConfig,
-	type UpsertDnsRecord,
-} from './DnsProvider';
+} from './providers';
 
 const logger = output;
 

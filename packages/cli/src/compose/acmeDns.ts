@@ -24,10 +24,13 @@
 import { createHash } from 'node:crypto';
 import type { IAMClient } from '@aws-sdk/client-iam';
 import type { Route53Client } from '@aws-sdk/client-route-53';
+import {
+	EDGE_AWS_CREDENTIALS,
+	EDGE_PROJECT,
+} from '@geekmidas/edge/proxy/traefik';
 import { GkmError } from '../errors';
 import type { ComposeDocker, StackRef } from './docker.js';
 import { readEdgeFile, restartEdge, writeEdgeSecret } from './edge.js';
-import { EDGE_AWS_CREDENTIALS, EDGE_PROJECT } from './traefik.js';
 
 /** Where gkm's IAM users live. */
 const USER_PATH = '/gkm/';

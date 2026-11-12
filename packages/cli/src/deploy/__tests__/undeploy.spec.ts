@@ -1,3 +1,11 @@
+import type {
+	DeleteDnsRecord,
+	DeleteResult,
+	DnsProvider,
+	DnsRecord,
+	UpsertDnsRecord,
+	UpsertResult,
+} from '@geekmidas/edge/dns';
 import { HttpResponse, http } from 'msw';
 import { setupServer } from 'msw/node';
 import {
@@ -9,14 +17,6 @@ import {
 	expect,
 	it,
 } from 'vitest';
-import type {
-	DeleteDnsRecord,
-	DeleteResult,
-	DnsProvider,
-	DnsRecord,
-	UpsertDnsRecord,
-	UpsertResult,
-} from '../dns/DnsProvider';
 import { DokployApi } from '../dokploy-api';
 import type { DokployStageState } from '../state';
 import { type UndeployOptions, undeploy } from '../undeploy';

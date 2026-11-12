@@ -22,6 +22,14 @@ import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { BetterAuth } from '@geekmidas/constructs/auth';
 import { KyselyDatabase } from '@geekmidas/constructs/database/kysely';
+import {
+	ensureLocalAuthority,
+	issueLocalCertificate,
+	localAuthorityPaths,
+} from '@geekmidas/edge/certificates/local';
+import { CADDY_TLS_DIR, edgeCaddyfile } from '@geekmidas/edge/proxy/caddy';
+import { TRAEFIK_IMAGE, traefikDynamic } from '@geekmidas/edge/proxy/traefik';
+import type { EdgeRoute } from '@geekmidas/edge/routes';
 import { EnvironmentParser } from '@geekmidas/envkit';
 import { serviceContext } from '@geekmidas/services';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -30,14 +38,6 @@ import { POSTGRES_PORT } from '../../../../testkit/test/ports';
 import { cleanupDir, createTempDir } from '../../__tests__/test-helpers';
 import { DEFAULT_IMAGES } from '../../reconcile/containers';
 import { edgeToken } from '../../reconcile/env';
-import {
-	ensureLocalAuthority,
-	issueLocalCertificate,
-	localAuthorityPaths,
-} from '../../trust/authority';
-import { CADDY_TLS_DIR, edgeCaddyfile } from '../caddyfile';
-import type { EdgeRoute } from '../routes';
-import { TRAEFIK_IMAGE, traefikDynamic } from '../traefik';
 
 const run = promisify(execFile);
 const docker = async (...args: string[]) =>

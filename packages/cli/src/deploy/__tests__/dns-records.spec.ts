@@ -7,7 +7,6 @@
  * not ship, and the only way to watch every result a provider can report.
  */
 
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type {
 	DeleteDnsRecord,
 	DeleteResult,
@@ -15,13 +14,14 @@ import type {
 	DnsRecord,
 	UpsertDnsRecord,
 	UpsertResult,
-} from '../dns/DnsProvider';
+} from '@geekmidas/edge/dns';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
 	createDnsRecords,
 	createDnsRecordsForDomain,
 	orchestrateDns,
 	resolveHostnameToIp,
-} from '../dns/index';
+} from '../../dns/index';
 import { createEmptyState } from '../state';
 
 /** A registrar that already holds `existing` and answers per the script. */

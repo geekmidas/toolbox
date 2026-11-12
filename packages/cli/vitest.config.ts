@@ -39,6 +39,19 @@ mkdirSync(join(installed, '@geekmidas'), { recursive: true });
 symlinkSync(import.meta.dirname, join(installed, '@geekmidas', 'cli'));
 
 export default defineProject({
+	// `@geekmidas/edge` is the CLI's edge, moved into a package of its own: the
+	// proxy configs, routes and DNS providers these suites drive. Read from
+	// source, so what they run counts as covered there rather than as a `dist`
+	// nobody measures. `@geekmidas/edge/dns/godaddy` is `src/dns/godaddy`,
+	// whose `index.ts` Vite resolves like any directory import.
+	resolve: {
+		alias: [
+			{
+				find: /^@geekmidas\/edge(\/.*)?$/,
+				replacement: join(import.meta.dirname, '../edge/src$1'),
+			},
+		],
+	},
 	test: {
 		name: 'cli',
 		// `os.tmpdir()` reads TMPDIR, so every way the suites make a temp

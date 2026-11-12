@@ -551,6 +551,9 @@ importers:
       '@geekmidas/db':
         specifier: workspace:*
         version: link:../db
+      '@geekmidas/edge':
+        specifier: workspace:*
+        version: link:../edge
       '@geekmidas/envkit':
         specifier: workspace:~
         version: link:../envkit
@@ -961,6 +964,28 @@ importers:
       '@types/pg':
         specifier: ~8.23.1
         version: 8.23.1
+
+  packages/edge:
+    dependencies:
+      '@geekmidas/manifest':
+        specifier: workspace:*
+        version: link:../manifest
+      node-forge:
+        specifier: ~1.4.2
+        version: 1.4.2
+      yaml:
+        specifier: ~2.9.1
+        version: 2.9.1
+    devDependencies:
+      '@aws-sdk/client-route-53':
+        specifier: ~3.1136.0
+        version: 3.1136.0
+      '@aws-sdk/credential-providers':
+        specifier: ~3.1136.0
+        version: 3.1136.0
+      '@types/node-forge':
+        specifier: ~1.3.14
+        version: 1.3.14
 
   packages/emailkit:
     dependencies:

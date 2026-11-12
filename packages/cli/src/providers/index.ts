@@ -7,6 +7,7 @@
  * See `types.ts` for what a provider is.
  */
 
+import type { DnsProvider } from '@geekmidas/edge/dns';
 import type { ConstructManifest } from '@geekmidas/manifest';
 import { stageBackups } from '../backups/config.js';
 import {
@@ -27,7 +28,6 @@ import { GkmError } from '../errors';
 import type { BoundSubscriber } from '../reconcile/discover.js';
 import { initStageSecrets } from '../secrets/storage.js';
 import type { StageSecrets } from '../secrets/types.js';
-import type { DnsProvider } from '../target/dokploy/dns/DnsProvider.js';
 import type {
 	DnsProvider as DnsProviderConfig,
 	NormalizedWorkspace,

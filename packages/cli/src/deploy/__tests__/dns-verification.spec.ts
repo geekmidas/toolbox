@@ -8,7 +8,7 @@ vi.mock('node:dns/promises', () => ({
 
 // Import after mocking
 import { lookup } from 'node:dns/promises';
-import { resolveHostnameToIp, verifyDnsRecords } from '../dns/index';
+import { resolveHostnameToIp, verifyDnsRecords } from '../../dns/index';
 
 describe('resolveHostnameToIp', () => {
 	const mockLookup = vi.mocked(lookup);

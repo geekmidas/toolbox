@@ -8,6 +8,7 @@ import {
 	GetIdentityVerificationAttributesCommand,
 	SESClient,
 } from '@aws-sdk/client-ses';
+import type { DnsProvider, DnsRecord } from '@geekmidas/edge/dns';
 import type { ConstructManifest } from '@geekmidas/manifest';
 import {
 	afterAll,
@@ -25,10 +26,6 @@ import { loadWorkspaceConfig } from '../../config';
 import { dnsResourceKey, dnsResources } from '../../deploy/dnsResources';
 import { createStateStore } from '../../deploy/StateStore';
 import { secretsStoreFor } from '../../secrets/store';
-import type {
-	DnsProvider,
-	DnsRecord,
-} from '../../target/dokploy/dns/DnsProvider';
 import type { NormalizedWorkspace } from '../../workspace/types';
 import { provisionStage } from '../index';
 import { emailUserName } from '../ses/config';

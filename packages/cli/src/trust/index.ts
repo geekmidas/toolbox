@@ -21,13 +21,14 @@ import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { promisify } from 'node:util';
-import prompts from 'prompts';
-import { GkmError } from '../errors';
 import {
 	ensureLocalAuthority,
 	type LocalAuthorityPaths,
 	localAuthorityPaths,
-} from './authority.js';
+} from '@geekmidas/edge/certificates/local';
+import prompts from 'prompts';
+import { GkmError } from '../errors';
+import { gkmHome } from '../home';
 
 const logger = console;
 
@@ -124,7 +125,7 @@ function installation(
  */
 export async function trustCommand(options: TrustOptions = {}): Promise<void> {
 	const { certFile: certificate } = await ensureLocalAuthority(
-		options.authority ?? localAuthorityPaths(),
+		options.authority ?? localAuthorityPaths(gkmHome()),
 	);
 
 	const { describe, asks, steps } = installation(process.platform, certificate);
@@ -270,7 +271,7 @@ export async function isTrusted(url: string): Promise<boolean> {
  */
 export async function exportLocalAuthority(
 	to: string,
-	authority: LocalAuthorityPaths = localAuthorityPaths(),
+	authority: LocalAuthorityPaths = localAuthorityPaths(gkmHome()),
 ): Promise<void> {
 	const { certFile } = await ensureLocalAuthority(authority);
 	await copyFile(certFile, to);

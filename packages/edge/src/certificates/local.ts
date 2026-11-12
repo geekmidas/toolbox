@@ -10,8 +10,8 @@
  * public hosts can be handed it (`NODE_EXTRA_CA_CERTS`) without first copying
  * it out of a proxy.
  *
- * The root lives in the CLI's home (`GKM_HOME`, else `~/.gkm`), outside every
- * project. Its key never leaves that directory: only certificates it signed —
+ * The root lives in the home it is given — the CLI's (`GKM_HOME`, else
+ * `~/.gkm`) — outside every project. Its key never leaves that directory: only certificates it signed —
  * and their own keys — are written to a workspace or handed to a container.
  */
 
@@ -26,8 +26,7 @@ import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { hostname, userInfo } from 'node:os';
 import { dirname, join } from 'node:path';
 import forge from 'node-forge';
-import { GkmError } from '../errors';
-import { gkmHome } from '../home';
+import { EdgeError } from '../errors';
 
 /** Where the authority's files are. */
 export interface LocalAuthorityPaths {
@@ -68,7 +67,7 @@ const RENEW_WITHIN_DAYS = 30;
 const DAY = 24 * 60 * 60 * 1000;
 
 /** The authority's files, under the CLI's home. */
-export function localAuthorityPaths(home = gkmHome()): LocalAuthorityPaths {
+export function localAuthorityPaths(home: string): LocalAuthorityPaths {
 	const dir = join(home, 'ca');
 	return {
 		dir,
@@ -78,7 +77,7 @@ export function localAuthorityPaths(home = gkmHome()): LocalAuthorityPaths {
 }
 
 /** The authority's directory is there, and its root or key is not readable. */
-export class LocalAuthorityDamaged extends GkmError {
+export class LocalAuthorityDamaged extends EdgeError {
 	constructor(
 		readonly dir: string,
 		readonly reason: string,
@@ -93,7 +92,7 @@ export class LocalAuthorityDamaged extends GkmError {
 }
 
 /** A certificate asked for with no names to put on it. */
-export class LocalCertificateWithoutNames extends GkmError {
+export class LocalCertificateWithoutNames extends EdgeError {
 	constructor() {
 		super(
 			'A local certificate needs at least one host name. Pass the hosts the ' +
@@ -114,7 +113,7 @@ export class LocalCertificateWithoutNames extends GkmError {
  * @throws {LocalAuthorityDamaged} when its directory holds no usable root.
  */
 export async function ensureLocalAuthority(
-	paths: LocalAuthorityPaths = localAuthorityPaths(),
+	paths: LocalAuthorityPaths,
 ): Promise<LocalAuthority> {
 	if (!existsSync(paths.dir)) await createAuthority(paths);
 	return readLocalAuthority(paths);
@@ -126,7 +125,7 @@ export async function ensureLocalAuthority(
  * @throws {LocalAuthorityDamaged} when its root or key is missing or unreadable.
  */
 export async function readLocalAuthority(
-	paths: LocalAuthorityPaths = localAuthorityPaths(),
+	paths: LocalAuthorityPaths,
 ): Promise<LocalAuthority> {
 	let cert: string;
 	let key: string;

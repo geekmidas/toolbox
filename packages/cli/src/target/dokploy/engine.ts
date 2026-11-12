@@ -88,6 +88,7 @@ import {
 	setPostgresBackupId,
 } from '../../deploy/state.js';
 import type { AppDeployResult, DeployResult } from '../../deploy/types';
+import { orchestrateDns, verifyDnsRecords } from '../../dns/index';
 import { workerDockerfileOf } from '../../docker/index.js';
 import { PROCESSOR_PORT, WORKER_PORT } from '../../docker/templates.js';
 import { GkmError } from '../../errors';
@@ -133,7 +134,6 @@ import type {
 	TargetEvent,
 } from '../types';
 import { provisionDeclared } from './declared';
-import { orchestrateDns, verifyDnsRecords } from './dns/index.js';
 import {
 	DEFAULT_DEPLOYMENT_TIMEOUT_MS,
 	DokployApi,

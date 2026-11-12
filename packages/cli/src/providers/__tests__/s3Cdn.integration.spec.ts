@@ -35,6 +35,14 @@ import {
 	GetPublicAccessBlockCommand,
 	S3Client,
 } from '@aws-sdk/client-s3';
+import type {
+	DeleteDnsRecord,
+	DeleteResult,
+	DnsProvider,
+	DnsRecord,
+	UpsertDnsRecord,
+	UpsertResult,
+} from '@geekmidas/edge/dns';
 import type { ConstructManifest } from '@geekmidas/manifest';
 import {
 	afterAll,
@@ -53,14 +61,6 @@ import {
 } from '../../compose/__tests__/__helpers__/composeApp';
 import { createStateStore } from '../../deploy/StateStore';
 import { secretsStoreFor } from '../../secrets/store';
-import type {
-	DeleteDnsRecord,
-	DeleteResult,
-	DnsProvider,
-	DnsRecord,
-	UpsertDnsRecord,
-	UpsertResult,
-} from '../../target/dokploy/dns/DnsProvider';
 import type { NormalizedWorkspace } from '../../workspace/types';
 import { provisionStage } from '../index';
 import {

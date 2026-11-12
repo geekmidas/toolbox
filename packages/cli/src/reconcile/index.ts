@@ -28,15 +28,16 @@ import {
 	writeFile,
 } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
-import { type ConstructManifest, provisionOrder } from '@geekmidas/manifest';
-import { scopeTelemetryEnv } from '../telemetry/edges';
 import {
 	ensureLocalAuthority,
 	ensureLocalCertificate,
 	type LocalAuthorityPaths,
 	localAuthorityPaths,
 	localCertificateNames,
-} from '../trust/authority';
+} from '@geekmidas/edge/certificates/local';
+import { type ConstructManifest, provisionOrder } from '@geekmidas/manifest';
+import { gkmHome } from '../home';
+import { scopeTelemetryEnv } from '../telemetry/edges';
 import type { CacheBackend, EventsBackend } from '../types';
 import { TEST_STAGE } from '../workspace/stages';
 import {
@@ -145,7 +146,7 @@ export const caddySitesPath = (stage: string) =>
 
 /**
  * Where one stage's certificate is kept: certificate and key in one PEM,
- * issued from gkm's local authority (`trust/authority.ts`), beside the
+ * issued from gkm's local authority (`@geekmidas/edge/certificates/local`), beside the
  * stage's routes — so the edge reads it through the mount it already has, and
  * a stage removed takes its certificate with it.
  */
@@ -481,7 +482,7 @@ export async function reconcile(
 		options.processorAddresses,
 	);
 	const edged = plan.containers.includes('caddy');
-	const authorityPaths = options.authority ?? localAuthorityPaths();
+	const authorityPaths = options.authority ?? localAuthorityPaths(gkmHome());
 	const edgePort = ports[primaryPortKey('caddy')];
 	const caddyfile = toCaddyfile(sites, {
 		certificate: `${CADDY_SITES_IN_CONTAINER}/${stage}.pem`,

@@ -393,6 +393,79 @@ gkm only ever writes the **A**, **AAAA** and **CNAME** records of the hosts
 the stack serves. Mail (MX), verification (TXT), NS and SOA records, and every
 other name, are never touched.
 
+### Scope each provider's credentials to what gkm does
+
+A DNS credential can usually do far more than gkm asks of it: delete a zone,
+point your mail elsewhere, transfer the domain. Whoever holds it can do the
+same. Give it **only what your stages use**:
+
+- **the zones** your stages' hosts are under, not every domain on the account;
+- **the record types** gkm writes: `A`, `AAAA` and `CNAME` for the stack's
+  hosts, plus `MX` if a provider writes mail records for the stage (receiving
+  email);
+- **the names** your stages serve, where the provider can restrict by name;
+- **the machine** that runs the deploy (a CI runner's environment secret, or
+  your laptop), never the server.
+
+| Provider | What it can be scoped to |
+|---|---|
+| Route 53 | a zone, record names, record types and actions, through IAM (below) |
+| GoDaddy | an action: create the token with only `domains.dns:update` ([GoDaddy](#godaddy)) |
+| Hostinger | nothing. A token carries every permission of the user who created it |
+| Manual | nothing to scope: gkm writes no records |
+
+**Route 53.** gkm calls three APIs: `ListHostedZonesByName` (only when the
+config has no `hostedZoneId`), `ListResourceRecordSets` and
+`ChangeResourceRecordSets`. Set `hostedZoneId`, and the policy can name one
+zone and nothing else:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ReadTheZone",
+      "Effect": "Allow",
+      "Action": "route53:ListResourceRecordSets",
+      "Resource": "arn:aws:route53:::hostedzone/Z0123456789EXAMPLE"
+    },
+    {
+      "Sid": "WriteOnlyTheStacksHosts",
+      "Effect": "Allow",
+      "Action": "route53:ChangeResourceRecordSets",
+      "Resource": "arn:aws:route53:::hostedzone/Z0123456789EXAMPLE",
+      "Condition": {
+        "ForAllValues:StringEquals": {
+          "route53:ChangeResourceRecordSetsRecordTypes": ["A", "AAAA", "CNAME"]
+        },
+        "ForAllValues:StringLike": {
+          "route53:ChangeResourceRecordSetsNormalizedRecordNames": [
+            "myapp.com",
+            "*.myapp.com"
+          ]
+        }
+      }
+    }
+  ]
+}
+```
+
+Narrow `NormalizedRecordNames` further where you can: one stage's domain
+(`*.staging.myapp.com`), or exactly the hosts it serves. Names are lowercase,
+with no trailing dot, and IAM's `*` matches across dots, unlike DNS's. Without
+`hostedZoneId`, add `route53:ListHostedZonesByName` on `"*"`; IAM can't scope
+it to one zone. See AWS's
+[fine-grained access control for Route 53](https://docs.aws.amazon.com/Route53/latest/DeveloperGuide/specifying-conditions-route53.html).
+
+**Hostinger.** A token can't be narrowed, so narrow what it can reach
+instead: keep the domains you deploy in an account (or a user) that holds
+nothing else, give the token an expiry, and keep it to the machine that runs
+the deploy.
+
+**Your own provider.** A `DnsProvider` you write is handed whatever credentials
+you give it. Give it the same limits: the zones, names and types above, and
+nothing that can delete a zone or change its nameservers.
+
 ### GoDaddy
 
 ```typescript

@@ -1,3 +1,4 @@
+import type { ComposeProxy } from '@geekmidas/edge/routes';
 import type { ConstructManifest } from '@geekmidas/manifest';
 import type { DnsRecordsMode } from '../compose/dnsConfig.js';
 import type { AwsRegion, StateConfig } from '../deploy/StateProvider.js';
@@ -270,7 +271,7 @@ export interface ComposeServerConfig {
 }
 
 /** The proxies a compose stack can be served by — `deploy.compose.proxy`. */
-export type ComposeProxy = 'caddy' | 'traefik';
+export type { ComposeProxy };
 
 /** A stage's own certificate — `deploy.compose.tls.<stage>`. */
 export interface ComposeTlsConfig {

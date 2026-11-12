@@ -10,13 +10,13 @@ import {
 import { createServer, type Server } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { ConstructManifest } from '@geekmidas/manifest';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
 	ensureLocalAuthority,
 	issueLocalCertificate,
 	localAuthorityPaths,
-} from '../../trust/authority';
+} from '@geekmidas/edge/certificates/local';
+import type { ConstructManifest } from '@geekmidas/manifest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { processEnv } from '../apps';
 import { sitesFor, toCaddyfile } from '../caddyfile';
 import type { Docker } from '../index';

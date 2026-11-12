@@ -18,6 +18,26 @@
 import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import {
+	type LocalAuthorityPaths,
+	localAuthorityPaths,
+} from '@geekmidas/edge/certificates/local';
+import { CADDY_TLS_DIR, edgeCaddyfile } from '@geekmidas/edge/proxy/caddy';
+import {
+	EDGE_NETWORK,
+	edgeAlias,
+	edgeCertificatePaths,
+	traefikDynamicFile,
+} from '@geekmidas/edge/proxy/traefik';
+import {
+	type ComposeProxy,
+	EDGE_LIMITS,
+	type EdgeRoute,
+	type EdgeTls,
+	type EdgeWildcard,
+	NOFILE,
+	routeHosts,
+} from '@geekmidas/edge/routes';
+import {
 	type ConstructManifest,
 	EDGE_TOKEN_KEY,
 	isWildcardSite,
@@ -51,6 +71,7 @@ import {
 } from '../deploy/devServices.js';
 import { isMainFrontendApp, resolveHost } from '../deploy/domain.js';
 import { type DeployIdentity, imageRef, stageTag } from '../deploy/identity.js';
+import { findRootDomain, normalizeDnsConfig } from '../dns/index';
 import { validateImageRef } from '../docker/imageRef.js';
 import {
 	appDockerfile,
@@ -71,6 +92,7 @@ import {
 	SNS_SUBSCRIPTIONS_KEY,
 	subscriberRoute,
 } from '../generators/subscriberRoute.js';
+import { gkmHome } from '../home';
 import { stageProvider } from '../providers/config.js';
 import { stageProviderNotes } from '../providers/notes.js';
 import {
@@ -112,10 +134,6 @@ import { type Plan, type PlannedResource, planFor } from '../reconcile/plan.js';
 import { bucketLifecycles, bucketPolicies } from '../reconcile/provision.js';
 import { signedOrigins } from '../reconcile/signedOrigins.js';
 import type { StageSecrets } from '../secrets/types.js';
-import {
-	findRootDomain,
-	normalizeDnsConfig,
-} from '../target/dokploy/dns/index.js';
 import { NoDomainForStage } from '../target/dokploy/domain.js';
 import {
 	otlpTelemetryEnv,
@@ -130,10 +148,6 @@ import {
 	telemetryOf,
 	usesTelemetry,
 } from '../telemetry/edges.js';
-import {
-	type LocalAuthorityPaths,
-	localAuthorityPaths,
-} from '../trust/authority.js';
 import { DEFAULT_EVENTS } from '../types.js';
 import { appKey } from '../workspace/derive.js';
 import { fileServerHost } from '../workspace/fileServerLabel.js';
@@ -143,7 +157,6 @@ import type {
 	NormalizedWorkspace,
 	S3ObjectsConfig,
 } from '../workspace/types.js';
-import { CADDY_TLS_DIR, edgeCaddyfile } from './caddyfile.js';
 import { isReservedStageKey } from './dnsConfig.js';
 import type { AppImage } from './images.js';
 import {
@@ -164,27 +177,12 @@ import {
 	stackRedis,
 } from './redis.js';
 import {
-	type ComposeProxy,
-	EDGE_LIMITS,
-	type EdgeRoute,
-	type EdgeTls,
-	type EdgeWildcard,
-	NOFILE,
-	routeHosts,
-} from './routes.js';
-import {
 	OFFLINE_BUILD_ADDRESS,
 	offlineBuildHosts,
 	publicBuildValues,
 	runsServer,
 } from './siteBuild.js';
 import { type SiteAuth, siteAuth, sitePasswordKey } from './sitePassword.js';
-import {
-	EDGE_NETWORK,
-	edgeAlias,
-	edgeCertificatePaths,
-	traefikDynamicFile,
-} from './traefik.js';
 
 /** Where a stack's files are written, relative to the workspace root. */
 export function stackDir(stage: string): string {
@@ -1827,7 +1825,7 @@ export function composeStack(input: StackInput): ComposeStack {
 	// gkm's local CA: the local stage's issuer, unless it set its own.
 	const authority =
 		local && !certificate
-			? (input.localAuthority ?? localAuthorityPaths())
+			? (input.localAuthority ?? localAuthorityPaths(gkmHome()))
 			: undefined;
 	// The root the stage's certificate chains to, on this machine: gkm's, or
 	// the one its own certificate names. What the local stack's containers

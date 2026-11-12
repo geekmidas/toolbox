@@ -22,8 +22,12 @@
  * sent with at least that.
  */
 
-import type { GoDaddyCredential } from '../../../deploy/credentials';
-import { GkmError } from '../../../errors';
+import { EdgeError } from '../../errors';
+
+/** A GoDaddy Personal Access Token, sent as `Authorization: Bearer <token>`. */
+export interface GoDaddyCredential {
+	token: string;
+}
 
 export const GODADDY_API_BASE = 'https://api.godaddy.com';
 
@@ -64,7 +68,7 @@ interface GoDaddyErrorBody {
  * Domains and DNS APIs answer only accounts with 10 or more domains, or a
  * Discount Domain Club Premier membership.
  */
-export class GoDaddyApiAccessDenied extends GkmError {
+export class GoDaddyApiAccessDenied extends EdgeError {
 	constructor(
 		readonly domain: string,
 		readonly detail?: string,
@@ -84,7 +88,7 @@ export class GoDaddyApiAccessDenied extends GkmError {
 }
 
 /** The token lacks the scope a records call needs. */
-export class GoDaddyScopeMissing extends GkmError {
+export class GoDaddyScopeMissing extends EdgeError {
 	constructor(
 		readonly method: string,
 		readonly domain: string,
@@ -103,7 +107,7 @@ export class GoDaddyScopeMissing extends GkmError {
 }
 
 /** GoDaddy did not accept the token at all. */
-export class GoDaddyCredentialsInvalid extends GkmError {
+export class GoDaddyCredentialsInvalid extends EdgeError {
 	constructor(readonly code?: string) {
 		super(
 			`GoDaddy did not accept the API token (401${code ? ` ${code}` : ''}). ` +
@@ -116,7 +120,7 @@ export class GoDaddyCredentialsInvalid extends GkmError {
 }
 
 /** The domain is not in the account the token belongs to. */
-export class GoDaddyDomainNotFound extends GkmError {
+export class GoDaddyDomainNotFound extends EdgeError {
 	constructor(
 		readonly domain: string,
 		readonly code?: string,
@@ -130,7 +134,7 @@ export class GoDaddyDomainNotFound extends GkmError {
 }
 
 /** Still rate limited after waiting it out. */
-export class GoDaddyRateLimited extends GkmError {
+export class GoDaddyRateLimited extends EdgeError {
 	constructor(
 		readonly attempts: number,
 		readonly retryAfterSec?: number,
@@ -169,7 +173,7 @@ export class GoDaddyRequestFailed extends Error {
  * A write gkm was about to make to a record type it never manages, or to a
  * name it was not asked for.
  */
-export class GoDaddyRecordNotAllowed extends GkmError {
+export class GoDaddyRecordNotAllowed extends EdgeError {
 	constructor(
 		readonly domain: string,
 		readonly type: string,

@@ -1,4 +1,15 @@
 import { realpathSync } from 'node:fs';
+import { DnsRecordsUnreadable, MxValueInvalid } from '@geekmidas/edge/dns';
+import {
+	GoDaddyApiAccessDenied,
+	GoDaddyCredentialsInvalid,
+	GoDaddyDomainNotFound,
+	GoDaddyProvider,
+	GoDaddyRateLimited,
+	GoDaddyRecordNotAllowed,
+	GoDaddyScopeMissing,
+	GoDaddyZoneListingUnsupported,
+} from '@geekmidas/edge/dns/godaddy';
 import { HttpResponse, http } from 'msw';
 import { setupServer } from 'msw/node';
 import {
@@ -13,25 +24,9 @@ import {
 } from 'vitest';
 import { cleanupDir, createTempDir } from '../../__tests__/test-helpers';
 import { storeGoDaddyToken } from '../../auth/credentials';
+import { createDnsRecordsForDomain } from '../../dns/index';
+import { createDnsProvider, type GoDaddyOptions } from '../../dns/providers';
 import { writeProviderDns } from '../../providers/dnsWriter';
-import {
-	createDnsProvider,
-	DnsRecordsUnreadable,
-	MxValueInvalid,
-} from '../../target/dokploy/dns/DnsProvider';
-import {
-	GoDaddyProvider,
-	GoDaddyZoneListingUnsupported,
-} from '../../target/dokploy/dns/GoDaddyProvider';
-import {
-	GoDaddyApiAccessDenied,
-	GoDaddyCredentialsInvalid,
-	GoDaddyDomainNotFound,
-	GoDaddyRateLimited,
-	GoDaddyRecordNotAllowed,
-	GoDaddyScopeMissing,
-} from '../../target/dokploy/dns/godaddy-api';
-import { createDnsRecordsForDomain } from '../../target/dokploy/dns/index';
 import { MissingCredential } from '../credentials';
 
 /**
@@ -143,10 +138,10 @@ afterEach(() => server.resetHandlers());
 
 const sleeps: number[] = [];
 const provider = (
-	options: ConstructorParameters<typeof GoDaddyProvider>[0] = {},
+	options: Partial<ConstructorParameters<typeof GoDaddyProvider>[0]> = {},
 ) =>
 	new GoDaddyProvider({
-		credential: { token: TOKEN },
+		credential: async () => ({ token: TOKEN }),
 		sleep: async (ms) => {
 			sleeps.push(ms);
 		},
@@ -397,9 +392,10 @@ describe('GoDaddyProvider', () => {
 
 	it('turns a 401 into GoDaddyCredentialsInvalid', async () => {
 		await expect(
-			provider({ credential: { token: 'wrong' } }).readRecords(DOMAIN, [
-				{ name: 'api', type: 'A' },
-			]),
+			provider({ credential: async () => ({ token: 'wrong' }) }).readRecords(
+				DOMAIN,
+				[{ name: 'api', type: 'A' }],
+			),
 		).rejects.toBeInstanceOf(GoDaddyCredentialsInvalid);
 	});
 
@@ -487,6 +483,17 @@ describe('GoDaddyProvider', () => {
 	});
 });
 
+/**
+ * The provider as a `dns` domain gets it: its token read where the CLI reads
+ * one, from the environment or a stored login.
+ */
+async function godaddyFor(options: GoDaddyOptions): Promise<GoDaddyProvider> {
+	return (await createDnsProvider({
+		config: { provider: 'godaddy' },
+		godaddy: options,
+	})) as GoDaddyProvider;
+}
+
 describe('GoDaddyProvider credentials', () => {
 	let home: string;
 
@@ -498,10 +505,7 @@ describe('GoDaddyProvider credentials', () => {
 	});
 
 	it('reads GODADDY_API_TOKEN from the environment', async () => {
-		const p = new GoDaddyProvider({
-			env: { GODADDY_API_TOKEN: TOKEN },
-			home,
-		});
+		const p = await godaddyFor({ env: { GODADDY_API_TOKEN: TOKEN }, home });
 
 		await expect(
 			p.readRecords(DOMAIN, [{ name: '@', type: 'A' }]),
@@ -510,7 +514,7 @@ describe('GoDaddyProvider credentials', () => {
 
 	it('reads the token gkm login stored', async () => {
 		await storeGoDaddyToken(TOKEN, { home });
-		const p = new GoDaddyProvider({ env: {}, home });
+		const p = await godaddyFor({ env: {}, home });
 
 		await expect(
 			p.readRecords(DOMAIN, [{ name: '@', type: 'A' }]),
@@ -518,7 +522,7 @@ describe('GoDaddyProvider credentials', () => {
 	});
 
 	it('says how to supply one when there is none', async () => {
-		const failure = await new GoDaddyProvider({ env: {}, home })
+		const failure = await (await godaddyFor({ env: {}, home }))
 			.readRecords(DOMAIN, [{ name: '@', type: 'A' }])
 			.catch((e: unknown) => e);
 

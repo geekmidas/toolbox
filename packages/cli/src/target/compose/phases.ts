@@ -42,6 +42,15 @@ import {
 } from 'node:fs/promises';
 import { hostname, userInfo } from 'node:os';
 import { dirname, join, relative } from 'node:path';
+import {
+	ensureLocalAuthority,
+	ensureLocalCertificate,
+	type LocalAuthorityPaths,
+	localCertificateNames,
+	readLocalAuthority,
+} from '@geekmidas/edge/certificates/local';
+import type { DnsProvider } from '@geekmidas/edge/dns';
+import { EDGE_PROJECT, EDGE_SERVICE } from '@geekmidas/edge/proxy/traefik';
 import type { ConstructManifest } from '@geekmidas/manifest';
 import { stringify } from 'yaml';
 import { BACKUPS_SERVICE, backupsRoleStatements } from '../../backups/service';
@@ -114,7 +123,6 @@ import {
 	withCaddyConfigs,
 	withLogsPort,
 } from '../../compose/stack';
-import { EDGE_PROJECT, EDGE_SERVICE } from '../../compose/traefik';
 import { currentActor } from '../../deploy/actor.js';
 import {
 	dnsResourceKey,
@@ -139,6 +147,8 @@ import {
 	recordRelease,
 } from '../../deploy/state.js';
 import type { DeployResult } from '../../deploy/types';
+import { findRootDomain, normalizeDnsConfig } from '../../dns/index';
+import type { Route53DnsConfig } from '../../dns/providers';
 import { ensureDockerignore } from '../../docker/index.js';
 import { fromBuildRoot, imageLayout } from '../../docker/layout.js';
 import {
@@ -179,19 +189,10 @@ import { backendsOf, constructGlobs } from '../../reconcile/workspace.js';
 import { runOutput } from '../../run';
 import { toEmbeddableSecrets } from '../../secrets/storage.js';
 import type { StageSecrets } from '../../secrets/types.js';
-import {
-	ensureLocalAuthority,
-	ensureLocalCertificate,
-	type LocalAuthorityPaths,
-	localCertificateNames,
-	readLocalAuthority,
-} from '../../trust/authority.js';
 import type {
 	DnsProvider as DnsProviderConfig,
 	NormalizedWorkspace,
 } from '../../workspace/types.js';
-import type { DnsProvider, Route53DnsConfig } from '../dokploy/dns/DnsProvider';
-import { findRootDomain, normalizeDnsConfig } from '../dokploy/dns/index';
 import {
 	DeploySeedsFailed,
 	reportDatabaseRuns,

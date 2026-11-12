@@ -18,12 +18,7 @@
  * stored. Never logged.
  */
 
-import {
-	type GoDaddyCredential,
-	MissingCredential,
-	storedCredentials,
-} from '../../../deploy/credentials';
-import { GkmError } from '../../../errors';
+import { EdgeError } from '../../errors';
 import {
 	type DeleteDnsRecord,
 	type DeleteResult,
@@ -34,28 +29,29 @@ import {
 	parseMxValue,
 	type UpsertDnsRecord,
 	type UpsertResult,
-} from './DnsProvider';
+} from '../index';
 import {
 	GODADDY_MANAGED_TYPES,
 	GODADDY_MIN_TTL,
 	GoDaddyApi,
 	GoDaddyApiAccessDenied,
 	type GoDaddyApiOptions,
+	type GoDaddyCredential,
 	GoDaddyDomainNotFound,
 	type GoDaddyRecord,
 	GoDaddyRecordNotAllowed,
 	type GoDaddyRecordType,
 	type GoDaddyRecordValue,
 	GoDaddyScopeMissing,
-} from './godaddy-api';
+} from './api';
 
 export interface GoDaddyProviderOptions {
-	/** The token, when the caller already has it. */
-	credential?: GoDaddyCredential;
-	/** Where the variables are read — `process.env` by default. */
-	env?: NodeJS.ProcessEnv;
-	/** The CLI's home, whose `credentials.json` holds a stored login. */
-	home?: string;
+	/**
+	 * Where the token comes from, asked the first time the API is called. It
+	 * throws when there is none: what to do about a missing token is the
+	 * caller's to say.
+	 */
+	credential: () => Promise<GoDaddyCredential>;
 	/** The API's base URL, for tests. */
 	baseUrl?: string;
 	/** How a 429 is waited out, for tests. */
@@ -66,7 +62,7 @@ export interface GoDaddyProviderOptions {
 }
 
 /** GoDaddy cannot list a zone through the records-by-name endpoints. */
-export class GoDaddyZoneListingUnsupported extends GkmError {
+export class GoDaddyZoneListingUnsupported extends EdgeError {
 	constructor(readonly domain: string) {
 		super(
 			`gkm reads GoDaddy records by name and type only — it never lists ` +
@@ -114,7 +110,7 @@ export class GoDaddyProvider implements DnsProvider {
 	/** Set once a read is refused: every write is then a blind PUT. */
 	private writeOnly = false;
 
-	constructor(private readonly options: GoDaddyProviderOptions = {}) {}
+	constructor(private readonly options: GoDaddyProviderOptions) {}
 
 	/** Whether the token turned out unable to read records. */
 	get readsDenied(): boolean {
@@ -123,13 +119,7 @@ export class GoDaddyProvider implements DnsProvider {
 
 	private async getApi(): Promise<GoDaddyApi> {
 		if (this.api) return this.api;
-		const credential =
-			this.options.credential ??
-			(await storedCredentials({
-				env: this.options.env ?? process.env,
-				...(this.options.home ? { home: this.options.home } : {}),
-			}).get({ kind: 'godaddy' }));
-		if (!credential) throw new MissingCredential('godaddy', undefined);
+		const credential = await this.options.credential();
 		this.api = new GoDaddyApi({
 			credential,
 			...(this.options.baseUrl ? { baseUrl: this.options.baseUrl } : {}),
@@ -291,3 +281,22 @@ export class GoDaddyProvider implements DnsProvider {
 		return results;
 	}
 }
+
+export {
+	GODADDY_API_BASE,
+	GODADDY_MANAGED_TYPES,
+	GODADDY_MIN_TTL,
+	GoDaddyApi,
+	GoDaddyApiAccessDenied,
+	type GoDaddyApiOptions,
+	type GoDaddyCredential,
+	GoDaddyCredentialsInvalid,
+	GoDaddyDomainNotFound,
+	GoDaddyRateLimited,
+	type GoDaddyRecord,
+	GoDaddyRecordNotAllowed,
+	type GoDaddyRecordType,
+	type GoDaddyRecordValue,
+	GoDaddyRequestFailed,
+	GoDaddyScopeMissing,
+} from './api';

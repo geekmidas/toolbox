@@ -32,7 +32,7 @@ import {
 	vi,
 } from 'vitest';
 import { LOCALSTACK_URL } from '../../../../testkit/test/ports';
-import { Route53Provider } from '../dns/Route53Provider';
+import { Route53Provider } from '../route53';
 
 const ENDPOINT = LOCALSTACK_URL;
 // A zone of this run's own. The emulator outlives the run and is shared by

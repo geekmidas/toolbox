@@ -200,4 +200,5 @@ export const EDGE_LIMITS: {
 	ulimits: { nofile: NOFILE },
 };
 
-export type { ComposeProxy } from '../workspace/types.js';
+/** The proxies a stack can be served by — `deploy.compose.proxy`. */
+export type ComposeProxy = 'caddy' | 'traefik';

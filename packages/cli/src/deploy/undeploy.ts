@@ -5,7 +5,7 @@
  * Also handles cleanup of backup resources if configured.
  */
 
-import type { DnsProvider } from '../target/dokploy/dns/DnsProvider.js';
+import type { DnsProvider } from '@geekmidas/edge/dns';
 import type { DokployApi } from '../target/dokploy/dokploy-api.js';
 import type { BackupState, DokployStageState } from './state.js';
 import { getAllDnsRecords } from './state.js';

@@ -20,7 +20,7 @@ import type {
 	DnsRecordType,
 	UpsertDnsRecord,
 	UpsertResult,
-} from './DnsProvider';
+} from './index';
 
 export interface Route53ProviderOptions {
 	/** AWS region (optional - uses AWS_REGION env var if not provided) */
