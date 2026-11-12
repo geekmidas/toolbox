@@ -3,9 +3,7 @@ import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join, relative, resolve } from 'node:path';
 import {
 	type ConstructManifest,
-	IMAGE_ORIGINS_KEY,
-	imageOriginSources,
-	PUBLIC_PREFIX,
+	imageOriginsFor,
 	providedKeyFor,
 	publicEnvFor,
 } from '@geekmidas/manifest';
@@ -602,9 +600,9 @@ export function siteDockerfile(
 					providedKeyFor(declared.id, declared.kind, 'url'),
 					...Object.keys(publicEnvFor(declared, options.manifest)),
 					// The origins its pages load files from, where it has any.
-					...(imageOriginSources(declared, options.manifest).length > 0
-						? [`${PUBLIC_PREFIX[declared.variant]}${IMAGE_ORIGINS_KEY}`]
-						: []),
+					...[imageOriginsFor(declared, options.manifest)?.key].filter(
+						(key) => key !== undefined,
+					),
 				]
 			: getPublicUrlArgNames(app));
 

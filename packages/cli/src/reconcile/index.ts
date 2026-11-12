@@ -61,7 +61,7 @@ import {
 	serviceAddresses,
 } from './containers';
 import { dockerCli } from './docker';
-import { edgeToken, envFor } from './env';
+import { edgeToken, envFor, LOCAL_CA_KEY } from './env';
 import type { LocalFake } from './fakes';
 import { lanAddress } from './lan';
 import type { LocalCredentials, Login } from './localCredentials';
@@ -146,7 +146,7 @@ export const caddySitesPath = (stage: string) =>
 
 /**
  * Where one stage's certificate is kept: certificate and key in one PEM,
- * issued from gkm's local authority (`trust/authority.ts`), beside the
+ * issued from gkm's local authority (`@geekmidas/edge/certificates/local`), beside the
  * stage's routes — so the edge reads it through the mount it already has, and
  * a stage removed takes its certificate with it.
  */
@@ -527,7 +527,7 @@ export async function reconcile(
 			: scopeTelemetryEnv(resolved, { uses: false, serviceName: project });
 		// gkm's root, which the edge's certificate is issued from — made below,
 		// before anything that reads the environment starts.
-		if (edged) env.NODE_EXTRA_CA_CERTS = authorityPaths.certFile;
+		if (edged) env[LOCAL_CA_KEY] = authorityPaths.certFile;
 		return env;
 	};
 	const env = envWith(options.credentials);

@@ -1,5 +1,27 @@
 # @geekmidas/constructs
 
+## 10.0.0-alpha.178
+
+### Patch Changes
+
+- Updated dependencies [[`8b944c3`](https://github.com/geekmidas/toolbox/commit/8b944c31c3839325cb7497f4573eedb4d81d0986)]:
+  - @geekmidas/manifest@10.0.0-alpha.178
+  - @geekmidas/audit@10.0.0-alpha.178
+  - @geekmidas/auth@10.0.0-alpha.178
+  - @geekmidas/cache@10.0.0-alpha.178
+  - @geekmidas/db@10.0.0-alpha.178
+  - @geekmidas/emailkit@10.0.0-alpha.178
+  - @geekmidas/envkit@10.0.0-alpha.178
+  - @geekmidas/errors@10.0.0-alpha.178
+  - @geekmidas/events@10.0.0-alpha.178
+  - @geekmidas/logger@10.0.0-alpha.178
+  - @geekmidas/rate-limit@10.0.0-alpha.178
+  - @geekmidas/schema@10.0.0-alpha.178
+  - @geekmidas/services@10.0.0-alpha.178
+  - @geekmidas/storage@10.0.0-alpha.178
+  - @geekmidas/telescope@10.0.0-alpha.178
+  - @geekmidas/testkit@10.0.0-alpha.178
+
 ## 10.0.0-alpha.177
 
 ### Patch Changes

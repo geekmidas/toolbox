@@ -14,7 +14,7 @@
  * would add an invalidation story a local stack has no use for.
  *
  * What it buys beyond the shape is a certificate: gkm's local authority
- * (`trust/authority.ts`) issues one for the stage's hosts, which the edge
+ * (`@geekmidas/edge/certificates/local`) issues one for the stage's hosts, which the edge
  * serves the way a deployed edge serves the stage's own, so a local address is
  * `https://` like the deployed one, and
  * everything downstream of that — `Secure` cookies, `SameSite`, a cookie domain
