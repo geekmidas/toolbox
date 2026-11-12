@@ -175,6 +175,7 @@
     "inbox-ci-policy",
     "inbox-loops-sst",
     "inbox-receive-email",
+    "inbox-topic-subscriptions-deploy-credentials",
     "init-admin-email",
     "init-deploy-registry",
     "init-deploy-target",

@@ -1,5 +1,30 @@
 # @geekmidas/cli
 
+## 10.0.0-alpha.179
+
+### Patch Changes
+
+- [#512](https://github.com/geekmidas/toolbox/pull/512) [`d7da592`](https://github.com/geekmidas/toolbox/commit/d7da5924a39ddd15880df9160e379529a52213e7) Thanks [@geekmidas](https://github.com/geekmidas)! - A deploy subscribes the workers' routes to an SES inbox's topic with its own
+  AWS credentials, as it does a watched bucket's. It used the key in the topic's
+  connection string, which is the inbox's IAM user's and may only confirm a
+  subscription, so `gkm deploy` failed with `AuthorizationErrorException` on
+  `SNS:ListSubscriptionsByTopic` and the inbox's mail never reached the worker.
+  The app's key stays limited to `sns:ConfirmSubscription`. Any topic the stage's
+  providers made is treated the same way, including when a pending confirmation
+  is resent after the workers are up.
+- Updated dependencies []:
+  - @geekmidas/cache@10.0.0-alpha.179
+  - @geekmidas/constructs@10.0.0-alpha.179
+  - @geekmidas/db@10.0.0-alpha.179
+  - @geekmidas/envkit@10.0.0-alpha.179
+  - @geekmidas/errors@10.0.0-alpha.179
+  - @geekmidas/logger@10.0.0-alpha.179
+  - @geekmidas/manifest@10.0.0-alpha.179
+  - @geekmidas/schema@10.0.0-alpha.179
+  - @geekmidas/services@10.0.0-alpha.179
+  - @geekmidas/storage@10.0.0-alpha.179
+  - @geekmidas/telescope@10.0.0-alpha.179
+
 ## 10.0.0-alpha.178
 
 ### Patch Changes

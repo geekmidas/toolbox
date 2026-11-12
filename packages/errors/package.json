@@ -1,6 +1,6 @@
 {
 	"name": "@geekmidas/errors",
-	"version": "10.0.0-alpha.178",
+	"version": "10.0.0-alpha.179",
 	"type": "module",
 	"exports": {
 		".": {
