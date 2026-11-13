@@ -69,6 +69,7 @@
     "compose-app-env-parity",
     "compose-backups",
     "compose-build-push",
+    "compose-config-dollar",
     "compose-deploy-state",
     "compose-derived-file-server-url",
     "compose-destroy",

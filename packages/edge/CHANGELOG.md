@@ -1,5 +1,18 @@
 # @geekmidas/edge
 
+## 10.0.0-alpha.182
+
+### Patch Changes
+
+- 🐛 [#516](https://github.com/geekmidas/toolbox/pull/516) [`818c22f`](https://github.com/geekmidas/toolbox/commit/818c22f6cec9309cb6e6d75637bf9ab088e533d1) Thanks [@geekmidas](https://github.com/geekmidas)! - :bug: A site's password works behind Caddy: compose no longer eats the `# @geekmidas/edge in its bcrypt hash (#513)
+
+  The Caddyfile, the stage's own certificate and the shared edge's Traefik configuration are handed to their containers inline, as a config's `content` in the compose file. Compose interpolates variables there, and the `# @geekmidas/edge in them weren't escaped. The `$2a$10$<salt+hash>`that`basic_auth`checks lost the salt's first letters to an unset variable, so Caddy answered`401`to the right password. A salt starting with`{` made the file fail to parse instead.
+
+  Every inline config's content is now written with each `# @geekmidas/edge as `$`, compose's escape for a literal `# @geekmidas/edge, where the stack's compose file is rendered and in the edge's. Compose hands the container the file exactly as written. `composeLiteral()` from `@geekmidas/edge` does the escaping.
+
+- Updated dependencies []:
+  - @geekmidas/manifest@10.0.0-alpha.182
+
 ## 10.0.0-alpha.181
 
 ### Patch Changes

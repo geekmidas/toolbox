@@ -1,6 +1,6 @@
 {
 	"name": "@geekmidas/edge",
-	"version": "10.0.0-alpha.181",
+	"version": "10.0.0-alpha.182",
 	"description": "The edge in front of a gkm stack: routes, reverse proxies, certificates and DNS providers.",
 	"type": "module",
 	"exports": {
