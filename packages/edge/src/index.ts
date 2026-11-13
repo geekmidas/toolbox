@@ -7,4 +7,6 @@
  * Its own package rather than part of the CLI because the CLI is not its only
  * reader: anything that changes the edge while a stack runs uses it too.
  */
+
+export { composeLiteral } from './compose';
 export { EdgeError, isEdgeError } from './errors';

@@ -42,6 +42,7 @@ import {
 } from 'node:fs/promises';
 import { hostname, userInfo } from 'node:os';
 import { dirname, join, relative } from 'node:path';
+import { composeLiteral } from '@geekmidas/edge';
 import {
 	ensureLocalAuthority,
 	ensureLocalCertificate,
@@ -2637,7 +2638,28 @@ function composeYaml(
 #
 #   gkm compose${stage}          start or update it
 #   gkm compose${stage} --down   stop it
-${stringify(compose, { lineWidth: 0, aliasDuplicateObjects: false })}`;
+${stringify(composeLiterals(compose), { lineWidth: 0, aliasDuplicateObjects: false })}`;
+}
+
+/**
+ * The stack with each inline config's content escaped for compose, which
+ * would otherwise read every `$` in it — a bcrypt hash's in the Caddyfile — as
+ * a variable. Done here, where the file is written, so no inline file escapes
+ * it: the stack itself holds each file as the container is to read it.
+ */
+function composeLiterals(
+	compose: ComposeStack['compose'],
+): ComposeStack['compose'] {
+	if (!compose.configs) return compose;
+	return {
+		...compose,
+		configs: Object.fromEntries(
+			Object.entries(compose.configs).map(([name, { content }]) => [
+				name,
+				{ content: composeLiteral(content) },
+			]),
+		),
+	};
 }
 
 function printPlan(ctx: ComposeContext, run: ComposeRun): void {
