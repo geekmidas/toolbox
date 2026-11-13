@@ -22,6 +22,7 @@
 import { createHash } from 'node:crypto';
 import { CLIENT_IP_HEADER, EDGE_TOKEN_HEADER } from '@geekmidas/manifest';
 import { parse, stringify } from 'yaml';
+import { composeLiteral } from '../compose';
 import {
 	assertRouteRenderable,
 	EDGE_LIMITS,
@@ -225,7 +226,7 @@ export function edgeCompose(options: {
 				logging: options.logging,
 			},
 		},
-		configs: { traefik: { content: options.staticConfig } },
+		configs: { traefik: { content: composeLiteral(options.staticConfig) } },
 		volumes: { acme: {}, dynamic: {}, certs: {} },
 		networks: { edge: { name: EDGE_NETWORK, external: true } },
 	};

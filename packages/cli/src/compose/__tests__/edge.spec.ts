@@ -555,6 +555,21 @@ describe('the edge', () => {
 		expect(EDGE_NETWORK).toBe(EDGE_PROJECT);
 	});
 
+	it("hands Traefik its static configuration whole, through compose's interpolation", () => {
+		const staticConfig = 'a: $HOME ${X} $$\n';
+		const compose = edgeCompose({
+			ports: { https: 443, http: 80 },
+			staticConfig,
+			logging: { driver: 'json-file', options: {} },
+		}) as { configs: { traefik: { content: string } } };
+
+		// `$$` is compose's `$`: what it reads back is the file as written.
+		expect(compose.configs.traefik.content).toBe('a: $$HOME $${X} $$$$\n');
+		expect(compose.configs.traefik.content.replaceAll('$$', '$')).toBe(
+			staticConfig,
+		);
+	});
+
 	it('runs the pinned image on the shared network, with its ACME state on a volume', () => {
 		const compose = edgeCompose({
 			ports: { https: 443, http: 80 },

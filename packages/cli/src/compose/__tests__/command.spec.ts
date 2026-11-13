@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process';
 import { X509Certificate } from 'node:crypto';
 import {
 	existsSync,
@@ -1451,6 +1452,27 @@ describe('a site behind a password', { timeout: RUN_TIMEOUT }, () => {
 		).toBe(stored);
 		expect(second.said).not.toContain('Generated for');
 		expect(caddyfile()).toBe(before);
+	});
+
+	it("hands Caddy the password's hash whole, through compose's interpolation", async () => {
+		await release();
+		const stack = join(dir, '.gkm', 'compose', 'production');
+
+		// Compose reads every `$` in the file as a variable — the hash's salt
+		// among them — unless it is escaped. `config` prints what it read,
+		// escaped again for a compose file: one `$$` for each `$` it kept.
+		const config = spawnSync(
+			'docker',
+			['compose', '-f', 'docker-compose.yml', 'config', '--format', 'json'],
+			{ cwd: stack, encoding: 'utf-8' },
+		);
+		expect(config.stderr).not.toMatch(/variable is not set/);
+		expect(config.status, config.stderr).toBe(0);
+		const content: string = JSON.parse(
+			config.stdout,
+		).configs.caddyfile.content.replaceAll('$$', '$');
+		expect(content).toMatch(/production \$2a\$10\$[./A-Za-z0-9]{53}\n/);
+		expect(content).toBe(caddyfile());
 	});
 
 	it('serves the site to everyone on a stage its password does not name', async () => {
