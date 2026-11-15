@@ -1,5 +1,28 @@
 # @geekmidas/cli
 
+## 10.0.0-alpha.183
+
+### Patch Changes
+
+- [#519](https://github.com/geekmidas/toolbox/pull/519) [`568cb1a`](https://github.com/geekmidas/toolbox/commit/568cb1aac1ffc38679489661a407c4a6292cdc28) Thanks [@geekmidas](https://github.com/geekmidas)! - A server build with an inbox subscriber includes the SNS push driver, as one
+  with a bucket subscriber does, whatever broker carries the app's own events.
+  Deployed on SES, the inbox's topic is SNS, so a worker built for pg-boss
+  logged `This build has no SNS driver`, reported the inbox's subscriber failed
+  on `/health`, and never received the inbox's mail (#518).
+- Updated dependencies []:
+  - @geekmidas/cache@10.0.0-alpha.183
+  - @geekmidas/constructs@10.0.0-alpha.183
+  - @geekmidas/db@10.0.0-alpha.183
+  - @geekmidas/edge@10.0.0-alpha.183
+  - @geekmidas/envkit@10.0.0-alpha.183
+  - @geekmidas/errors@10.0.0-alpha.183
+  - @geekmidas/logger@10.0.0-alpha.183
+  - @geekmidas/manifest@10.0.0-alpha.183
+  - @geekmidas/schema@10.0.0-alpha.183
+  - @geekmidas/services@10.0.0-alpha.183
+  - @geekmidas/storage@10.0.0-alpha.183
+  - @geekmidas/telescope@10.0.0-alpha.183
+
 ## 10.0.0-alpha.182
 
 ### Patch Changes
