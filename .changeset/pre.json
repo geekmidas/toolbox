@@ -80,6 +80,7 @@
     "compose-logs",
     "compose-move-own-caddy",
     "compose-planned-signed-origin",
+    "compose-proxy-every-stage",
     "compose-redis-cache",
     "compose-remote-docker",
     "compose-routes-before-health",
