@@ -215,14 +215,15 @@ export interface ComposeWorkspaceConfig<S extends string = string> {
 	 * Caddy on 80/443 — or `'traefik'`, the machine's shared Traefik edge,
 	 * which every stack registers its routes with.
 	 *
-	 * One value applies to every deployed stage; the local stage stays on
-	 * Caddy then. A map sets each stage it names, the local stage included,
-	 * so the local stack runs behind a Traefik edge on this machine — the
-	 * path the deployed stages take — only when the map names it.
+	 * One value applies to every stage, the local one included: on
+	 * `'traefik'` the local stack runs behind a Traefik edge on this machine,
+	 * the path the deployed stages take on their servers. A map sets each
+	 * stage it names, and a stage it leaves out is on Caddy — the way to run
+	 * one stage on something else.
 	 *
 	 * ```ts
-	 * proxy: 'traefik' // every deployed stage; local stays on Caddy
-	 * proxy: { development: 'traefik', production: 'traefik' }
+	 * proxy: 'traefik' // every stage, the local one included
+	 * proxy: { development: 'caddy', staging: 'traefik', production: 'traefik' }
 	 * ```
 	 */
 	proxy?: ComposeProxy | StageMap<S, ComposeProxy>;

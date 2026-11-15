@@ -61,19 +61,19 @@ export class ComposeTlsFileMissing extends GkmError {
 
 /**
  * The proxy a stage's stack is served by: Caddy unless `deploy.compose.proxy`
- * says otherwise. The plain string form is for the deployed stages — a
- * server's shared edge — so the local stage stays on its own Caddy then; it
- * runs behind a Traefik edge on this machine only when the per-stage map
- * names it (`proxy: { development: 'traefik', production: 'traefik' }`).
+ * says otherwise. The plain string form is every stage's, the local one
+ * included — a deployed stage behind its server's shared edge, the local one
+ * behind a Traefik edge on this machine. The per-stage map sets each stage it
+ * names, and a stage it leaves out is on Caddy: it is how one stage runs
+ * something else (`proxy: { development: 'caddy', production: 'traefik' }`).
  */
 export function proxyFor(
 	config: ComposeWorkspaceConfig | undefined,
 	stage: string,
-	local: boolean,
 ): ComposeProxy {
 	const proxy = config?.proxy;
 	if (!proxy) return 'caddy';
-	if (typeof proxy === 'string') return local ? 'caddy' : proxy;
+	if (typeof proxy === 'string') return proxy;
 	return proxy[stage] ?? 'caddy';
 }
 

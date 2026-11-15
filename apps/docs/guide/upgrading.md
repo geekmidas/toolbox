@@ -12,6 +12,36 @@ gkm upgrade --all
 `10.0.0-alpha.x` project), never goes backwards, and with `--all` also raises
 third-party packages to the floor of the peer ranges the new version declares.
 
+## After 10.0.0-alpha.183: `proxy: 'traefik'` includes the local stage {#proxy-every-stage}
+
+`deploy.compose.proxy: 'traefik'` now applies to every stage, the local one
+included. Before, the string form covered the deployed stages only and the
+local stage stayed on its own Caddy ([alpha.145](#local-traefik)).
+
+**A project already on `proxy: 'traefik'`:** its next
+`gkm compose --stage <local stage>` starts the shared Traefik edge
+(`gkm-edge`) on this machine, on 80 and 443, and registers the local stack
+with it instead of starting the stack's own Caddy. The first run moves the
+stack's Caddy off the ports
+([Compose](./compose.md#switching-a-server-from-caddy-to-the-shared-edge)),
+and the hosts, the Mailpit inbox and the local certificate stay the same
+([Compose](./compose.md#the-local-stage-behind-the-shared-edge)).
+`gkm dev` is not affected: it runs its own edge, not the compose stack's.
+
+To keep Caddy locally, name every stage in the per-stage map. A stage the map
+leaves out is on Caddy:
+
+```ts
+deploy: {
+  compose: {
+    proxy: { development: 'caddy', staging: 'traefik', production: 'traefik' },
+  },
+},
+```
+
+A project that already names the local stage in the map, or sets no `proxy`,
+changes nothing.
+
 ## After 10.0.0-alpha.170: a frontend's plain edge to a bucket holds no credentials {#frontend-bucket-edge}
 
 A site's or a mobile app's plain `.dependsOn([documents])` on an
