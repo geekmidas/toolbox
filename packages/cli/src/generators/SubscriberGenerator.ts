@@ -51,12 +51,15 @@ export class SubscriberGenerator extends ConstructGenerator<
 		if (target === 'server') {
 			// Generate subscribers.ts for server-based polling (even if empty).
 			// A bucket's subscriber is pushed to by the topic the storage
+			// publishes to, and an inbox's by the topic its provider (SES)
 			// publishes to, whatever broker carries the app's own events.
 			await this.generateServerSubscribersFile(
 				outputDir,
 				constructs,
 				(context.eventsBackends?.includes('sns') ?? false) ||
-					constructs.some(({ construct }) => construct.bucketName),
+					constructs.some(
+						({ construct }) => construct.bucketName || construct.inboxName,
+					),
 			);
 
 			logger.log(

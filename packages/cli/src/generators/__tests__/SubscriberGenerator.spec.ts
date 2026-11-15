@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { KyselyDatabase } from '@geekmidas/constructs/database/kysely';
+import { Inbox } from '@geekmidas/constructs/inbox';
 import { ObjectStorage } from '@geekmidas/constructs/object-storage';
 import {
 	type Subscriber,
@@ -404,6 +405,39 @@ describe('SubscriberGenerator', () => {
 			// Only an emulator's route subscribes itself.
 			expect(sns.match(/subscribeHttpEndpoint\(connection/g)).toHaveLength(1);
 			expect(sns).toContain('http://host.docker.internal:');
+		});
+
+		it("pushes an inbox's subscriber on a pg-boss build", async () => {
+			const requests = new Inbox('Requests', { addresses: ['requests'] });
+			const onRequest = new Worker('Jobs')
+				.inbox(requests)
+				.handle(async () => {});
+
+			await generator.build(
+				{ ...context, eventsBackends: ['pgboss'] },
+				[
+					{
+						key: 'onRequest',
+						name: 'onrequest',
+						construct: onRequest,
+						path: {
+							absolute: join(tempDir, 'onRequest.ts'),
+							relative: 'onRequest.ts',
+						},
+					},
+				],
+				outputDir,
+				{ target: 'server' },
+			);
+			const content = await readFile(
+				join(outputDir, 'subscribers.ts'),
+				'utf-8',
+			);
+
+			// Deployed on SES, the inbox's topic is SNS whatever carries the
+			// app's own events, so the push code is generated anyway.
+			expect(content).toContain("await import('@geekmidas/events/sns')");
+			expect(content).not.toContain('This build has no SNS driver');
 		});
 
 		describe('a subscriber bound to a bucket', () => {
