@@ -1040,7 +1040,7 @@ export function composeStack(input: StackInput): ComposeStack {
 	const custom = input.secrets?.custom ?? {};
 	const https = input.ports?.https ?? 443;
 	const http = input.ports?.http ?? 80;
-	const proxy = proxyFor(workspace.deploy?.compose, stage, local);
+	const proxy = proxyFor(workspace.deploy?.compose, stage);
 	const certificate = certificateFor(
 		workspace.deploy?.compose,
 		stage,

@@ -1217,35 +1217,41 @@ describe('deploy.compose.proxy and tls', () => {
 	const stages = { local: 'development', deployed: ['staging', 'production'] };
 
 	it.each([
-		// [proxy, stage, local, expected]
-		[undefined, 'production', false, 'caddy'],
-		[undefined, 'development', true, 'caddy'],
-		// The string form is the deployed stages': the local one keeps Caddy.
-		['traefik', 'production', false, 'traefik'],
-		['traefik', 'development', true, 'caddy'],
-		['caddy', 'production', false, 'caddy'],
-		// A map sets each stage it names — the local one included.
-		[{ staging: 'traefik' }, 'staging', false, 'traefik'],
-		[{ staging: 'traefik' }, 'production', false, 'caddy'],
-		[{ staging: 'traefik' }, 'development', true, 'caddy'],
-		[{ development: 'traefik' }, 'development', true, 'traefik'],
-		[{ development: 'traefik' }, 'production', false, 'caddy'],
+		// [proxy, stage, expected]
+		[undefined, 'production', 'caddy'],
+		[undefined, 'development', 'caddy'],
+		// The string form is every stage's, the local one included.
+		['traefik', 'production', 'traefik'],
+		['traefik', 'development', 'traefik'],
+		['caddy', 'production', 'caddy'],
+		['caddy', 'development', 'caddy'],
+		// A map sets each stage it names — the local one included — and leaves
+		// the rest on Caddy.
+		[{ staging: 'traefik' }, 'staging', 'traefik'],
+		[{ staging: 'traefik' }, 'production', 'caddy'],
+		[{ staging: 'traefik' }, 'development', 'caddy'],
+		[{ development: 'traefik' }, 'development', 'traefik'],
+		[{ development: 'traefik' }, 'production', 'caddy'],
 		[
 			{ development: 'traefik', production: 'traefik' },
 			'development',
-			true,
 			'traefik',
 		],
+		// How the local stage keeps Caddy while the deployed ones are on Traefik.
 		[
-			{ development: 'caddy', production: 'traefik' },
+			{ development: 'caddy', staging: 'traefik', production: 'traefik' },
 			'development',
-			true,
 			'caddy',
 		],
-	] as const)('proxy %j on %s (local: %s) is %s', (proxy, stage, local, expected) => {
-		expect(
-			proxyFor(proxy === undefined ? undefined : { proxy }, stage, local),
-		).toBe(expected);
+		[
+			{ development: 'caddy', staging: 'traefik', production: 'traefik' },
+			'production',
+			'traefik',
+		],
+	] as const)('proxy %j on %s is %s', (proxy, stage, expected) => {
+		expect(proxyFor(proxy === undefined ? undefined : { proxy }, stage)).toBe(
+			expected,
+		);
 	});
 
 	it('takes a certificate for any stage, the local one included, its paths made absolute', () => {
@@ -1492,20 +1498,20 @@ describe('a stack behind the shared edge', () => {
 		expect(api.env?.DATABASE_URL).toMatch(/@postgres:5432\//);
 	});
 
-	it('keeps Caddy for the local stage when proxy is one value for the deployed stages', () => {
+	it('puts the local stage behind the edge too when proxy is one value', () => {
 		const local = stack({
 			stage: 'development',
 			localCredentials: TEST_CREDENTIALS,
+			localAuthority: localAuthorityPaths(dir),
 			secrets: null,
 			images: { mode: 'build', tag: 'abc' },
 		});
 
-		expect(local.proxy).toBe('caddy');
-		expect(local.caddyfile).toContain(
-			'tls /etc/caddy/tls/cert.pem /etc/caddy/tls/key.pem',
-		);
-		expect(local.traefik).toBeUndefined();
-		expect(local.compose.networks).toBeUndefined();
+		expect(local.proxy).toBe('traefik');
+		expect(local.caddyfile).toBeUndefined();
+		expect(local.compose.services.caddy).toBeUndefined();
+		expect(local.traefik).toBeDefined();
+		expect(local.compose.networks).toHaveProperty('edge');
 	});
 });
 
@@ -2151,6 +2157,32 @@ describe(
 				.mock.calls.map((call) => String(call[0]))
 				.join('\n');
 			expect(said).toContain("Certificates are from gkm's local CA");
+		});
+
+		it("registers with this machine's edge on proxy: 'traefik', with no Caddy of its own", async () => {
+			const { calls } = await up({ proxy: 'traefik' });
+
+			expect(calls.find((call) => call.op === 'up')).toEqual({
+				op: 'up',
+				args: ['traefik'],
+				edge: true,
+			});
+			expect(calls.some((call) => call.host)).toBe(false);
+			const stack = join(dir, '.gkm', 'compose', 'development');
+			expect(existsSync(join(stack, 'Caddyfile'))).toBe(false);
+			const compose = parse(
+				readFileSync(join(stack, 'docker-compose.yml'), 'utf-8'),
+			);
+			expect(compose.services.caddy).toBeUndefined();
+			const routes = parse(
+				readFileSync(
+					join(volumes(), 'dynamic', 'compose-app-development.yml'),
+					'utf-8',
+				),
+			);
+			expect(Object.keys(routes.http.routers)).toContain(
+				'compose-app-development-api',
+			);
 		});
 
 		it('serves the local stage’s own certificate instead, and verifies against the root it names', async () => {

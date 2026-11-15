@@ -67,7 +67,8 @@ and the hosts they answer on all come from what the workspace declares.
 - **One Caddy**, one host per app — and one per file server over the stack's
   MinIO (`https://uploads.<project>.localhost` locally), rewriting to its
   bucket the way `gkm dev`'s edge does. With `proxy: 'traefik'` the stack runs
-  no Caddy: it registers the same hosts with the server's shared edge.
+  no Caddy: it registers the same hosts with the shared edge — the server's,
+  or this machine's for the local stage.
 
 The databases, roles and grants are created, each database's migrations
 (`db/<construct>/migrations`) applied, and then every one of its seeds
@@ -1097,9 +1098,8 @@ What sits in front of a stage's stack is `deploy.compose.proxy`:
 ```ts
 deploy: {
   compose: {
-    proxy: 'traefik',                                  // every deployed stage
-    // proxy: { staging: 'traefik', production: 'caddy' }  // or one per stage
-    // proxy: { development: 'traefik', production: 'traefik' } // local too
+    proxy: 'traefik', // every stage, the local one included
+    // proxy: { development: 'caddy', staging: 'traefik', production: 'traefik' } // or one per stage
   },
 },
 ```
@@ -1113,11 +1113,13 @@ Two stacks with their own Caddy cannot share a server: both want 80 and 443.
 With `'traefik'`, one edge owns those ports, the ACME state and the redirect to
 HTTPS, and each stack adds its hosts to it.
 
-**The string form is for the deployed stages.** `proxy: 'traefik'` sets every
-deployed stage, and the local stage stays on its own Caddy. To run the local
-stage behind the edge too, name it in the per-stage map — see
+**The string form is every stage's.** `proxy: 'traefik'` puts every stage
+behind Traefik, the local one included: a deployed stage registers with its
+server's edge, the local stage with an edge on this machine — see
 [The local stage behind the shared edge](#the-local-stage-behind-the-shared-edge).
-A site's image keeps Caddy inside it as its file server either way.
+To run one stage on something else, use the per-stage map: it sets each stage
+it names, and a stage it leaves out is on Caddy. A site's image keeps Caddy
+inside it as its file server either way.
 
 Both proxies serve the same routes. A stack's routes are worked out once — each
 host, the service and port behind it, whether it streams, its allowlist and its
@@ -1250,19 +1252,18 @@ written, for an edge that was not running when the deploy began.
 
 ### The local stage behind the shared edge
 
-Local testing exercises the path staging and production take — the edge, its
-routes, its middlewares, Traefik itself — when the local stage is named in the
-per-stage map:
+With `proxy: 'traefik'`, local testing exercises the path staging and
+production take — the edge, its routes, its middlewares, Traefik itself:
 
 ```ts
 deploy: {
   compose: {
-    proxy: { development: 'traefik', production: 'traefik' },
+    proxy: 'traefik',
   },
 },
 ```
 
-`gkm compose --stage development` then starts the same `gkm-edge` on this
+`gkm compose --stage development` starts the same `gkm-edge` on this
 machine's Docker and registers the local stack with it, as a deployed stage's
 deploy does on its server. What differs is the certificate: Let's Encrypt
 cannot issue for `*.localhost`, so the edge serves the one gkm's local CA
@@ -1277,6 +1278,17 @@ the edge publishes on the host, as the stack's Caddy did — and the check
 after the start, which asks `127.0.0.1` and trusts gkm's root.
 `gkm compose --stage development --down` unregisters the stack and leaves the
 edge running.
+
+To keep the local stage on its own Caddy while the deployed stages are behind
+Traefik, name each stage in the per-stage map:
+
+```ts
+deploy: {
+  compose: {
+    proxy: { development: 'caddy', staging: 'traefik', production: 'traefik' },
+  },
+},
+```
 
 Switching the local stage between proxies is the
 [same one-time step](#switching-a-server-from-caddy-to-the-shared-edge) as on
