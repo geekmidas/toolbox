@@ -1,6 +1,10 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, parse, posix } from 'node:path';
 import { externalsManifestName } from '../build/native';
+import {
+	NEXT_ACTIONS_KEY,
+	NEXT_DEPLOYMENT_ID_KEY,
+} from '../deploy/nextRelease';
 import { BUILD_OFFLINE_ENV, IMAGE_BUILD_ENV } from '../exec/imageBuild';
 import {
 	type ClientTelemetryDefault,
@@ -751,6 +755,14 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \\
 }
 
 /**
+ * What every Next build is handed beside its public values: its release, as
+ * its `deploymentId`, and the stage's server actions key (`nextBuildValues`).
+ * Build args of the builder stage alone — the runner's history has neither,
+ * though Next writes the key into the server's manifest it copies.
+ */
+const NEXT_RELEASE_ARGS = [NEXT_DEPLOYMENT_ID_KEY, NEXT_ACTIONS_KEY];
+
+/**
  * Generate a Dockerfile for Next.js frontend apps using standalone output.
  *
  * Pruned at the build root, Next traces from there, so the standalone
@@ -773,7 +785,7 @@ ${prunerStage(options)}
 
 ${depsStage(options)}
 
-${builderStage(options, { args: publicUrlArgs })}
+${builderStage(options, { args: [...publicUrlArgs, ...NEXT_RELEASE_ARGS] })}
 
 ${siteWorkspaceSteps(options)}
 

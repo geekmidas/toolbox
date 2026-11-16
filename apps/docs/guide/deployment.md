@@ -153,6 +153,12 @@ gkm build                  # with deploy: { default: 'sst' }
 - `routes/` - one handler per endpoint (API Gateway v2)
 - `functions/`, `crons/`, `queues/`, `subscribers/`
 
+SST builds each site during `sst deploy`. A Next site there is Next's static
+export, and its build is handed the deploy's tag as `NEXT_DEPLOYMENT_ID`, so
+its assets are tagged with the release they belong to. A static export runs
+no server, so it has no server actions and no key; on a server stage both
+are set — see [A Next site across releases](./compose.md#a-next-site-across-releases).
+
 ---
 
 ## Environment Variables
@@ -699,6 +705,8 @@ gkm secrets:set REDIS_URL 'redis://...' --stage production
 **Service Secrets** - Auto-managed credentials:
 - `POSTGRES_PASSWORD` - Generated when Postgres provisioned
 - `REDIS_PASSWORD` - Generated when Redis provisioned
+- `NEXT_SERVER_ACTIONS_ENCRYPTION_KEY` - Generated on the first deploy of a
+  stage with a Next site, and never rotated by a deploy
 
 ### Viewing Secrets
 

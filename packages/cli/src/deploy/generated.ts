@@ -10,6 +10,9 @@
  *   `RandomPassword` — random, rather than derived, in its declared format.
  * - **Each `encryption` construct's keyring** — one random key and an index
  *   key. Later keys are added by `gkm encryption:rotate`, never by a deploy.
+ * - **A Next site's server actions key** (`NEXT_SERVER_ACTIONS_ENCRYPTION_KEY`),
+ *   where the stage has a Next site: one per stage, so an action submitted
+ *   from a tab opened before a deploy still resolves after it.
  *
  * Both are generated on the first deploy that needs them and written to the
  * stage's store, so every later deploy reads the same values: sessions survive
@@ -21,6 +24,11 @@ import { randomBytes, randomInt } from 'node:crypto';
 import { generateKeyring } from '@geekmidas/constructs/encryption';
 import { type ConstructManifest, drawSecret } from '@geekmidas/manifest';
 import type { StageSecrets } from '../secrets/types.js';
+import {
+	hasNextSite,
+	NEXT_ACTIONS_KEY,
+	newNextActionsKey,
+} from './nextRelease.js';
 
 export interface GeneratedSecrets {
 	/** The stage's secrets with everything it generates present. */
@@ -54,6 +62,11 @@ export function withGeneratedSecrets(
 				? generateKeyring()
 				: drawSecret(randomInt, declaration);
 		generated.push(key);
+	}
+
+	if (hasNextSite(manifest) && !custom[NEXT_ACTIONS_KEY]) {
+		custom[NEXT_ACTIONS_KEY] = newNextActionsKey();
+		generated.push(NEXT_ACTIONS_KEY);
 	}
 
 	const seed = secrets.seed ?? generateSeed();
