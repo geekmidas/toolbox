@@ -105,6 +105,7 @@
 		"@types/lodash.chunk": "~4.2.0",
 		"@types/pg": "~8.15.6",
 		"pg": "~8.20.0",
-		"pg-boss": "~12.18.1"
+		"pg-boss": "~12.18.1",
+		"rolldown": "1.0.0-beta.15"
 	}
 }
