@@ -166,6 +166,7 @@ beforeAll(async () => {
 		deployBackups: {
 			staging: { cron: '0 */6 * * *', keep: '7d' },
 			preview: false,
+			qa: { pitr: { keep: '7d', base: '12h' } },
 		},
 	});
 	({ workspace, manifest } = await loadComposeApp(dir));
@@ -192,7 +193,7 @@ afterAll(async () => {
 		);
 	}
 	await s3.send(new DeleteBucketCommand({ Bucket: bucket() })).catch(() => {});
-	for (const stage of ['production', 'staging']) {
+	for (const stage of ['production', 'staging', 'qa']) {
 		for (const key of await keysOf(user(stage)).catch(() => [])) {
 			await iam.send(
 				new DeleteAccessKeyCommand({ UserName: user(stage), AccessKeyId: key }),
@@ -227,7 +228,7 @@ describe("a deployed compose stage's backups", () => {
 		const reports = await provision('production');
 		const backups = reports.find((r) => r.kind === 'backups');
 		expect(backups?.actions.map((a) => `${a.resource}: ${a.change}`)).toEqual([
-			`bucket ${bucket()}: lifecycle: runs in gkm/${name}/production/backups/ after 30 days, runs in gkm/${name}/qa/backups/ after 30 days, runs in gkm/${name}/staging/backups/ after 7 days`,
+			`bucket ${bucket()}: lifecycle: runs in gkm/${name}/production/backups/ after 30 days, runs in gkm/${name}/qa/backups/ after 30 days, gkm/${name}/qa/backups/pitr/basebackups_005/ after 7 days, gkm/${name}/qa/backups/pitr/wal_005/ after 8 days, runs in gkm/${name}/staging/backups/ after 7 days`,
 			`IAM user ${user('production')}: create under /gkm/`,
 			`IAM user ${user('production')}: policy gkm-backups: put objects under gkm/${name}/production/backups/ only`,
 			`IAM user ${user('production')}: create an access key`,
@@ -255,6 +256,18 @@ describe("a deployed compose stage's backups", () => {
 				id: 'gkm-backups-qa',
 				prefix: `gkm/${name}/qa/backups/2`,
 				days: 30,
+				noncurrent: undefined,
+			},
+			{
+				id: 'gkm-backups-qa-pitr-base',
+				prefix: `gkm/${name}/qa/backups/pitr/basebackups_005/`,
+				days: 7,
+				noncurrent: undefined,
+			},
+			{
+				id: 'gkm-backups-qa-pitr-wal',
+				prefix: `gkm/${name}/qa/backups/pitr/wal_005/`,
+				days: 8,
 				noncurrent: undefined,
 			},
 			{
@@ -383,16 +396,44 @@ describe("a deployed compose stage's backups", () => {
 		expect(await keysOf(user('production'))).toEqual([after.accessKeyId]);
 	});
 
-	it('plans BACKUPS_URL on a dry run, and creates nothing', async () => {
+	it('plans BACKUPS_URL — and PITR_KEY, with point-in-time recovery — on a dry run, and creates nothing', async () => {
 		const reports = await provision('qa', { dryRun: true });
 		expect(reports.find((r) => r.kind === 'backups')).toMatchObject({
 			kind: 'backups',
-			planned: ['BACKUPS_URL'],
+			planned: ['BACKUPS_URL', 'PITR_KEY'],
 		});
 		expect(await keysOf(user('qa')).catch(() => 'no such user')).toBe(
 			'no such user',
 		);
 		expect((await secretsOf('qa')).BACKUPS_URL).toBeUndefined();
+		expect((await secretsOf('qa')).PITR_KEY).toBeUndefined();
+	});
+
+	it('generates the key point-in-time recovery is encrypted with once, and never again', async () => {
+		const reports = await provision('qa');
+		expect(
+			reports
+				.find((r) => r.kind === 'backups')
+				?.actions.map((a) => `${a.resource}: ${a.change}`),
+		).toContain(
+			'secret PITR_KEY: generate the key WAL and base backups are encrypted with',
+		);
+		const key = (await secretsOf('qa')).PITR_KEY;
+		expect(key).toMatch(/^[0-9a-f]{64}$/);
+		expect(lines.join('\n')).toContain(
+			`point-in-time: a base backup every 12h from 02:00 UTC, WAL shipped each minute, restorable 7 days back, to gkm/${name}/qa/backups/pitr/`,
+		);
+
+		// Data already archived is only readable with it: a deploy keeps it.
+		const again = await provision('qa', { rotateKeys: true });
+		expect(
+			again
+				.find((r) => r.kind === 'backups')
+				?.actions.some((a) => a.resource === 'secret PITR_KEY'),
+		).toBe(false);
+		expect((await secretsOf('qa')).PITR_KEY).toBe(key);
+		// No other stage has one.
+		expect((await secretsOf('production')).PITR_KEY).toBeUndefined();
 	});
 
 	it('takes none on a stage set to false, and says so', async () => {

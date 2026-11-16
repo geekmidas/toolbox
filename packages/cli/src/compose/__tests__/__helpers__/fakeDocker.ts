@@ -46,6 +46,8 @@ export function fakeDocker(
 			command: readonly string[],
 			input?: string,
 		) => ExecResult | undefined;
+		/** What a one-off container exits with — 0 by default. */
+		runOnce?: (run: Parameters<ComposeDocker['runOnce']>[1]) => number;
 	} = {},
 ) {
 	const calls: Call[] = [];
@@ -139,7 +141,7 @@ export function fakeDocker(
 		},
 		async runOnce(engine, run) {
 			calls.push({ op: 'runOnce', args: run, ...on(engine) });
-			return 0;
+			return options.runOnce?.(run) ?? 0;
 		},
 	};
 	return { docker, calls, ops: () => calls.map((call) => call.op) };

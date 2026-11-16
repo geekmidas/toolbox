@@ -54,7 +54,11 @@ import type { DnsProvider } from '@geekmidas/edge/dns';
 import { EDGE_PROJECT, EDGE_SERVICE } from '@geekmidas/edge/proxy/traefik';
 import type { ConstructManifest } from '@geekmidas/manifest';
 import { stringify } from 'yaml';
-import { BACKUPS_SERVICE, backupsRoleStatements } from '../../backups/service';
+import {
+	BACKUPS_SERVICE,
+	backupsRoleStatements,
+	POSTGRES_SERVICE,
+} from '../../backups/service';
 import { type AcmeDnsClients, ensureEdgeAcmeKey } from '../../compose/acmeDns';
 import {
 	type HostLookup,
@@ -2609,6 +2613,23 @@ async function writeStack(
 		await rm(join(dir, BACKUPS_SERVICE), { recursive: true, force: true });
 		await rm(join(dir, `${BACKUPS_SERVICE}.env`), { force: true });
 	}
+	// Point-in-time recovery: Postgres's own build context, and WAL-G's key.
+	const pitr = stack.backups?.pitr;
+	if (pitr) {
+		for (const [name, content] of Object.entries(pitr.postgres.files)) {
+			await write(join(dir, POSTGRES_SERVICE, name), content);
+		}
+		if (stack.compose.services[POSTGRES_SERVICE]?.env_file) {
+			await write(
+				join(dir, `${POSTGRES_SERVICE}.env`),
+				envFile(pitr.postgres.env),
+				0o600,
+			);
+		}
+	} else {
+		await rm(join(dir, POSTGRES_SERVICE), { recursive: true, force: true });
+		await rm(join(dir, `${POSTGRES_SERVICE}.env`), { force: true });
+	}
 	// Images no longer embed a stage's credentials. The ciphertexts an older
 	// gkm left beside the compose file for them to embed are removed.
 	for (const entry of await readdir(dir)) {
@@ -2690,6 +2711,11 @@ function printPlan(ctx: ComposeContext, run: ComposeRun): void {
 		ctx.logger.info(
 			`   ${BACKUPS_SERVICE.padEnd(12)} ${stack.backups.databases.map((d) => d.file).join(', ')} — ${stack.backups.backups.describe}, to ${stack.backups.prefix}/`,
 		);
+		if (stack.backups.pitr) {
+			ctx.logger.info(
+				`   ${''.padEnd(12)} ${stack.backups.pitr.pitr.describe}, to ${stack.backups.pitr.prefix}/`,
+			);
+		}
 	}
 	ctx.logger.info(
 		`\n📝 Wrote ${files.length} file(s) under ${stackDir(stack.stage)}/`,

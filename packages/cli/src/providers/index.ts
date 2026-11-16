@@ -14,7 +14,7 @@ import {
 	ensureStageBackups,
 	verifyStageBackups,
 } from '../backups/provision.js';
-import { BACKUPS_URL_KEY } from '../backups/service.js';
+import { BACKUPS_URL_KEY, PITR_KEY } from '../backups/service.js';
 import {
 	type CredentialProvider,
 	storedCredentials,
@@ -387,8 +387,11 @@ export async function provisionStage(
 			actions: [],
 			dns: [],
 			planned:
-				backups.mode === 'on' && secrets[BACKUPS_URL_KEY] === undefined
-					? [BACKUPS_URL_KEY]
+				backups.mode === 'on'
+					? [
+							BACKUPS_URL_KEY,
+							...(backups.backups.pitr ? [PITR_KEY] : []),
+						].filter((key) => secrets[key] === undefined)
 					: [],
 		};
 		reports.push(report);

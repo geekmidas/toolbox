@@ -14,6 +14,14 @@
  *   stage's `imports/` instead: the stack's apps are stopped, the database's
  *   other sessions ended, and the file run inside it in one transaction —
  *   then the apps are started again, whatever happened.
+ * - **restore --to** (point-in-time recovery) brings the whole cluster back
+ *   to a moment: a fresh base backup, then — in a one-off container, with
+ *   the caller's credentials — the newest base backup that had finished by
+ *   then, fetched and replayed with WAL to that second. The stack is stopped
+ *   while the recovered cluster is swapped in, then started again; with
+ *   `--into <name>` each database is copied beside the live one instead.
+ * - **list** also shows the restore window, and **now --base** takes a base
+ *   backup, when the stage has point-in-time recovery.
  */
 
 import { createReadStream, createWriteStream } from 'node:fs';
@@ -31,6 +39,7 @@ import {
 	type DockerEngine,
 	dockerCompose,
 	projectNetwork,
+	projectVolume,
 	type StackRef,
 } from '../compose/docker.js';
 import { composeServer, dockerHost } from '../compose/server.js';
@@ -48,19 +57,34 @@ import {
 	awsEndpoint,
 	awsProvisioningCredentials,
 } from '../providers/aws.js';
+import { POSTGRES_MOUNT } from '../reconcile/compose.js';
+import { volumeOf } from '../reconcile/containers.js';
 import { discover } from '../reconcile/discover.js';
 import { constructGlobs } from '../reconcile/workspace.js';
 import { secretsStoreFor } from '../secrets/store.js';
 import type { NormalizedWorkspace } from '../workspace/types.js';
 import {
+	BASE_BACKUPS_FOLDER,
 	type BackupDatabase,
 	backupDatabases,
 	backupFile,
 	backupsPrefix,
+	intoDatabase,
+	pitrPrefix,
 	runTime,
 	stageBackups,
+	WAL_FOLDER,
 } from './config.js';
-import { BACKUPS_SERVICE, BACKUPS_URL_KEY, RUNNER_PATH } from './service.js';
+import type { StageBackups } from './schedule.js';
+import {
+	BACKUPS_SERVICE,
+	BACKUPS_URL_KEY,
+	PITR_KEY,
+	PitrKeyMissing,
+	POSTGRES_SERVICE,
+	RUNNER_PATH,
+	walgEnv,
+} from './service.js';
 
 /** One run's folder, and what is in it. */
 export interface BackupRun {
@@ -126,7 +150,8 @@ export class BackupRunNotChosen extends GkmError {
 		super(
 			'Say which backup to restore, and only one: --latest; --at <time> — a run ' +
 				'folder (2026-10-10/02-00-00Z) or a time, for the newest run at or ' +
-				'before it; or --from imports/<file>.sql.gz, a prepared import.',
+				'before it; --from imports/<file>.sql.gz, a prepared import; or --to ' +
+				'<time>, the whole cluster as it was at that moment (point-in-time recovery).',
 		);
 		this.name = 'BackupRunNotChosen';
 	}
@@ -451,6 +476,8 @@ export async function backupNow(options: {
 	engine?: DockerEngine;
 	/** Each line the run printed — its result, as JSON. */
 	log?: (line: string) => void;
+	/** A base backup for point-in-time recovery, rather than the dumps. */
+	base?: boolean;
 }): Promise<void> {
 	const result = await options.docker.exec(
 		{
@@ -460,7 +487,7 @@ export async function backupNow(options: {
 			...(options.engine?.host ? { host: options.engine.host } : {}),
 		},
 		BACKUPS_SERVICE,
-		['node', RUNNER_PATH, 'run'],
+		['node', RUNNER_PATH, options.base ? 'base' : 'run'],
 	);
 	for (const line of `${result.stdout}${result.stderr}`.split('\n')) {
 		if (line.trim()) options.log?.(line);
@@ -837,6 +864,460 @@ async function loadInto(
 }
 
 // ============================================================================
+// Point-in-time recovery
+// ============================================================================
+
+/** A stage whose entry does not turn point-in-time recovery on. */
+export class PitrNotOn extends GkmError {
+	constructor(
+		readonly stage: string,
+		readonly flag: string,
+	) {
+		super(
+			`${flag} needs point-in-time recovery, and '${stage}' does not have it. ` +
+				`Turn it on with deploy.backups.${stage}.pitr: true and deploy; the ` +
+				'scheduled dumps restore with --at or --latest.',
+		);
+		this.name = 'PitrNotOn';
+	}
+}
+
+/** `--to` is not a time, or is still to come. */
+export class PitrTargetInvalid extends GkmError {
+	constructor(
+		readonly to: string,
+		readonly reason: string,
+	) {
+		super(
+			`--to '${to}' ${reason}. Give a moment in the past, with its zone: ` +
+				'--to 2026-11-16T09:41:00Z.',
+		);
+		this.name = 'PitrTargetInvalid';
+	}
+}
+
+/** `--into` is not a name a database can take. */
+export class PitrIntoInvalid extends GkmError {
+	constructor(readonly into: string) {
+		super(
+			`--into '${into}' is not a database name prefix: use lowercase letters, ` +
+				'digits and underscores, starting with a letter — --into drill.',
+		);
+		this.name = 'PitrIntoInvalid';
+	}
+}
+
+/** `--into` or `--database` beside the wrong restore. */
+export class PitrFlagsInvalid extends GkmError {
+	constructor(readonly reason: string) {
+		super(
+			`${reason}. A point-in-time restore (--to) brings back the whole ` +
+				'cluster — every database together — into the live one, or with ' +
+				'--into <name> beside it; one database alone restores from the dumps ' +
+				'(--at, --latest, --database).',
+		);
+		this.name = 'PitrFlagsInvalid';
+	}
+}
+
+/** The archive holds no base backup yet. */
+export class NoPitrBackups extends GkmError {
+	constructor(
+		readonly stage: string,
+		readonly location: string,
+	) {
+		super(
+			`'${stage}' has no base backup at ${location} yet, so there is nothing ` +
+				`to restore to a moment from. Take one: gkm backup:now --stage ${stage} --base.`,
+		);
+		this.name = 'NoPitrBackups';
+	}
+}
+
+/** `--to` is before the earliest moment the archive can restore. */
+export class PitrTargetOutsideWindow extends GkmError {
+	constructor(
+		readonly to: string,
+		readonly earliest: Date,
+		readonly latest: Date | undefined,
+	) {
+		super(
+			`--to ${to} is before the earliest moment '${formatTime(earliest)}' that ` +
+				`can be restored (the window is ${formatWindow({ earliest, ...(latest ? { latest } : {}) })}). ` +
+				'Older moments restore only from the dumps: --at.',
+		);
+		this.name = 'PitrTargetOutsideWindow';
+	}
+}
+
+/** The one-off container that recovers the cluster failed. */
+export class PitrRestoreFailed extends GkmError {
+	constructor(
+		readonly to: string,
+		readonly code: number,
+	) {
+		super(
+			`Recovering the cluster to ${to} failed (exit ${code}); what it said is ` +
+				'above. Nothing live was changed.',
+		);
+		this.name = 'PitrRestoreFailed';
+	}
+}
+
+/**
+ * Putting the recovered cluster in place failed, or the stack did not start
+ * again after it. `swapped` says whether the recovered cluster is live.
+ */
+export class PitrSwapFailed extends GkmError {
+	constructor(
+		readonly project: string,
+		readonly swapped: boolean,
+		readonly ids: readonly string[],
+		readonly output: string,
+	) {
+		super(
+			`${swapped ? 'The recovered cluster is in place' : 'The live cluster was left in place'}, ` +
+				`but ${project}'s containers, stopped for it, did not start again ` +
+				`(docker said: ${output.trim() || 'nothing'}). Start them on the stage's ` +
+				`server with \`docker start ${ids.join(' ')}\`, or deploy the stage.`,
+		);
+		this.name = 'PitrSwapFailed';
+	}
+}
+
+/** The restore window: the earliest and latest moments the archive reaches. */
+export interface PitrWindow {
+	/** When the oldest kept base backup finished. */
+	earliest: Date;
+	/** When the newest WAL segment was archived; unknown before any is. */
+	latest?: Date;
+	/** Every base backup, oldest first, by its name and when it finished. */
+	bases: { name: string; finished: Date }[];
+}
+
+/** `base_000000010000000000000002_backup_stop_sentinel.json`. */
+const SENTINEL =
+	/^(base_[0-9A-F]{24}(?:_D_[0-9A-F]{24})?)_backup_stop_sentinel\.json$/;
+
+/** Every key under `prefix`, with when it was put. */
+async function listKeys(
+	s3: S3Client,
+	bucket: string,
+	prefix: string,
+): Promise<{ key: string; modified?: Date }[]> {
+	const { ListObjectsV2Command } = await import('@aws-sdk/client-s3');
+	const keys: { key: string; modified?: Date }[] = [];
+	let token: string | undefined;
+	do {
+		const page = await s3.send(
+			new ListObjectsV2Command({
+				Bucket: bucket,
+				Prefix: prefix,
+				...(token ? { ContinuationToken: token } : {}),
+			}),
+		);
+		for (const object of page.Contents ?? []) {
+			if (!object.Key) continue;
+			keys.push({
+				key: object.Key.slice(prefix.length),
+				...(object.LastModified ? { modified: object.LastModified } : {}),
+			});
+		}
+		token = page.IsTruncated ? page.NextContinuationToken : undefined;
+	} while (token);
+	return keys;
+}
+
+/**
+ * The stage's restore window, read from its archive with the caller's
+ * credentials: from when its oldest base backup finished — a base backup's
+ * stop sentinel is put last — to when its newest WAL segment was put.
+ * `undefined` when there is no base backup yet.
+ */
+export async function pitrWindow(
+	s3: S3Client,
+	bucket: string,
+	prefix: string,
+): Promise<PitrWindow | undefined> {
+	const bases = (
+		await listKeys(s3, bucket, `${prefix}/${BASE_BACKUPS_FOLDER}/`)
+	)
+		.map(({ key, modified }) => ({ match: SENTINEL.exec(key), modified }))
+		.filter(
+			(b): b is { match: RegExpExecArray; modified: Date } =>
+				b.match !== null && b.modified !== undefined,
+		)
+		.map(({ match, modified }) => ({ name: match[1]!, finished: modified }))
+		.sort((a, b) => a.finished.getTime() - b.finished.getTime());
+	if (bases.length === 0) return undefined;
+	const latest = (await listKeys(s3, bucket, `${prefix}/${WAL_FOLDER}/`))
+		.map((k) => k.modified?.getTime() ?? 0)
+		.reduce((a, b) => Math.max(a, b), 0);
+	return {
+		earliest: bases[0]!.finished,
+		...(latest > 0 ? { latest: new Date(latest) } : {}),
+		bases,
+	};
+}
+
+/** `2026-11-02 02:04:11Z → 2026-11-16 09:41:07Z`. */
+export function formatWindow(
+	window: Pick<PitrWindow, 'earliest' | 'latest'>,
+): string {
+	return `${formatTime(window.earliest)} → ${window.latest ? formatTime(window.latest) : 'no WAL archived yet'}`;
+}
+
+/** The lines `backup:list` prints for the restore window. */
+export function formatPitr(window: PitrWindow): string[] {
+	return [
+		`restore window  ${formatWindow(window)}`,
+		...[...window.bases]
+			.reverse()
+			.map((b) => `${formatTime(b.finished)}  ${b.name}`),
+	];
+}
+
+/**
+ * `--to` read: a time that parses and is not still to come.
+ *
+ * @throws {PitrTargetInvalid}
+ */
+export function pitrTarget(to: string, now: Date = new Date()): Date {
+	const target = new Date(to);
+	if (Number.isNaN(target.getTime())) {
+		throw new PitrTargetInvalid(to, 'is not a time');
+	}
+	if (!/(?:Z|[+-]\d{2}:?\d{2})$/i.test(to.trim())) {
+		throw new PitrTargetInvalid(to, 'has no time zone');
+	}
+	if (target.getTime() > now.getTime()) {
+		throw new PitrTargetInvalid(to, 'is still to come');
+	}
+	return target;
+}
+
+/** `--into` checked: a prefix every database's copy is named with. */
+export function pitrInto(into: string): string {
+	if (!/^[a-z][a-z0-9_]{0,30}$/.test(into)) throw new PitrIntoInvalid(into);
+	return into;
+}
+
+export interface PitrRestoreOptions {
+	s3: S3Client;
+	/** The archive, as the stack's containers reach it. */
+	archive: {
+		bucket: string;
+		region?: string;
+		endpoint?: string;
+		prefix: string;
+		key: string;
+	};
+	/** The caller's credentials: WAL-G reads the archive with them. */
+	credentials: {
+		accessKeyId: string;
+		secretAccessKey: string;
+		sessionToken?: string;
+	};
+	docker: ComposeDocker;
+	project: string;
+	engine?: DockerEngine;
+	stage: string;
+	superuser: { user: string; password: string };
+	databases: readonly BackupDatabase[];
+	to: string;
+	/** Copy each database into `<into>_<database>` instead of replacing the cluster. */
+	into?: string;
+	/** The stack's services left running while the cluster is swapped. */
+	keep?: readonly string[];
+	confirm: (question: string) => Promise<boolean>;
+	log: (line: string) => void;
+	output?: StackRef['output'];
+	now?: Date;
+}
+
+/**
+ * Restore the whole cluster to a moment: asks, takes a fresh base backup,
+ * then — in a one-off container of the backups image, with the caller's
+ * credentials — fetches the newest base backup that had finished by then and
+ * replays WAL up to it. With `into`, each database is copied beside the live
+ * one as `<into>_<database>`, and nothing live stops. Without, the stack is
+ * stopped, the recovered cluster swapped in for the live one in its volume,
+ * the stack started again, and a base backup taken on the new timeline.
+ * Returns the moment restored to.
+ *
+ * @throws {PitrTargetInvalid}, {PitrIntoInvalid}, {NoPitrBackups},
+ *   {PitrTargetOutsideWindow}, {BackupsContainerNotRunning},
+ *   {RestoreNotConfirmed}, {BackupRunFailed}, {PitrRestoreFailed},
+ *   {ContainersNotStopped}, {PitrSwapFailed}
+ */
+export async function restoreToTime(
+	options: PitrRestoreOptions,
+): Promise<{ target: Date; into?: string[] }> {
+	const target = pitrTarget(options.to, options.now);
+	const into = options.into ? pitrInto(options.into) : undefined;
+	const { archive } = options;
+
+	const window = await pitrWindow(options.s3, archive.bucket, archive.prefix);
+	if (!window) {
+		throw new NoPitrBackups(
+			options.stage,
+			`s3://${archive.bucket}/${archive.prefix}/`,
+		);
+	}
+	if (target.getTime() < window.earliest.getTime()) {
+		throw new PitrTargetOutsideWindow(
+			options.to,
+			window.earliest,
+			window.latest,
+		);
+	}
+
+	const engine: DockerEngine = options.engine ?? {};
+	const container = await options.docker.container(
+		engine,
+		options.project,
+		BACKUPS_SERVICE,
+	);
+	if (!container) throw new BackupsContainerNotRunning(options.project);
+
+	const copies = into
+		? options.databases.map((d) => intoDatabase(into, d.file))
+		: undefined;
+	const question = copies
+		? `Restore '${options.stage}' as it was at ${formatTime(target)} into ` +
+			`${copies.join(', ')}? Those databases are replaced; nothing live changes.`
+		: `Replace every database on '${options.stage}' with the cluster as it was ` +
+			`at ${formatTime(target)}? Its apps stop while it is swapped, and ` +
+			'everything written since is lost (a base backup is taken first).';
+	if (!(await options.confirm(question))) {
+		throw new RestoreNotConfirmed(options.stage);
+	}
+
+	options.log('💾 Taking a base backup before restoring…');
+	await backupNow({
+		docker: options.docker,
+		project: options.project,
+		engine,
+		log: options.log,
+		base: true,
+	});
+
+	const volumes = into
+		? []
+		: [
+				`${projectVolume(options.project, volumeOf(POSTGRES_SERVICE)!)}:${POSTGRES_MOUNT}`,
+			];
+	const env = {
+		...walgEnv({
+			bucket: archive.bucket,
+			...(archive.region ? { region: archive.region } : {}),
+			...(archive.endpoint ? { endpoint: archive.endpoint } : {}),
+			...options.credentials,
+			prefix: archive.prefix,
+			key: archive.key,
+		}),
+		PGHOST: 'postgres',
+		PGPORT: '5432',
+		PGUSER: options.superuser.user,
+		PGPASSWORD: options.superuser.password,
+		RECOVER_TARGET: target.toISOString(),
+		RECOVER_SUPERUSER: options.superuser.user,
+		RECOVER_DATABASES: JSON.stringify(
+			options.databases.map(({ file, name }) => ({ file, name })),
+		),
+		...(into ? { RECOVER_INTO: into } : {}),
+	};
+	const network = projectNetwork(options.project);
+	const run = (command: string) =>
+		options.docker.runOnce(engine, {
+			image: container.image,
+			network,
+			command: ['node', RUNNER_PATH, command],
+			env,
+			...(volumes.length > 0 ? { volumes } : {}),
+			...(options.output ? { output: options.output } : {}),
+		});
+
+	options.log(`♻️  Recovering the cluster to ${formatTime(target)}…`);
+	const code = await run('recover');
+	if (code !== 0) throw new PitrRestoreFailed(options.to, code);
+	if (copies) return { target, into: copies };
+
+	// The swap: everything that reads or writes the volume stops, Postgres
+	// and the backups container included; the rest of the infrastructure
+	// keeps running.
+	const keep = (options.keep ?? []).filter((s) => s !== POSTGRES_SERVICE);
+	const postgres = await options.docker.container(
+		engine,
+		options.project,
+		POSTGRES_SERVICE,
+	);
+	options.log(`⏸️  Stopping ${options.project}…`);
+	let stopped: string[];
+	try {
+		stopped = await options.docker.stop(engine, options.project, keep);
+	} catch (error) {
+		if (error instanceof ContainersNotStopped) {
+			await options.docker.start(engine, error.ids).catch(() => {});
+		}
+		throw error;
+	}
+	// Postgres first, so the apps find it as they start.
+	const order = postgres
+		? [
+				...stopped.filter((id) => id === postgres.id),
+				...stopped.filter((id) => id !== postgres.id),
+			]
+		: stopped;
+	const startAll = async () => {
+		const first = order.filter((id) => id === postgres?.id);
+		await options.docker.start(engine, first);
+		await options.docker.start(
+			engine,
+			order.filter((id) => id !== postgres?.id),
+		);
+	};
+
+	options.log('🔁 Swapping the recovered cluster in…');
+	let swapped: number;
+	try {
+		swapped = await run('swap');
+	} catch (error) {
+		await startAll().catch(() => {});
+		throw error;
+	}
+	options.log(`▶️  Starting ${options.project} again…`);
+	try {
+		await startAll();
+	} catch (error) {
+		throw new PitrSwapFailed(
+			options.project,
+			swapped === 0,
+			order,
+			error instanceof ContainersNotStarted ? error.output : String(error),
+		);
+	}
+	// The live cluster stayed in place, and the stack is running on it again.
+	if (swapped !== 0) throw new PitrRestoreFailed(options.to, swapped);
+
+	// The restored cluster is on a new timeline: a base backup of it, so the
+	// next restore need not replay from before this one.
+	options.log('💾 Taking a base backup of the restored cluster…');
+	await backupNow({
+		docker: options.docker,
+		project: options.project,
+		engine,
+		log: options.log,
+		base: true,
+	}).catch((error: unknown) =>
+		options.log(
+			`⚠️  The base backup after the restore failed: ${error instanceof Error ? error.message : String(error)}. Take one: gkm backup:now --stage ${options.stage} --base.`,
+		),
+	);
+	return { target };
+}
+
+// ============================================================================
 // The commands: a stage resolved from the workspace
 // ============================================================================
 
@@ -857,6 +1338,8 @@ interface ResolvedStage {
 	seed?: string;
 	/** The stage's server's Docker, over SSH. */
 	engine: DockerEngine;
+	/** The stage's backups, as its entry resolves them. */
+	backups: StageBackups;
 }
 
 async function resolveStage(
@@ -893,6 +1376,7 @@ async function resolveStage(
 		custom: secrets?.custom ?? {},
 		...(secrets?.seed ? { seed: secrets.seed } : {}),
 		engine: stageEngine(workspace, stage, secrets?.custom),
+		backups: choice.backups,
 	};
 }
 
@@ -918,7 +1402,12 @@ function stageEngine(
 async function callerS3(
 	resolved: ResolvedStage,
 	options: BackupCommandOptions,
-): Promise<{ s3: S3Client; bucket: string }> {
+): Promise<{
+	s3: S3Client;
+	bucket: string;
+	/** Where the stack's containers reach the bucket: the key's own address. */
+	address: { region?: string; endpoint?: string };
+}> {
 	const url = resolved.custom[BACKUPS_URL_KEY];
 	if (!url) throw new BackupsNotProvisioned(options.stage);
 	const s3Url = await import('@geekmidas/storage/s3-url');
@@ -938,13 +1427,21 @@ async function callerS3(
 			...(endpoint ? { endpoint, forcePathStyle: true } : {}),
 		}),
 		bucket: address.bucket,
+		address: {
+			...(address.region ? { region: address.region } : {}),
+			...(address.endpoint ? { endpoint: address.endpoint } : {}),
+		},
 	};
 }
 
-/** What `gkm backup:list` finds: the runs, and the imports beside them. */
+/**
+ * What `gkm backup:list` finds: the runs, the imports beside them, and —
+ * with point-in-time recovery — the restore window.
+ */
 export interface BackupListing {
 	runs: BackupRun[];
 	imports: BackupImport[];
+	pitr?: PitrWindow;
 }
 
 /** `gkm backup:list --stage <stage>`. */
@@ -955,9 +1452,18 @@ export async function backupListCommand(
 	const { s3, bucket } = await callerS3(resolved, options);
 	const runs = await listBackups(s3, bucket, resolved.prefix);
 	const imports = await listImports(s3, bucket, resolved.prefix);
+	const archive = resolved.backups.pitr
+		? pitrPrefix(resolved.workspace, options.stage)
+		: undefined;
+	const pitr = archive ? await pitrWindow(s3, bucket, archive) : undefined;
+	const listing: BackupListing = {
+		runs,
+		imports,
+		...(pitr ? { pitr } : {}),
+	};
 	if (options.json) {
-		console.log(JSON.stringify({ runs, imports }, null, 2));
-		return { runs, imports };
+		console.log(JSON.stringify(listing, null, 2));
+		return listing;
 	}
 	if (runs.length === 0) {
 		console.log(`No backups of '${options.stage}' yet.`);
@@ -965,27 +1471,45 @@ export async function backupListCommand(
 		console.log(`💾 s3://${bucket}/${resolved.prefix}/ — newest first\n`);
 		for (const line of formatRuns(runs)) console.log(line);
 	}
+	if (archive) {
+		console.log(
+			`\n⏱️  Point-in-time — gkm backup:restore --stage ${options.stage} --to <time>\n`,
+		);
+		if (pitr) {
+			for (const line of formatPitr(pitr)) console.log(line);
+		} else {
+			console.log(
+				`No base backup at s3://${bucket}/${archive}/ yet: gkm backup:now --stage ${options.stage} --base.`,
+			);
+		}
+	}
 	if (imports.length > 0) {
 		console.log(
 			`\n📥 Imports — gkm backup:restore --stage ${options.stage} --from <file> --database <name>\n`,
 		);
 		for (const line of formatImports(imports)) console.log(line);
 	}
-	return { runs, imports };
+	return listing;
 }
 
-/** `gkm backup:now --stage <stage>`. */
+/** `gkm backup:now --stage <stage> [--base]`. */
 export async function backupNowCommand(
-	options: BackupCommandOptions,
+	options: BackupCommandOptions & { base?: boolean },
 	docker: ComposeDocker = dockerCompose,
 ): Promise<void> {
 	const resolved = await resolveStage(options);
-	console.log(`💾 Backing up ${resolved.project}…`);
+	if (options.base && !resolved.backups.pitr) {
+		throw new PitrNotOn(options.stage, '--base');
+	}
+	console.log(
+		`💾 ${options.base ? 'Taking a base backup of' : 'Backing up'} ${resolved.project}…`,
+	);
 	await backupNow({
 		docker,
 		project: resolved.project,
 		engine: resolved.engine,
 		log: (line) => console.log(line),
+		...(options.base ? { base: true } : {}),
 	});
 	console.log('✅ Backed up.');
 }
@@ -995,7 +1519,7 @@ const STACK_PROXY_SERVICE = 'caddy';
 
 /**
  * `gkm backup:restore --stage <stage> (--at <time> | --latest |
- * --from imports/<file> --database <name>)`.
+ * --from imports/<file> --database <name> | --to <time> [--into <name>])`.
  */
 export async function backupRestoreCommand(
 	options: BackupCommandOptions & {
@@ -1003,22 +1527,39 @@ export async function backupRestoreCommand(
 		latest?: boolean;
 		from?: string;
 		database?: string;
+		to?: string;
+		into?: string;
 		yes?: boolean;
 	},
 	docker: ComposeDocker = dockerCompose,
 ): Promise<void> {
 	// What the flags alone refuse, refused before the stage is read.
-	const chosen = [options.at, options.latest, options.from].filter(Boolean);
+	const chosen = [options.at, options.latest, options.from, options.to].filter(
+		Boolean,
+	);
 	if (chosen.length !== 1) throw new BackupRunNotChosen();
 	if (options.from) importKey('', options.from);
+	if (options.into && !options.to) {
+		throw new PitrFlagsInvalid('--into goes with --to');
+	}
+	if (options.to) {
+		if (options.database) {
+			throw new PitrFlagsInvalid('--database does not go with --to');
+		}
+		pitrTarget(options.to);
+		if (options.into) pitrInto(options.into);
+	}
 	const resolved = await resolveStage(options);
+	if (options.to && !resolved.backups.pitr) {
+		throw new PitrNotOn(options.stage, '--to');
+	}
 	if (options.from && !options.database) {
 		throw new ImportNeedsDatabase(
 			options.from,
 			resolved.databases.map((d) => d.file),
 		);
 	}
-	const { s3, bucket } = await callerS3(resolved, options);
+	const { s3, bucket, address } = await callerS3(resolved, options);
 	if (!resolved.seed) throw new BackupsNotProvisioned(options.stage);
 	const plan = stackPlan(resolved.workspace, resolved.manifest, options.stage);
 	const superuser = derivedCredentials(
@@ -1026,6 +1567,55 @@ export async function backupRestoreCommand(
 		plan,
 		resolved.seed,
 	).postgres;
+	// The stack's infrastructure keeps running while an import loads.
+	const keep = [...plan.containers, STACK_PROXY_SERVICE];
+	const confirm = async (question: string) => {
+		if (options.yes) return true;
+		const answer = await prompt(`${question} [y/N] `, {
+			instead: 'Pass --yes to restore without asking.',
+		});
+		return /^y(es)?$/i.test(answer.trim());
+	};
+	const log = (line: string) => console.log(line);
+
+	if (options.to) {
+		const key = resolved.custom[PITR_KEY];
+		if (!key) throw new PitrKeyMissing(options.stage);
+		const credentials = await s3.config.credentials();
+		const { target, into } = await restoreToTime({
+			s3,
+			archive: {
+				bucket,
+				...address,
+				prefix: pitrPrefix(resolved.workspace, options.stage),
+				key,
+			},
+			credentials: {
+				accessKeyId: credentials.accessKeyId,
+				secretAccessKey: credentials.secretAccessKey,
+				...(credentials.sessionToken
+					? { sessionToken: credentials.sessionToken }
+					: {}),
+			},
+			docker,
+			project: resolved.project,
+			engine: resolved.engine,
+			stage: options.stage,
+			superuser,
+			databases: resolved.databases,
+			to: options.to,
+			...(options.into ? { into: options.into } : {}),
+			keep,
+			confirm,
+			log,
+		});
+		console.log(
+			into
+				? `✅ Restored '${options.stage}' as it was at ${formatTime(target)} into ${into.join(', ')}.`
+				: `✅ Restored '${options.stage}' to ${formatTime(target)}.`,
+		);
+		return;
+	}
 
 	const { run, restored } = await restoreBackup({
 		s3,
@@ -1037,20 +1627,13 @@ export async function backupRestoreCommand(
 		stage: options.stage,
 		superuser,
 		databases: resolved.databases,
-		// The stack's infrastructure keeps running while an import loads.
-		keep: [...plan.containers, STACK_PROXY_SERVICE],
+		keep,
 		...(options.at ? { at: options.at } : {}),
 		...(options.latest ? { latest: true } : {}),
 		...(options.from ? { from: options.from } : {}),
 		...(options.database ? { database: options.database } : {}),
-		confirm: async (question) => {
-			if (options.yes) return true;
-			const answer = await prompt(`${question} [y/N] `, {
-				instead: 'Pass --yes to restore without asking.',
-			});
-			return /^y(es)?$/i.test(answer.trim());
-		},
-		log: (line) => console.log(line),
+		confirm,
+		log,
 	});
 	console.log(
 		`✅ Restored ${restored.join(', ')} on '${options.stage}' from ${run ? run.folder : options.from}.`,

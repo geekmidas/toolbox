@@ -925,6 +925,7 @@ gkm backup:list --stage production --json   # { "runs": [...], "imports": [...] 
 
 # A backup now: the stack's backups container, through docker exec
 gkm backup:now --stage production
+gkm backup:now --stage production --base     # a base backup, with point-in-time recovery
 
 # Restore — asks first, and takes a fresh backup before anything changes
 gkm backup:restore --stage production --latest
@@ -933,14 +934,23 @@ gkm backup:restore --stage production --at 2026-10-10T12:00:00Z --database auth-
 
 # Load a prepared, data-only import kept in the stage's backups imports/ folder
 gkm backup:restore --stage production --from imports/app.sql.gz --database database
+
+# Point-in-time recovery: the whole cluster as it was at a moment
+gkm backup:restore --stage production --to 2026-11-16T09:41:00Z
+gkm backup:restore --stage staging --to 2026-11-16T09:41:00Z --into drill --yes
 ```
+
+`backup:list` also shows the restore window (`"pitr"` in `--json`) on a stage
+with point-in-time recovery.
 
 | Option | |
 | --- | --- |
 | `--at <time>` | A run's folder, or a time: the newest run at or before it |
 | `--latest` | The newest run |
-| `--from <file>` | A prepared import, relative to the stage's backups prefix: `imports/<file>.sql.gz`. Needs `--database`; not with `--at` or `--latest`. See [Importing a database](./compose.md#importing-a-database) |
-| `--database <name>` | One database, by its file name (`auth-database`); every one by default |
+| `--from <file>` | A prepared import, relative to the stage's backups prefix: `imports/<file>.sql.gz`. Needs `--database`; not with `--at`, `--latest` or `--to`. See [Importing a database](./compose.md#importing-a-database) |
+| `--database <name>` | One database, by its file name (`auth-database`); every one by default. Not with `--to` |
+| `--to <time>` | Point-in-time recovery: the whole cluster as it was at a moment, with its zone (`2026-11-16T09:41:00Z`). See [Point-in-time recovery](./compose.md#point-in-time-recovery) |
+| `--into <name>` | With `--to`: copy each database beside the live one, as `<name>_<database>`, instead of replacing the cluster |
 | `-y, --yes` | Restore without asking |
 | `--profile <profile>` | AWS profile for the stage's account |
 

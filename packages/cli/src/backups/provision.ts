@@ -11,7 +11,11 @@
  *   nothing else — no get, no list, no delete: a server that is broken into
  *   can neither read the backups nor wipe them;
  * - **its key**, written into the stage's secrets as `BACKUPS_URL`, rotated
- *   by `--rotate-keys` and retired by `--retire-old-keys` like a bucket's.
+ *   by `--rotate-keys` and retired by `--retire-old-keys` like a bucket's;
+ * - with `pitr`, **the key WAL and base backups are encrypted with**,
+ *   generated once into the stage's secrets as `PITR_KEY`, and two more
+ *   lifecycle rules: base backups after `pitr.keep`, WAL one base interval
+ *   later.
  *
  * Every deploy's check puts a marker object with the key — the one thing it
  * may do — so a key that does not work stops the deploy, not the 02:00 run.
@@ -39,6 +43,7 @@ import {
 	callerAccountId,
 	ensureProjectBucket,
 	findProjectBucket,
+	type PrefixExpiry,
 	projectBucketName,
 	reconcileProjectBucketLifecycle,
 } from '../providers/projectBucket.js';
@@ -49,11 +54,17 @@ import type { NormalizedWorkspace } from '../workspace/types.js';
 import {
 	backupExpiries,
 	backupsPrefix,
+	pitrPrefix,
 	RUNS_PREFIX,
 	type StageBackupsChoice,
 	stageBackups,
 } from './config.js';
-import { BACKUPS_SERVICE, BACKUPS_URL_KEY } from './service.js';
+import {
+	BACKUPS_SERVICE,
+	BACKUPS_URL_KEY,
+	newPitrKey,
+	PITR_KEY,
+} from './service.js';
 
 /** What the backups user and its key are recorded and tagged as. */
 export const BACKUPS_ID = 'backups';
@@ -259,7 +270,7 @@ export async function ensureStageBackups(
 			{
 				construct: BACKUPS_SERVICE,
 				resource: `bucket ${bucket}`,
-				change: `lifecycle: ${expiries.map((e) => `runs in ${e.prefix.slice(0, -RUNS_PREFIX.length)} after ${e.days} days`).join(', ')}`,
+				change: `lifecycle: ${expiries.map(describeExpiry).join(', ')}`,
 			},
 			async () => {
 				await reconcileProjectBucketLifecycle(clients.s3, bucket, expiries);
@@ -279,7 +290,35 @@ export async function ensureStageBackups(
 		secret: s3KeySecret(ctx, clients, { bucket, urlKey: BACKUPS_URL_KEY }),
 		...user,
 	});
+
+	// Point-in-time recovery's encryption key: generated once, kept in the
+	// stage's secrets beside the key it is put with. Never rotated by a
+	// deploy — WAL and base backups already in the bucket are only readable
+	// with the key they were written with.
+	if (choice.backups.pitr) {
+		ctx.log(
+			`   ${choice.backups.pitr.describe}, to ${pitrPrefix(workspace, stage)}/`,
+		);
+		if (!ctx.secrets[PITR_KEY]) {
+			await ctx.change(
+				{
+					construct: BACKUPS_SERVICE,
+					resource: `secret ${PITR_KEY}`,
+					change: 'generate the key WAL and base backups are encrypted with',
+				},
+				() => ctx.writeSecrets({ [PITR_KEY]: newPitrKey() }),
+			);
+		}
+	}
 	return choice;
+}
+
+/** One lifecycle rule, for the deploy's change line. */
+function describeExpiry(expiry: PrefixExpiry): string {
+	const where = expiry.prefix.endsWith(`/${RUNS_PREFIX}`)
+		? `runs in ${expiry.prefix.slice(0, -RUNS_PREFIX.length)}`
+		: expiry.prefix;
+	return `${where} after ${expiry.days} days`;
 }
 
 /** The clients a backups run creates through. */

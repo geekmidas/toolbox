@@ -53,6 +53,7 @@ import {
 	backupsService,
 	type StackBackups,
 	stackBackups,
+	withArchiving,
 } from '../backups/service.js';
 import {
 	type ProcessorUnit,
@@ -2722,6 +2723,14 @@ function stackFile(options: {
 		// roles and runs the migrations from this machine, and nothing else
 		// should reach the database from outside the stack.
 		postgres.ports = [`127.0.0.1::${LOOPBACK_SERVICES.postgres}`];
+		// Point-in-time recovery: built with WAL-G, archiving its WAL.
+		if (options.backups?.pitr) {
+			services.postgres = withArchiving(
+				postgres,
+				options.backups.pitr,
+				options.envFiles,
+			);
+		}
 	}
 
 	const minio = services.minio;

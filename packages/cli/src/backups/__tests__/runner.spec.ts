@@ -676,7 +676,7 @@ describe('the program', () => {
 		expect(lines).toEqual([
 			expect.objectContaining({
 				level: 'error',
-				msg: 'usage: backup.mjs serve | run | health',
+				msg: 'usage: backup.mjs serve | run | health | base | recover | swap',
 				command: 'restore',
 			}),
 		]);
