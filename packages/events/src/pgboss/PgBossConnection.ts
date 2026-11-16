@@ -1,4 +1,4 @@
-import { PgBoss } from 'pg-boss';
+import type { PgBoss } from 'pg-boss';
 import type { EventConnection } from '../types';
 import { EventPublisherType } from '../types';
 
@@ -46,7 +46,10 @@ export class PgBossConnection implements EventConnection {
 
 		this.connecting = (async () => {
 			try {
-				const boss = new PgBoss({
+				// Loaded here, not at the top of the module: an app bundled into one
+				// file that never connects to pg-boss must not need it installed.
+				const { PgBoss: Boss } = await import('pg-boss');
+				const boss = new Boss({
 					connectionString: this.config.connectionString,
 					...(this.config.schema && { schema: this.config.schema }),
 				});

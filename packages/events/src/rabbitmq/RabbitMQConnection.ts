@@ -1,4 +1,4 @@
-import amqplib from 'amqplib';
+import type amqplib from 'amqplib';
 import type { EventConnection } from '../types';
 import { EventPublisherType } from '../types';
 
@@ -70,7 +70,10 @@ export class RabbitMQConnection implements EventConnection {
 
 		this.connecting = (async () => {
 			try {
-				const connection = await amqplib.connect(this.config.url, {
+				// Loaded here, not at the top of the module: an app bundled into one
+				// file that never connects to RabbitMQ must not need amqplib installed.
+				const { default: amqp } = await import('amqplib');
+				const connection = await amqp.connect(this.config.url, {
 					timeout: this.config.timeout,
 				});
 				const channel = await connection.createChannel();
