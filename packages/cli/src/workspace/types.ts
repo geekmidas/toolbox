@@ -405,7 +405,24 @@ export type StageBackupsConfig =
 			cron?: string;
 			/** How long a backup is kept: `'30d'`. */
 			keep?: string;
+			/**
+			 * Point-in-time recovery: the stack's Postgres ships its WAL
+			 * continuously and the backups service takes a base backup on
+			 * `base`'s schedule, so `gkm backup:restore --to <time>` brings the
+			 * whole cluster back to any second in the last `keep`. `true` is
+			 * `{ keep: '14d', base: '1d' }`. The dumps above keep their own
+			 * schedule beside it.
+			 */
+			pitr?: true | StagePitrConfig;
 	  };
+
+/** `deploy.backups.<stage>.pitr` — see {@link StageBackupsConfig}. */
+export interface StagePitrConfig {
+	/** How far back a restore can reach: `'14d'`. */
+	keep?: string;
+	/** How often a base backup is taken, counted from 02:00 UTC: `'1d'`. At least `'1h'`. */
+	base?: string;
+}
 
 /** `objects: { provider: 's3' }` — a bucket per construct in the stage's account. */
 export interface S3ObjectsConfig {

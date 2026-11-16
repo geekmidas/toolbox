@@ -1570,7 +1570,7 @@ program
 program
 	.command('backup:list')
 	.description(
-		"List a compose stage's backups, newest first: when, which databases, how big",
+		"List a compose stage's backups, newest first: when, which databases, how big — and its point-in-time restore window",
 	)
 	.requiredOption('--stage <stage>', 'Deployed stage')
 	.option('--profile <profile>', "AWS profile for the stage's account")
@@ -1593,7 +1593,11 @@ program
 		"Back up a compose stage now: runs its stack's backups container (docker exec)",
 	)
 	.requiredOption('--stage <stage>', 'Deployed stage')
-	.action(async (options: { stage: string }) => {
+	.option(
+		'--base',
+		'A base backup for point-in-time recovery (wal-g backup-push), rather than the dumps',
+	)
+	.action(async (options: { stage: string; base?: boolean }) => {
 		try {
 			const globalOptions = program.opts();
 			if (globalOptions.cwd) process.chdir(globalOptions.cwd);
@@ -1606,7 +1610,7 @@ program
 program
 	.command('backup:restore')
 	.description(
-		"Restore a compose stage's databases from a backup — after taking a fresh one",
+		"Restore a compose stage's databases from a backup, or to a moment (--to) — after taking a fresh one",
 	)
 	.requiredOption('--stage <stage>', 'Deployed stage')
 	.option(
@@ -1622,6 +1626,14 @@ program
 		'--database <name>',
 		'One database, by its file name (auth-database); every one by default',
 	)
+	.option(
+		'--to <time>',
+		'Point-in-time recovery: the whole cluster as it was at a moment (2026-11-16T09:41:00Z)',
+	)
+	.option(
+		'--into <name>',
+		'With --to: copy each database beside the live one, as <name>_<database>, instead of replacing it',
+	)
 	.option('--profile <profile>', "AWS profile for the stage's account")
 	.option('-y, --yes', 'Restore without asking')
 	.action(
@@ -1631,6 +1643,8 @@ program
 			latest?: boolean;
 			from?: string;
 			database?: string;
+			to?: string;
+			into?: string;
 			profile?: string;
 			yes?: boolean;
 		}) => {

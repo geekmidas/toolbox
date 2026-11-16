@@ -1982,7 +1982,8 @@ deploy: {
 `cron` is five fields in UTC. Either runs at most once an hour: anything more
 frequent fails the config with `BackupIntervalInvalid` or `BackupCronInvalid`.
 `keep` is days. `false` takes no backups, prints a notice on every deploy, and
-deletes none that were taken.
+deletes none that were taken. `pitr` adds [point-in-time
+recovery](#point-in-time-recovery) beside the dumps.
 
 ### Where they are
 
@@ -2157,6 +2158,151 @@ values before that deploy.
 
 The local stage takes no backups, so `--from` runs only where `backup:restore`
 does: a deployed compose stage.
+
+### Point-in-time recovery
+
+The dumps bring a database back to the moment of a run, so the most a stage can
+lose is the gap between two: up to a day by default. For data that cannot lose
+a day — a ledger, bookings, payments — turn on point-in-time recovery: the
+stack's Postgres ships its WAL continuously and takes a base backup on a
+schedule, so the whole cluster can be brought back to any second in its window,
+losing at most about a minute of writes. The dumps keep their own schedule
+beside it.
+
+```ts
+// gkm.config.ts
+deploy: {
+  backups: {
+    production: {
+      every: '1d',                          // the dumps, as before
+      keep: '30d',
+      pitr: { keep: '14d', base: '1d' },    // or pitr: true for these defaults
+    },
+  },
+},
+```
+
+`pitr.keep` is how far back a restore reaches, in days; `pitr.base` how often a
+base backup is taken — a number and a unit, counted from 02:00 UTC, at least
+hourly. A shorter `base` means less WAL to replay on a restore, and more base
+backups stored.
+
+**The stack's Postgres archives its WAL.** Its `postgres` service is built on
+the server from the stack's own Postgres image with [WAL-G](https://github.com/wal-g/wal-g)
+added — compiled from source in a build stage, linked statically, so it runs on
+whatever base the image has — and runs with `wal_level=replica`,
+`archive_mode=on`, `archive_command='wal-g wal-push %p'` and
+`archive_timeout=60`: a segment ships at least every minute, even when writes
+are quiet. WAL-G reads its key from its own env file, `postgres.env`, as the
+`backups` service does.
+
+**Base backups run from the `backups` service.** Its image gets the same WAL-G,
+the data volume is mounted into it read-only, and it runs `wal-g backup-push`
+on the `pitr.base` schedule. Its role is granted what a base backup calls —
+`pg_backup_start`, `pg_backup_stop`, `pg_switch_wal` — and `pg_monitor`, to
+read the archiver; it still writes nothing.
+
+**Where it is kept.** In the project bucket, beside the stage's runs, in WAL-G's
+own layout:
+
+```
+gkm/<project>/<stage>/backups/pitr/basebackups_005/
+gkm/<project>/<stage>/backups/pitr/wal_005/
+```
+
+The stage's backups key stays **put-only**: nothing in the stack can read, list
+or delete what it archived. Expiry is the bucket's lifecycle, never `wal-g
+delete` — base backups after `pitr.keep`, and WAL one `pitr.base` interval
+later, so every segment the oldest kept base backup replays from is still
+there. Everything is encrypted client-side (libsodium) with `PITR_KEY`, a stage
+secret the deploy generates once, beside `BACKUPS_URL` — so the bucket never
+holds readable WAL. A deploy never rotates it: what is archived is readable
+only with the key it was written with. **Keep it**: losing `PITR_KEY` loses
+every base backup and segment it encrypted.
+
+**Health.** The `backups` container is also unhealthy when:
+
+- `archive_command` is failing — `pg_stat_archiver`'s last failure is newer
+  than its last success;
+- a WAL segment has waited more than five minutes to be archived — a stuck
+  `archive_command` keeps WAL on the server's disk until it fills, so this
+  matters as much as the backup itself. (A quiet cluster writes no WAL, so an
+  old `last_archived_time` alone is not a fault);
+- the last base backup is older than twice its interval.
+
+Turning it on, deploy, then take the first base backup rather than wait for
+the schedule — the window starts at the first one that finishes:
+
+```bash
+gkm backup:now --stage production --base
+```
+
+#### The restore window
+
+`backup:list` shows it beside the runs — from when the oldest kept base backup
+finished to when the newest WAL segment was put — and each base backup:
+
+```
+⏱️  Point-in-time — gkm backup:restore --stage production --to <time>
+
+restore window  2026-11-02 02:04:11Z → 2026-11-16 09:41:07Z
+2026-11-16 02:03:58Z  base_00000001000000120000004A
+2026-11-15 02:04:02Z  base_000000010000001100000017
+…
+```
+
+#### Restoring to a moment
+
+```bash
+gkm backup:restore --stage production --to 2026-11-16T09:41:00Z
+gkm backup:restore --stage production --to 2026-11-16T09:41:00Z --into inspect
+```
+
+`--to` takes a time with its zone. A point-in-time restore brings back the
+**whole cluster** — every database in the stack together — so it takes no
+`--database`; one database alone restores from the dumps. It asks first
+(`--yes` skips it), then:
+
+1. takes a fresh base backup;
+2. in a one-off container of the backups image on the stack's network — with
+   **your** credentials, which can read the archive where the stack's key
+   cannot — fetches the newest base backup that had finished by `<time>`,
+   starts Postgres on it with `restore_command='wal-g wal-fetch %f %p'` and
+   `recovery_target_time=<time>`, and lets it replay to that second and
+   promote. The live cluster is untouched while it does, beside it in the same
+   volume — so the server needs the free disk for a second copy of it;
+3. stops the stack — its apps, Postgres and the backups container; the rest of
+   its infrastructure keeps running — puts the recovered cluster in place of
+   the live one (a rename in the volume: the live one is kept beside it as
+   `<data>.gkm-previous` until the next restore), and starts the stack again,
+   Postgres first;
+4. takes a base backup of the restored cluster, which is on a new timeline.
+
+A time before the window fails with `PitrTargetOutsideWindow`; a time WAL does
+not reach yet fails in step 2, and nothing live changes.
+
+`--into <name>` restores beside the live cluster instead: each database is
+copied into `<name>_<database>` (`inspect_database`, `inspect_auth_database`)
+on the live Postgres, to inspect or copy rows out of, and nothing stops. A
+copy of that name is replaced. Drop them when done.
+
+#### The restore drill
+
+A backup nobody has restored is a hope. Once a month, on staging:
+
+```bash
+gkm backup:list --stage staging                          # the window
+gkm backup:restore --stage staging --to <a time in it> --into drill --yes
+gkm db:tunnel --stage staging                            # and check drill_<database>
+```
+
+The drill replays real WAL through a real base backup with the stage's key —
+everything a disaster would — and changes nothing live. A failure here is one
+you would otherwise find on the day it matters.
+
+A standby replica — a second server following the first — protects against
+losing the server, not against a bad write, and is not part of this. It could
+replay from the same archive later.
 
 ## Destroying a stage
 

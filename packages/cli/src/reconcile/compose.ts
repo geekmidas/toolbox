@@ -67,6 +67,12 @@ export interface ComposeFile {
 /** The database every connection opens first: every cluster has it. */
 export const CLUSTER_DATABASE = 'postgres';
 
+/**
+ * Where Postgres's volume is mounted: the parent of its data directory, not
+ * the directory itself — see the service's definition.
+ */
+export const POSTGRES_MOUNT = '/var/lib/postgresql';
+
 export interface ComposeOptions {
 	/** Names the compose project, which is what isolates it from other stacks. */
 	project: string;
@@ -200,7 +206,7 @@ ${stringify(file, { lineWidth: 0 })}`;
  * The image the databases in the plan named for the shared local cluster, if
  * any did.
  */
-function declaredPostgresImage(plan: Plan): string | undefined {
+export function declaredPostgresImage(plan: Plan): string | undefined {
 	const named = plan.resources.filter(
 		(r): r is typeof r & { image: string } =>
 			r.kind === 'database' && Boolean(r.image),
@@ -281,7 +287,7 @@ function define(
 				// something is mounted over the legacy path. Mounting the parent is
 				// also what makes the next major bump a `pg_upgrade --link` rather
 				// than a new volume.
-				volumes: ['postgres-data:/var/lib/postgresql'],
+				volumes: [`postgres-data:${POSTGRES_MOUNT}`],
 				healthcheck: {
 					test: [
 						'CMD-SHELL',

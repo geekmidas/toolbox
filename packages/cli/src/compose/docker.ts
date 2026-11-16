@@ -221,6 +221,8 @@ export interface ComposeDocker {
 			network: string;
 			command: readonly string[];
 			env?: Readonly<Record<string, string>>;
+			/** `volume:/path` mounts — a compose project's volume by its full name. */
+			volumes?: readonly string[];
 			stdin?: NodeJS.ReadableStream;
 			output?: StackRef['output'];
 		},
@@ -230,6 +232,11 @@ export interface ComposeDocker {
 /** The network compose puts a project's services on. */
 export function projectNetwork(project: string): string {
 	return `${project}_default`;
+}
+
+/** The name compose gives a project's volume: `<project>_<volume>`. */
+export function projectVolume(project: string, volume: string): string {
+	return `${project}_${volume}`;
 }
 
 /**
@@ -723,6 +730,7 @@ export const dockerCompose: ComposeDocker = {
 				...(options.stdin ? ['-i'] : []),
 				'--network',
 				options.network,
+				...(options.volumes ?? []).flatMap((volume) => ['-v', volume]),
 				...Object.keys(options.env ?? {}).flatMap((name) => ['-e', name]),
 				'--entrypoint',
 				'',

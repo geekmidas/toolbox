@@ -15,7 +15,9 @@
  * ```
  *
  * Beside the runs, `imports/` holds files prepared by hand for
- * `gkm backup:restore --from` — never listed as a run, never expired.
+ * `gkm backup:restore --from` — never listed as a run, never expired — and,
+ * with `pitr`, `pitr/` holds WAL-G's archive: `pitr/wal_005/` and
+ * `pitr/basebackups_005/`, for `gkm backup:restore --to`.
  *
  * The file is named after the database's construct, the way its migrations
  * folder is: `AuthDatabase` is `db/auth-database`, and `auth-database.sql.gz`.
@@ -97,6 +99,35 @@ export function backupsPrefix(
 }
 
 /**
+ * Where a stage's point-in-time recovery is kept, beside its runs: WAL-G's
+ * own layout under it, `wal_005/` and `basebackups_005/`.
+ */
+export function pitrPrefix(
+	workspace: Pick<NormalizedWorkspace, 'name' | 'state'>,
+	stage: string,
+): string {
+	return `${backupsPrefix(workspace, stage)}/${PITR_FOLDER}`;
+}
+
+/** The folder point-in-time recovery is kept in, under the backups prefix. */
+export const PITR_FOLDER = 'pitr';
+
+/** WAL-G's folder of WAL segments, under the PITR prefix. */
+export const WAL_FOLDER = 'wal_005';
+
+/** WAL-G's folder of base backups, under the PITR prefix. */
+export const BASE_BACKUPS_FOLDER = 'basebackups_005';
+
+/**
+ * A database's copy, restored beside the live one with `--into <name>`:
+ * `drill_auth_database`. The runner (`runner.ts`), which ships alone,
+ * keeps a copy of this; a test holds the two to the same answers.
+ */
+export function intoDatabase(into: string, file: string): string {
+	return `${into}_${file.replace(/-/g, '_')}`;
+}
+
+/**
  * What every run folder's key starts with, under the stage's backups prefix:
  * the first digit of its year. What the expiry rule matches — `imports/`
  * does not.
@@ -154,6 +185,11 @@ export function backupDatabases(
  * The rule covers the runs and nothing else beside them: a lifecycle filter
  * cannot leave a folder out, so it matches what every run folder starts
  * with — its year, `2…` — and the stage's `imports/` is never expired.
+ *
+ * A stage with point-in-time recovery has two more: its base backups expire
+ * after `pitr.keep`, and its WAL a `pitr.base` interval later, so every
+ * segment the oldest kept base backup replays from is still there. Expiry is
+ * the bucket's, never `wal-g delete`: the stage's key stays put-only.
  */
 export function backupExpiries(
 	workspace: BackupsWorkspace,
@@ -169,6 +205,23 @@ export function backupExpiries(
 			days: choice.backups.keepDays,
 			abortIncompleteDays: 1,
 		});
+		const pitr = choice.backups.pitr;
+		if (!pitr) continue;
+		const prefix = pitrPrefix(workspace, stage);
+		expiries.push(
+			{
+				id: `gkm-backups-${stage}-pitr-base`,
+				prefix: `${prefix}/${BASE_BACKUPS_FOLDER}/`,
+				days: pitr.keepDays,
+				abortIncompleteDays: 1,
+			},
+			{
+				id: `gkm-backups-${stage}-pitr-wal`,
+				prefix: `${prefix}/${WAL_FOLDER}/`,
+				days: pitr.walKeepDays,
+				abortIncompleteDays: 1,
+			},
+		);
 	}
 	return expiries;
 }
