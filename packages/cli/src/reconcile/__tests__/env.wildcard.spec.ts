@@ -48,8 +48,8 @@ const manifest = {
 	},
 } as const satisfies ConstructManifest;
 
-function resolve(stage = 'dev') {
-	const plan = planFor(manifest, stage, provisionOrder(manifest), {
+function resolve(stage = 'dev', declared: ConstructManifest = manifest) {
+	const plan = planFor(declared, stage, provisionOrder(declared), {
 		localStage: 'dev',
 		protectedSubdomains: ['www', 'status'],
 	});
@@ -148,6 +148,31 @@ describe('a wildcard site, locally', () => {
 
 		expect(site?.wildcard?.hosts).toBeUndefined();
 		expect(site?.wildcard?.except).toContain('www');
+	});
+
+	it('serves every unprotected host, on the local certificate, when it names no hosts route', () => {
+		const { hosts: _, ...app } = manifest.App;
+		const { plan, env } = resolve('dev', { ...manifest, App: app });
+		const routes = localRoutes(plan, 'shop', {
+			addresses: {
+				Api: 'http://localhost:3000',
+				App: 'http://localhost:3001',
+			},
+		});
+		const site = routes.find((s) => s.host === '*.shop.localhost');
+
+		expect(site?.wildcard).toEqual({
+			domain: 'shop.localhost',
+			except: ['api', 'status', 'web', 'www'],
+			tls: { kind: 'stage' },
+		});
+		const caddyfile = toCaddyfile(routes, {
+			certificate: '/etc/caddy/sites/dev.pem',
+		});
+		expect(caddyfile).toContain('*.shop.localhost');
+		expect(caddyfile).not.toContain('forward_auth');
+		// The tenant still comes off the host.
+		expect(env.APP_DOMAIN).toBe('shop.localhost');
 	});
 
 	it('never holds the base domain, so the other site does', () => {

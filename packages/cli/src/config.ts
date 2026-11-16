@@ -176,6 +176,15 @@ export interface LoadConfigOptions {
 	 * {@link CONFIG_LOAD_TIMEOUT_MS}.
 	 */
 	timeoutMs?: number;
+	/**
+	 * Start from config alone when the constructs cannot be read, with a
+	 * warning, instead of failing. `gkm dev` alone asks for it: a half-written
+	 * declaration should not stop the dev server from starting. Every other
+	 * command fails with the real error — a module that cannot be found, a
+	 * construct that refuses its config — since what it would do without the
+	 * graph is wrong in a way that names something else.
+	 */
+	tolerateConstructErrors?: boolean;
 }
 
 /**
@@ -408,7 +417,7 @@ export async function loadWorkspaceConfig(
 	options: LoadConfigOptions = {},
 ): Promise<LoadedConfig> {
 	const { config, workspaceRoot } = await loadRawConfig(cwd, options);
-	return withDerivedApps(processConfig(config, workspaceRoot), options.sandbox);
+	return withDerivedApps(processConfig(config, workspaceRoot), options);
 }
 
 /**
@@ -425,15 +434,19 @@ export async function loadWorkspaceConfig(
  * with no `constructs` glob discovers nothing and keeps whatever its config
  * said, so nothing that worked before changes.
  *
- * A construct file that throws is reported and skipped rather than taking the
- * command down: `gkm dev` failing to start because a half-written declaration
- * cannot be imported is a worse failure than starting with the app it does not
- * describe yet.
+ * A construct file that throws takes the command down with its own error.
+ * Falling back to config alone used to hide it: a v10 config declares no apps,
+ * so the command went on to fail as something else — `NotInAnApp` from a
+ * Docker build whose image could not resolve a module a construct imported.
+ * Only `gkm dev` still falls back (`tolerateConstructErrors`), since failing
+ * to start because a half-written declaration cannot be imported is a worse
+ * failure than starting with the app it does not describe yet.
  */
 async function withDerivedApps(
 	loaded: LoadedConfig,
-	sandbox?: Sandbox,
+	options: Pick<LoadConfigOptions, 'sandbox' | 'tolerateConstructErrors'> = {},
 ): Promise<LoadedConfig> {
+	const { sandbox } = options;
 	const globs = allConstructGlobs(loaded.workspace);
 	if (globs.length === 0) {
 		throw new WorkspaceDeclaresNoConstructs(loaded.workspace.root);
@@ -458,6 +471,7 @@ async function withDerivedApps(
 			},
 		};
 	} catch (error) {
+		if (!options.tolerateConstructErrors) throw error;
 		const message = error instanceof Error ? error.message : String(error);
 		output.warn(
 			`⚠️  Could not read constructs, so apps come from config alone: ${message}`,
@@ -569,9 +583,12 @@ function appPaths(loadedConfig: LoadedConfig): Record<string, string> {
  */
 export async function loadAppConfig(
 	cwd: string = process.cwd(),
+	options: Pick<LoadConfigOptions, 'tolerateConstructErrors'> = {},
 ): Promise<AppConfigResult> {
-	const { appName, app, workspace, workspaceRoot } =
-		await loadWorkspaceAppInfo(cwd);
+	const { appName, app, workspace, workspaceRoot } = await loadWorkspaceAppInfo(
+		cwd,
+		options,
+	);
 
 	const gkmConfig = getAppGkmConfig(workspace, appName);
 	if (!gkmConfig) throw new NotABackendApp(appName);
@@ -613,10 +630,12 @@ export interface WorkspaceAppInfo {
  */
 export async function loadWorkspaceAppInfo(
 	cwd: string = process.cwd(),
+	options: Pick<LoadConfigOptions, 'tolerateConstructErrors'> = {},
 ): Promise<WorkspaceAppInfo> {
 	const { config, workspaceRoot } = await loadRawConfig(cwd);
 	const loadedConfig = await withDerivedApps(
 		processConfig(config, workspaceRoot),
+		options,
 	);
 
 	const resolved = resolveWorkspaceApp(loadedConfig, cwd);

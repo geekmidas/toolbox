@@ -226,6 +226,18 @@ describe('a wildcard site behind the shared Traefik edge', () => {
 		expect(s.wildcard?.tls).toBe('stage');
 	});
 
+	it('needs no hosts route behind a wildcard certificate', () => {
+		for (const options of [{ route53: true }, { tls: true }]) {
+			const s = deployed({ proxy: 'traefik', hosts: false, ...options });
+			const routers = parse(s.traefik!).http.routers;
+
+			expect(routers[`${s.project}-web`].rule).toMatch(/^HostRegexp/);
+			expect(s.wildcard?.tls).toBe(options.tls ? 'stage' : 'dns');
+			// Nothing asks the app before a request reaches it.
+			expect(s.traefik).not.toContain('forwardAuth');
+		}
+	});
+
 	it('refuses a stage with neither, naming both', () => {
 		expect(() => deployed({ proxy: 'traefik' })).toThrow(
 			WildcardSiteCertificateMissing,
@@ -269,7 +281,7 @@ describe("a wildcard site behind the stack's own Caddy", () => {
 		expect(caddyfile.slice(wildcard)).toContain('respond @protected 404');
 	});
 
-	it("serves the stage's own certificate where it set one", () => {
+	it("serves the stage's own certificate where it set one, with no hosts route", () => {
 		const s = deployed({ proxy: 'caddy', tls: true, hosts: false });
 		const block = s.caddyfile!.slice(
 			s.caddyfile!.indexOf('https://*.shop.example.com {'),
@@ -286,7 +298,7 @@ describe("a wildcard site behind the stack's own Caddy", () => {
 			WildcardSiteCertificateMissing,
 		);
 		expect(() => deployed({ proxy: 'caddy', hosts: false })).toThrow(
-			/deploy\.compose\.tls.*`hosts`/,
+			/deploy\.compose\.tls.*`hosts`.*On-demand certificates need it/,
 		);
 	});
 });

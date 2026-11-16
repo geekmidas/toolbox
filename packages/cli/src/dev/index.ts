@@ -270,7 +270,11 @@ export async function devCommand(options: DevOptions): Promise<void> {
 
 	// The app whose configured path holds this directory. Anywhere else, the
 	// workspace runs: turbo starts each app's own `gkm dev`, in its folder.
-	const appConfig = await loadAppConfig().catch((error: unknown) => {
+	// `gkm dev` alone starts from config when a construct cannot be read, so
+	// a half-written declaration does not keep the server down.
+	const appConfig = await loadAppConfig(process.cwd(), {
+		tolerateConstructErrors: true,
+	}).catch((error: unknown) => {
 		if (error instanceof NotInAnApp || error instanceof NotABackendApp) {
 			return undefined;
 		}
@@ -281,7 +285,9 @@ export async function devCommand(options: DevOptions): Promise<void> {
 		// Discovery imports every construct and route module — the longest
 		// silence of a start, before anything else can be said.
 		logger.log('🔎 Reading gkm.config.ts and the constructs');
-		const { workspace: everything } = await loadWorkspaceConfig();
+		const { workspace: everything } = await loadWorkspaceConfig(process.cwd(), {
+			tolerateConstructErrors: true,
+		});
 		await writeStageTypes(everything.root, everything.stages);
 		return workspaceDevCommand(everything, options);
 	}

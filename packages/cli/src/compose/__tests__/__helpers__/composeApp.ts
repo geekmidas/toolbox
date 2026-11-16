@@ -85,9 +85,12 @@ export interface ComposeAppOptions {
 	realtime?: boolean;
 	/**
 	 * The site answers on every subdomain — one host per tenant — checked by
-	 * the API's `GET /tenants/hosts`, which knows the tenant `acme`.
+	 * the API's `GET /tenants/hosts`, which knows the tenant `acme`. `true`
+	 * names the route by surface and path; `'endpoint'` imports the endpoint
+	 * into the construct, as `hosts` was first given; `'no-hosts'` names no
+	 * check at all.
 	 */
-	wildcard?: boolean;
+	wildcard?: boolean | 'endpoint' | 'no-hosts';
 	/** `protectedSubdomains`, as it is written in the config. */
 	protectedSubdomains?: readonly string[];
 	/** The site's `variant` — `static` when absent. */
@@ -143,7 +146,7 @@ export const telemetry = new Telemetry('Telemetry', {
 
 	if (options.reviewer) writeReviewer(dir, name);
 	if (options.webhooks) writeWebhooks(dir);
-	if (options.wildcard) writeWildcardSite(dir);
+	if (options.wildcard) writeWildcardSite(dir, options.wildcard);
 	if (options.sitePassword) {
 		writeFileSync(
 			join(dir, 'constructs', 'passwords.ts'),
@@ -527,7 +530,10 @@ export async function stageGenerated(
 }
 
 /** The wildcard site and its hosts check — see `ComposeAppOptions.wildcard`. */
-function writeWildcardSite(dir: string): void {
+function writeWildcardSite(
+	dir: string,
+	form: true | 'endpoint' | 'no-hosts',
+): void {
 	writeFileSync(
 		join(dir, 'apps', 'api', 'endpoints', 'tenantHosts.ts'),
 		`import { NotFoundError } from '@geekmidas/errors';
@@ -545,11 +551,15 @@ export const tenantHosts = api
   });
 `,
 	);
+	const hosts = {
+		true: "  hosts: { surface: api, path: '/tenants/hosts' },\n",
+		endpoint: '  hosts: tenantHosts,\n',
+		'no-hosts': '',
+	}[String(form) as 'true' | 'endpoint' | 'no-hosts'];
 	writeFileSync(
 		join(dir, 'constructs', 'site.ts'),
 		`import { StaticSite } from '@geekmidas/constructs/site';
-import { tenantHosts } from '../apps/api/endpoints/tenantHosts.js';
-import { api } from './api.js';
+${form === 'endpoint' ? "import { tenantHosts } from '../apps/api/endpoints/tenantHosts.js';\n" : ''}import { api } from './api.js';
 import { auth } from './auth.js';
 import { telemetry } from './telemetry.js';
 
@@ -557,8 +567,7 @@ import { telemetry } from './telemetry.js';
 export const web = new StaticSite('Web', {
   path: 'apps/web',
   subdomain: '*',
-  hosts: tenantHosts,
-  telemetry,
+${hosts}  telemetry,
 }).dependsOn([api, auth]);
 `,
 	);

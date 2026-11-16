@@ -770,7 +770,7 @@ export interface SiteDeclaration extends PublicDeclaration {
 	 *
 	 * `'*'` ({@link WILDCARD_SUBDOMAIN}) is every label nothing else answers
 	 * on: one host per tenant, `acme.myapp.com`. Such a site never holds the
-	 * base domain, names its {@link SiteDeclaration.hosts} check, and is the
+	 * base domain, may name a {@link SiteDeclaration.hosts} check, and is the
 	 * only one of its kind in a project.
 	 */
 	subdomain?: string;
@@ -792,8 +792,10 @@ export interface SiteDeclaration extends PublicDeclaration {
 	 * tenant, `404` for anything else.
 	 *
 	 * A route on a surface rather than a list, because tenants are created by
-	 * the running app and not by a deploy. Present exactly when `subdomain` is
-	 * `'*'`.
+	 * the running app and not by a deploy. Only on a site whose `subdomain` is
+	 * `'*'`, and needed only where its edge gets a certificate per host on
+	 * demand, which must ask before issuing one. Behind a wildcard
+	 * certificate the app answers an unknown tenant itself.
 	 */
 	hosts?: SiteHosts;
 	/**

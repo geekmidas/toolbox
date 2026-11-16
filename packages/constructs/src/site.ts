@@ -79,8 +79,8 @@ export interface StaticSiteConfig {
 	 * `api.myapp.localhost`. Absent, its id kebab-cased.
 	 *
 	 * `'*'` answers on every subdomain nothing else does — one host per
-	 * tenant, `acme.myapp.com` — and then `hosts` names which of them are
-	 * real. Every other app keeps its own host, and a project has at most one
+	 * tenant, `acme.myapp.com` — and `hosts` may name the route that says
+	 * which of them are real. Every other app keeps its own host, and a project has at most one
 	 * such site.
 	 */
 	subdomain?: string;
@@ -99,13 +99,31 @@ export interface StaticSiteConfig {
 	 */
 	redirects?: readonly string[];
 	/**
-	 * With `subdomain: '*'`, the route that says which hosts are tenants: an
-	 * exported `GET` endpoint the edge asks before it serves a host,
-	 * `?domain=<host>`, answering `200` for a tenant and `404` otherwise.
+	 * With `subdomain: '*'`, the route that says which hosts are tenants: a
+	 * `GET` route on a surface, asked `?domain=<host>`, answering `200` for a
+	 * tenant and `404` otherwise. Named by its surface and path, so the
+	 * construct imports no app code:
+	 *
+	 * ```ts
+	 * hosts: { surface: api, path: '/tenants/hosts' },
+	 * ```
+	 *
+	 * Optional. A deploy needs it only where the edge gets a certificate per
+	 * tenant on demand (the stack's own Caddy without `deploy.compose.tls`):
+	 * the edge asks it before issuing one, so nobody can make it request
+	 * certificates for hosts that are no tenant. Behind a wildcard
+	 * certificate — the DNS challenge, the stage's own, CloudFront's — every
+	 * label but the protected ones reaches the site, and the app answers an
+	 * unknown tenant itself. Given, `gkm dev` also asks it before serving a
+	 * host.
+	 *
+	 * `gkm` checks, where it reads the whole project, that the surface serves
+	 * `GET <path>` (`SiteHostsEndpointMissing`). The endpoint itself is still
+	 * accepted, for projects that already pass it.
 	 *
 	 * It runs without a session and belongs to no public API.
 	 */
-	hosts?: SiteHostsEndpoint;
+	hosts?: SiteHostsRoute | SiteHostsEndpoint;
 	/**
 	 * The port it answers on locally.
 	 *
@@ -199,25 +217,25 @@ export interface StaticSiteConfig {
 }
 
 /**
- * The shape of the endpoint `hosts` names — read structurally, so a site
- * module never loads the endpoint machinery to say which route it means.
+ * The route `hosts` names, by its surface and its path — what a constructs
+ * file can say without importing the endpoint from an app. The surface is
+ * read structurally (its `id`), so a site module never loads the endpoint
+ * machinery, and the method is always `GET`.
+ */
+export interface SiteHostsRoute {
+	surface: { id: string };
+	path: string;
+}
+
+/**
+ * The endpoint itself, as `hosts` was first given — read structurally, for
+ * the same reason. Prefer {@link SiteHostsRoute}: an endpoint lives in an
+ * app, and a construct that imports it cannot load where that app is not.
  */
 export interface SiteHostsEndpoint {
 	route: string;
 	method: string;
 	surface: { id: string };
-}
-
-/** `subdomain: '*'` without `hosts`: nothing would say which hosts are tenants. */
-export class WildcardSiteNeedsHosts extends Error {
-	constructor(readonly id: string) {
-		super(
-			`'${id}' answers on every subdomain, so it has to say which of them ` +
-				`are tenants: pass \`hosts\`, a GET endpoint answering 200 for a ` +
-				`host it serves and 404 otherwise.`,
-		);
-		this.name = 'WildcardSiteNeedsHosts';
-	}
 }
 
 /** `hosts` on a site with one host, where there is nothing to check. */
@@ -312,7 +330,6 @@ export class StaticSite<TName extends string = string>
 		};
 
 		const wildcard = config.subdomain === WILDCARD_SUBDOMAIN;
-		if (wildcard && !config.hosts) throw new WildcardSiteNeedsHosts(this.id);
 		if (!wildcard && config.hosts) throw new SiteHostsNeedsWildcard(this.id);
 		if (wildcard && config.root) throw new WildcardSiteCannotBeRoot(this.id);
 		assertHostLabels({
@@ -325,7 +342,11 @@ export class StaticSite<TName extends string = string>
 		if (config.prerender && variant !== 'static') {
 			throw new PrerenderNeedsStaticSite(this.id, variant);
 		}
-		if (config.hosts && config.hosts.method.toUpperCase() !== 'GET') {
+		if (
+			config.hosts &&
+			'method' in config.hosts &&
+			config.hosts.method.toUpperCase() !== 'GET'
+		) {
 			throw new SiteHostsNotGet(
 				this.id,
 				config.hosts.method,
@@ -362,6 +383,7 @@ export class StaticSite<TName extends string = string>
 
 	declare(): Declaration[] {
 		const { hosts } = this.config;
+		const wildcard = this.config.subdomain === WILDCARD_SUBDOMAIN;
 		return [
 			{
 				kind: 'site',
@@ -378,7 +400,7 @@ export class StaticSite<TName extends string = string>
 					? {
 							hosts: {
 								surface: canonicalId(hosts.surface.id),
-								path: hosts.route,
+								path: 'route' in hosts ? hosts.route : hosts.path,
 							},
 						}
 					: {}),
@@ -403,7 +425,9 @@ export class StaticSite<TName extends string = string>
 				...(this.config.prerender ? { prerender: this.config.prerender } : {}),
 				provides: [
 					this.keys.url,
-					...(hosts
+					// The tenant comes off the host it was reached on, whether or
+					// not an edge asks the app about it first.
+					...(wildcard
 						? [
 								providedKeyFor(this.id, 'site', 'domain'),
 								providedKeyFor(this.id, 'site', 'protectedSubdomains'),

@@ -279,6 +279,66 @@ export default {
 		);
 	});
 
+	describe('a construct module that cannot be loaded', () => {
+		/**
+		 * An API in `apps/api`, and a site whose construct imports a module
+		 * that is not there — as in an image pruned to another app.
+		 */
+		async function brokenWorkspace(): Promise<string> {
+			const appDir = join(tempDir, 'apps', 'api');
+			await mkdir(appDir, { recursive: true });
+			await mkdir(join(tempDir, 'constructs'), { recursive: true });
+			await writeFile(
+				join(tempDir, 'gkm.config.ts'),
+				`
+export default {
+  stages: { local: 'development', deployed: ['production'] },
+  name: 'test-workspace',
+  constructs: './constructs/**/*.ts',
+};
+`,
+			);
+			await writeFile(
+				join(tempDir, 'constructs', 'api.ts'),
+				`import { RestApi } from '@geekmidas/constructs/rest-api';
+
+export const api = new RestApi('Api', {
+  path: 'apps/api',
+  authorizers: [],
+  defaultAuthorizer: 'none',
+});
+`,
+			);
+			await writeFile(
+				join(tempDir, 'constructs', 'site.ts'),
+				`import { tenantHosts } from '../apps/web-only/endpoints/hosts.js';
+
+export const hosts = tenantHosts;
+`,
+			);
+			return appDir;
+		}
+
+		it('fails with the real error, not as a directory outside every app', async () => {
+			process.chdir(await brokenWorkspace());
+
+			const error = await loadAppConfig().catch((e: unknown) => e);
+
+			expect(error).not.toBeInstanceOf(NotInAnApp);
+			expect((error as Error).message).toMatch(/web-only\/endpoints\/hosts/);
+		});
+
+		it('falls back to config alone where gkm dev asks it to', async () => {
+			process.chdir(await brokenWorkspace());
+
+			const error = await loadAppConfig(process.cwd(), {
+				tolerateConstructErrors: true,
+			}).catch((e: unknown) => e);
+
+			expect(error).toBeInstanceOf(NotInAnApp);
+		});
+	});
+
 	it('finds the app by its path, with no package.json at all', async () => {
 		const appDir = join(tempDir, 'apps', 'api', 'src');
 		await mkdir(appDir, { recursive: true });

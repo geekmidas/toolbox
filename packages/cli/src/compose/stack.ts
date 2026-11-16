@@ -2300,7 +2300,9 @@ function recordedSubscriptions(
  * A wildcard site on a deployed stage with nowhere to get a certificate for
  * its tenants' hosts from. Let's Encrypt issues a wildcard certificate only
  * over the DNS challenge, so the stage either brings its own or gives the
- * proxy a way to get one.
+ * proxy a way to get one. On the stack's own Caddy that is a certificate per
+ * host on demand, and only there is the site's `hosts` route required: the
+ * one place the rule lives.
  */
 export class WildcardSiteCertificateMissing extends GkmError {
 	constructor(
@@ -2322,8 +2324,12 @@ export class WildcardSiteCertificateMissing extends GkmError {
 						`DNS challenge.`
 				: `'${site}' answers on every subdomain of ${domain}, and '${stage}' ` +
 						`has no certificate for them. Set deploy.compose.tls for ` +
-						`'${stage}' to a *.${domain} certificate, or give the site ` +
-						`\`hosts\` so Caddy gets one per tenant, on demand.`,
+						`'${stage}' to a *.${domain} certificate, or let Caddy get ` +
+						`one per tenant on demand by giving the site \`hosts\` — ` +
+						`\`hosts: { surface: api, path: '/tenants/hosts' }\`, a GET ` +
+						`route answering 200 for a tenant. On-demand certificates ` +
+						`need it: Caddy asks it before issuing one, so no request ` +
+						`can make it get certificates for hosts that are no tenant.`,
 		);
 		this.name = 'WildcardSiteCertificateMissing';
 	}
@@ -2335,7 +2341,9 @@ export class WildcardSiteCertificateMissing extends GkmError {
  * first; then, on the shared Traefik edge, a `*.<domain>` one over the DNS
  * challenge when a provider the edge can answer it through manages the
  * domain (`ACME_DNS_CHALLENGES`); on the stack's own Caddy, one
- * per host on demand, asked of the site's `hosts` route.
+ * per host on demand, asked of the site's `hosts` route. That last is the
+ * only certificate that needs `hosts`: behind a wildcard one every label but
+ * the protected ones reaches the site, and the app answers an unknown tenant.
  *
  * @throws {WildcardSiteCertificateMissing} when neither applies
  */
