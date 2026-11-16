@@ -14,6 +14,7 @@ export {
 	registerStorageDriver,
 } from './registry';
 export type {
+	ObjectMetadata,
 	StorageClient,
 	UploadPost,
 	UploadPostParams,

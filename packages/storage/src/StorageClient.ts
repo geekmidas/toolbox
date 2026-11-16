@@ -84,6 +84,28 @@ export interface StorageClient {
 	 * @param key - The key (path) of the file to delete.
 	 */
 	delete(key: string): Promise<void>;
+	/**
+	 * What the storage knows about one object, from a HEAD: its size, type,
+	 * entity tag and user metadata, without downloading its body.
+	 *
+	 * @param key - The key (path) of the object.
+	 * @returns Its metadata, or `undefined` when no object is at `key`.
+	 */
+	head(key: string): Promise<ObjectMetadata | undefined>;
+}
+
+/** What a HEAD of one object answers: everything but its body. */
+export interface ObjectMetadata {
+	/** Its size in bytes. */
+	size: number;
+	/** The type it was stored with. */
+	contentType?: string;
+	/** Its entity tag, as the storage returns it (quoted, as in HTTP). */
+	etag?: string;
+	/** When it was last written. */
+	lastModified?: Date;
+	/** User metadata it was stored with (`x-amz-meta-*` on S3), by name. */
+	custom: Record<string, string>;
 }
 
 /** What a signed upload form allows. */

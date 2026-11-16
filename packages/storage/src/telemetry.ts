@@ -2,7 +2,8 @@
  * A span per storage call, through the global OpenTelemetry tracer — a no-op
  * without a registered provider.
  *
- * `storage.presign`, `storage.put`, `storage.delete` and `storage.list`, with
+ * `storage.presign`, `storage.put`, `storage.head`, `storage.delete` and
+ * `storage.list`, with
  * the backend and the bucket. Never the object's key: keys often name a user.
  *
  * @module
@@ -14,7 +15,7 @@ import {
 	trace,
 } from '@opentelemetry/api';
 
-export type StorageOperation = 'presign' | 'put' | 'delete' | 'list';
+export type StorageOperation = 'presign' | 'put' | 'head' | 'delete' | 'list';
 
 /** Run `fn` inside a `storage.<operation>` span. */
 export async function traceStorage<T>(
