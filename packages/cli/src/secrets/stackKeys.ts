@@ -13,6 +13,7 @@ import { BACKUPS_URL_KEY, PITR_KEY } from '../backups/service.js';
 import { isReservedStageKey } from '../compose/dnsConfig.js';
 import { LOGS_EMAIL_KEY, LOGS_PASSWORD_KEY } from '../compose/logs.js';
 import { REDIS_PASSWORD_KEY } from '../compose/redis.js';
+import { NEXT_ACTIONS_KEY } from '../deploy/nextRelease.js';
 import { PROCESSOR_ORIGIN_SECRET_ENV } from '../providers/processorOrigin.js';
 
 const STACK_KEYS: ReadonlySet<string> = new Set([
@@ -22,6 +23,8 @@ const STACK_KEYS: ReadonlySet<string> = new Set([
 	LOGS_PASSWORD_KEY,
 	REDIS_PASSWORD_KEY,
 	PROCESSOR_ORIGIN_SECRET_ENV,
+	// A Next site's server is handed it by name (`nextRuntimeValues`).
+	NEXT_ACTIONS_KEY,
 ]);
 
 /** A file server's origin secret: `ASSETS_SERVER_ORIGIN_SECRET`. */

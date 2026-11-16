@@ -26,6 +26,7 @@ import {
 	type AwsCredential,
 	MissingCredential,
 } from '../../deploy/credentials';
+import { hasNextSite, NEXT_DEPLOYMENT_ID_KEY } from '../../deploy/nextRelease';
 import type { DeployResult } from '../../deploy/types';
 import { GkmError } from '../../errors';
 import { detectPackageManager, type PackageManager } from '../../init/utils';
@@ -188,6 +189,19 @@ export async function inboxEnv(
 	return env;
 }
 
+/**
+ * What `sst deploy` hands each Next site's build, which SST runs with its
+ * own environment: the deploy's tag as `NEXT_DEPLOYMENT_ID`. A site on AWS is
+ * Next's static export — no server, so no server actions and no key — whose
+ * assets are tagged with the release it was built for. Nothing where the
+ * stage has no Next site.
+ */
+export function nextReleaseEnv(
+	ctx: Pick<DeployPhaseContext<unknown>, 'manifest' | 'tag'>,
+): Record<string, string> {
+	return hasNextSite(ctx.manifest) ? { [NEXT_DEPLOYMENT_ID_KEY]: ctx.tag } : {};
+}
+
 /** The `sst` target, with its health checks tuned — for tests and hosts. */
 export function createSstTarget(
 	options: SstTargetOptions = {},
@@ -288,6 +302,7 @@ export function createSstTarget(
 				env: {
 					...withoutAws(run.sandbox.env),
 					...(await inboxEnv(ctx)),
+					...nextReleaseEnv(ctx),
 					...awsEnv(run.aws),
 				},
 				timeoutMs: DEPLOY_TIMEOUT_MS,

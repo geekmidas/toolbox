@@ -58,6 +58,10 @@ import {
 } from '../../deploy/identity.js';
 import { DeployJournal } from '../../deploy/journal.js';
 import {
+	nextBuildValues,
+	nextRuntimeValues,
+} from '../../deploy/nextRelease.js';
+import {
 	findProject,
 	type ResolvedProject,
 	resolveProject,
@@ -119,7 +123,7 @@ import {
 	telemetryOf,
 	usesTelemetry,
 } from '../../telemetry/edges.js';
-import { derivedApps } from '../../workspace/derive.js';
+import { appKey, derivedApps } from '../../workspace/derive.js';
 import { getAppBuildOrder, getPublicEnvPrefix } from '../../workspace/index.js';
 import type {
 	DokployVerifyConfig,
@@ -1711,6 +1715,19 @@ export async function releaseDokploy(run: DokployRun): Promise<void> {
 					}
 				}
 
+				// A Next site is tagged with its release and built with the
+				// stage's server actions key — ARGs its Dockerfile declares.
+				const site = Object.entries(run.manifest).find(
+					([id, d]) => d.kind === 'site' && appKey(id) === appName,
+				)?.[1];
+				const nextSite = site?.kind === 'site' ? site : undefined;
+				const custom = stageSecrets.custom ?? {};
+				for (const [key, value] of Object.entries(
+					nextBuildValues(nextSite, imageTag, custom),
+				)) {
+					buildArgs.push(`${key}=${value}`);
+				}
+
 				if (buildArgs.length > 0) {
 					logger.log(`      Build args: ${publicUrlArgNames.join(', ')}`);
 				}
@@ -1755,6 +1772,11 @@ export async function releaseDokploy(run: DokployRun): Promise<void> {
 
 				// Add all resolved vars as runtime env (for SSR and server components)
 				for (const [key, value] of Object.entries(resolved)) {
+					envVars.push(`${key}=${value}`);
+				}
+				for (const [key, value] of Object.entries(
+					nextRuntimeValues(nextSite, custom),
+				)) {
 					envVars.push(`${key}=${value}`);
 				}
 

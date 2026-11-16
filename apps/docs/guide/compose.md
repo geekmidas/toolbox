@@ -166,6 +166,42 @@ and `gkm compose --stage production --tag v1.4.0` pulls exactly the
 `<commit>-<stage>` the same way, and `gkm deploy --target dokploy` names its
 images by the same rule.
 
+### A Next site across releases
+
+A deploy replaces a Next site's container, and the new image serves only its
+own `/_next/static` chunks. A tab opened before the deploy still runs the old
+client: without help, its next client-side navigation asks for a chunk that is
+gone and Next shows "This page couldn't load", and a server action it submits
+fails with `Failed to find Server Action`. So every Next build gkm runs is
+handed two more build arguments, which its Dockerfile declares in the builder
+stage:
+
+- **`NEXT_DEPLOYMENT_ID`** — the release: the image's tag, `<tag>-<stage>`
+  (`abc1234-production`, or `v1.4.0-production` for a pushed release). Next
+  reads it at `next build` as its `deploymentId`, and when a tab from an older
+  release navigates, it loads the page in full instead of crashing. The app's
+  `next.config` needs nothing. One that sets `deploymentId` itself gets gkm's
+  instead: off Vercel, Next takes the variable over the config.
+- **`NEXT_SERVER_ACTIONS_ENCRYPTION_KEY`** — the stage's server actions key:
+  32 random bytes, base64, generated on the stage's first deploy and kept in
+  its secrets, like its seed. Every later deploy reads the same key, so an
+  action submitted from a tab opened before a deploy still finds its action
+  after it. Each stage has its own. A deploy never rotates it; set another
+  with `gkm secrets:set NEXT_SERVER_ACTIONS_ENCRYPTION_KEY '<base64>' --stage
+  production` (a form open across that deploy then fails once).
+
+The site's server gets the key at runtime too, in its env file. No other app
+or worker is handed it, and a stage with no Next site has none. Next writes
+the key into the server's manifest in the image (`.next/server`), so a Next
+site's image holds its stage's key: keep its registry private.
+
+The local stage has no stage secrets to keep a key in, so its Next build
+generates its own, as `next build` does anywhere.
+
+The previous release's `/_next/static` is not kept beside the new one: with a
+deployment id an old tab reloads rather than asking the new server for its
+chunks, and a stage's container has no store that outlives it to keep them in.
+
 ## The server
 
 A deployed stage runs on its server's Docker, reached over SSH. gkm itself
@@ -468,7 +504,8 @@ No image embeds anything of a stage. A backend, a worker or a site's server
 reads every secret at runtime from its own env file (mode `0600`, written by the deploy),
 so the image built at a commit is the same for every stage: the image tested
 on staging is the one production runs, and rotating a secret needs a restart,
-not a rebuild. Only a site differs per stage, by its public URLs.
+not a rebuild. Only a site differs per stage, by its public URLs — and a Next
+site by its [release and server actions key](#a-next-site-across-releases).
 
 The generated Dockerfiles are written beside the stack, in
 `.gkm/compose/<stage>/`. The build context is the build root — the directory

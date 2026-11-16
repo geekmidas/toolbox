@@ -16,6 +16,7 @@ import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { ConstructManifest } from '@geekmidas/manifest';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
 	type AwsCredential,
@@ -32,7 +33,12 @@ import type {
 	SandboxResult,
 } from '../../../sandbox/sandbox';
 import { SurfacesUnhealthy } from '../health';
-import { createSstTarget, healthPath, SstConfigNotFound } from '../index';
+import {
+	createSstTarget,
+	healthPath,
+	nextReleaseEnv,
+	SstConfigNotFound,
+} from '../index';
 import { SST_OUTPUTS_FILE } from '../outputs';
 
 const STAGE = 'production';
@@ -439,5 +445,22 @@ describe('healthPath', () => {
 
 	it('asks a WebSocket surface nothing: API Gateway answers its handshake', () => {
 		expect(healthPath('websocket-api', 'backend')).toBeUndefined();
+	});
+});
+
+describe('nextReleaseEnv', () => {
+	const site = (variant: string) =>
+		({
+			Web: { kind: 'site', id: 'Web', variant, dependencies: [] },
+		}) as unknown as ConstructManifest;
+
+	it("hands a Next site's build the deploy's tag as its deployment id", () => {
+		expect(
+			nextReleaseEnv({ manifest: site('next'), tag: 'production-1794' }),
+		).toEqual({ NEXT_DEPLOYMENT_ID: 'production-1794' });
+	});
+
+	it('hands a stage with no Next site nothing', () => {
+		expect(nextReleaseEnv({ manifest: site('static'), tag: 'v1' })).toEqual({});
 	});
 });

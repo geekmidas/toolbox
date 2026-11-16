@@ -72,6 +72,7 @@ import {
 } from '../deploy/devServices.js';
 import { isMainFrontendApp, resolveHost } from '../deploy/domain.js';
 import { type DeployIdentity, imageRef, stageTag } from '../deploy/identity.js';
+import { nextBuildValues, nextRuntimeValues } from '../deploy/nextRelease.js';
 import { findRootDomain, normalizeDnsConfig } from '../dns/index';
 import { validateImageRef } from '../docker/imageRef.js';
 import {
@@ -1599,6 +1600,12 @@ export function composeStack(input: StackInput): ComposeStack {
 			if (app.prerender && input.prerenderRun) {
 				args[PRERENDER_RUN_ARG] = input.prerenderRun;
 			}
+			// A Next build is tagged with its release — the image's tag — and
+			// made with the stage's server actions key.
+			Object.assign(
+				args,
+				nextBuildValues(site, stageTag(input.images.tag, stage), custom),
+			);
 			if (app.build && Object.keys(args).length > 0) app.build.args = args;
 			// The build runs before the stack does: none of these answers yet.
 			const offline = offlineBuildHosts(site, manifest, (key) =>
@@ -1627,6 +1634,8 @@ export function composeStack(input: StackInput): ComposeStack {
 				serviceName: app.name,
 				...(telemetryValues ? { telemetry: telemetryValues } : {}),
 			}),
+			// The key its build was made with, on a Next site's server alone.
+			...(site?.kind === 'site' ? nextRuntimeValues(site, custom) : {}),
 			NODE_ENV: 'production',
 			PORT: String(app.port),
 			STAGE: stage,
