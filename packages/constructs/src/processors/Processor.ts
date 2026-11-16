@@ -1,7 +1,7 @@
 import type { Logger } from '@geekmidas/logger';
 import type { InferStandardSchema } from '@geekmidas/schema';
 import type { Service, ServiceRecord } from '@geekmidas/services';
-import type { StorageClient } from '@geekmidas/storage';
+import type { ObjectMetadata, StorageClient } from '@geekmidas/storage';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import { Construct, ConstructType } from '../Construct';
 import type { ParsedPattern, PatternParams } from './pattern';
@@ -35,12 +35,26 @@ export interface ProcessorResult {
 	cache?: ProcessorCache;
 }
 
-/** The object a request addresses, read from the bucket on first use. */
+/**
+ * The object a request addresses, read from the bucket on first use.
+ *
+ * Its body is one GET, made by the first `bytes()` or `stream()`; what is
+ * known about it is one HEAD, made by the first `size()` or `metadata()`.
+ * Either throws `ProcessorSourceMissing` when the object is not there, which
+ * answers the request with a 404.
+ */
 export interface SourceObject {
 	readonly key: string;
+	/** Its size in bytes, from a HEAD: the body is not downloaded. */
+	size(): Promise<number>;
+	/** Everything a HEAD answers, without downloading the body. */
+	metadata(): Promise<ObjectMetadata>;
 	bytes(): Promise<Uint8Array>;
 	stream(): Promise<ReadableStream<Uint8Array>>;
-	/** The type it was stored with. */
+	/**
+	 * The type it was stored with: from the body's response when it has
+	 * already been read, otherwise from a HEAD.
+	 */
 	contentType(): Promise<string | undefined>;
 }
 

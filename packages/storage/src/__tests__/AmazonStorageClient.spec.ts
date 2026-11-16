@@ -1,4 +1,4 @@
-import { S3Client } from '@aws-sdk/client-s3';
+import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { InMemoryCache } from '@geekmidas/cache/memory';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { MINIO_URL } from '../../../testkit/test/ports';
@@ -648,6 +648,58 @@ describe('AmazonStorageClient Integration Tests', () => {
 			await expect(
 				client.delete('non-existent/file.txt'),
 			).resolves.not.toThrow();
+		});
+	});
+
+	describe('head', () => {
+		it('answers size, type, entity tag and modification time without the body', async () => {
+			const key = `test-files/head-${crypto.randomUUID()}.txt`;
+			await client.upload(key, Buffer.from('Hello, head!'), 'text/plain');
+
+			const head = await client.head(key);
+
+			expect(head).toMatchObject({
+				size: 12,
+				contentType: 'text/plain',
+				etag: expect.stringMatching(/^"[0-9a-f]+"$/),
+				lastModified: expect.any(Date),
+				custom: {},
+			});
+			await client.delete(key);
+		});
+
+		it('answers the user metadata an object was stored with', async () => {
+			const key = `test-files/head-${crypto.randomUUID()}.txt`;
+			const s3 = new S3Client({
+				region: 'us-east-1',
+				endpoint: MINIO_ENDPOINT,
+				forcePathStyle: true,
+				credentials: {
+					accessKeyId: 'geekmidas',
+					secretAccessKey: 'geekmidas',
+				},
+			});
+			await s3.send(
+				new PutObjectCommand({
+					Bucket: testBucket,
+					Key: key,
+					Body: 'with metadata',
+					ContentType: 'text/plain',
+					Metadata: { owner: 'user-7', source: 'camera' },
+				}),
+			);
+
+			const head = await client.head(key);
+
+			expect(head?.custom).toEqual({ owner: 'user-7', source: 'camera' });
+			expect(head?.size).toBe(13);
+			await client.delete(key);
+		});
+
+		it('answers undefined for a missing object', async () => {
+			expect(
+				await client.head(`test-files/missing-${crypto.randomUUID()}`),
+			).toBeUndefined();
 		});
 	});
 
