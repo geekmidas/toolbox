@@ -2,13 +2,15 @@
  * The stage secrets gkm keeps for the stack itself rather than for the
  * application: the server's address, the logins of the containers it runs
  * (Redis, OpenObserve), the key backups write with, the secret a CDN sends a
- * file server's processors.
+ * file server's processors, the keys the shared edge answers the DNS challenge
+ * with.
  *
  * Nothing in an app reads them, so no process is handed one as "the stage's
  * own" (`processEnvKeys`) — the containers that do read them are given them
  * by name.
  */
 
+import { ACME_DNS_SECRET_KEYS } from '@geekmidas/edge/proxy/traefik';
 import { BACKUPS_URL_KEY, PITR_KEY } from '../backups/service.js';
 import { isReservedStageKey } from '../compose/dnsConfig.js';
 import { LOGS_EMAIL_KEY, LOGS_PASSWORD_KEY } from '../compose/logs.js';
@@ -34,6 +36,7 @@ const ORIGIN_SECRET = /_ORIGIN_SECRET$/;
 export function isStackKey(key: string): boolean {
 	return (
 		isReservedStageKey(key) ||
+		ACME_DNS_SECRET_KEYS.includes(key) ||
 		key.startsWith('GKM_') ||
 		STACK_KEYS.has(key) ||
 		ORIGIN_SECRET.test(key)

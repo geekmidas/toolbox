@@ -58,9 +58,33 @@ one. A private object is never processed.
 |---|---|
 | `params` | the schema's output, or the raw strings |
 | `key` | the object's key, decoded |
-| `object` | the source, read from the bucket on first use: `bytes()`, `stream()`, `contentType()` |
+| `object` | the source, read from the bucket on first use: `size()`, `metadata()`, `contentType()`, `bytes()`, `stream()` |
 | `services` | what `.dependsOn([…])` named |
 | `logger` | |
+
+`object` reads the bucket two ways, each at most once per request:
+
+- `size()` and `metadata()` — `{ size, contentType?, etag?, lastModified?,
+  custom }` — are one HEAD. The body is never downloaded for them.
+- `bytes()` and `stream()` are one GET of the body.
+
+`contentType()` answers from the GET when the body was already read, and from
+the HEAD otherwise. So a guard costs a HEAD, not a download:
+
+```ts
+const MAX_SOURCE_BYTES = 20 * 1024 * 1024;
+
+.handle(async ({ object }) => {
+  if ((await object.size()) > MAX_SOURCE_BYTES) {
+    return { body: 'Too large to process', contentType: 'text/plain', cache: 'none' };
+  }
+  const source = await object.bytes();
+  // …
+});
+```
+
+A missing object throws `ProcessorSourceMissing` from any of them, and is
+answered `404`.
 
 It returns `{ body, contentType, cache? }`. `cache` is:
 

@@ -45,6 +45,19 @@ describe('with a provider', () => {
 	beforeAll(() => provider.register());
 	beforeEach(() => exporter.reset());
 
+	it('a head records a span with the bucket, never the key', async () => {
+		await client.head(KEY);
+
+		const spans = exporter.getFinishedSpans();
+		expect(spans.map((s) => s.name)).toEqual(['storage.head']);
+		expect(spans[0]!.attributes).toMatchObject({
+			'storage.operation': 'head',
+			'storage.system': 's3',
+			'storage.bucket': 'geekmidas',
+		});
+		expect(JSON.stringify(spans[0]!.attributes)).not.toContain(KEY);
+	});
+
 	it('presign, put and delete each record a span with the bucket, never the key', async () => {
 		const url = await client.getUploadURL({
 			path: KEY,

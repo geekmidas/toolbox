@@ -171,6 +171,25 @@ is why an endpoint's `.upload()` asks which type an upload is when it accepts
 several. Prefer this to `getUploadURL` for anything a browser sends: a
 presigned `PUT` cannot limit the size.
 
+### Inspect a File
+
+`head(key)` answers what the storage knows about an object — one HEAD, never a
+download — or `undefined` when nothing is at the key:
+
+```typescript
+const head = await storage.head('uploads/7.png');
+if (!head) return; // nothing at that key
+
+head.size;         // bytes
+head.contentType;  // 'image/png'
+head.etag;         // '"9b2cf535f27731c974343645a3985328"', quoted as in HTTP
+head.lastModified; // Date
+head.custom;       // user metadata (`x-amz-meta-*`), e.g. { owner: 'user-7' }
+```
+
+Use it to check an upload after the fact — its size, its type — without
+reading it.
+
 ### List and Delete Files
 
 ```typescript
@@ -233,6 +252,7 @@ OpenTelemetry tracer — a no-op unless a provider is registered:
 | --- | --- | --- |
 | `storage.presign` | `getUploadURL`, `getUpload`, `getDownloadURL`, `getVersionDownloadURL` | `storage.presign.method` (`PUT`, `POST`, `GET`) |
 | `storage.put` | `upload` | `storage.object.size`, `storage.object.content_type` |
+| `storage.head` | `head` | |
 | `storage.delete` | `delete` | |
 | `storage.list` | `getVersions` | |
 
@@ -279,6 +299,16 @@ interface StorageClient {
   getVersions(key: string): Promise<DocumentVersion[]>;
   getVersionDownloadURL(file: File, versionId: string): Promise<string>;
   getUploadPost(params: UploadPostParams): Promise<UploadPost>;
+  delete(key: string): Promise<void>;
+  head(key: string): Promise<ObjectMetadata | undefined>;
+}
+
+interface ObjectMetadata {
+  size: number;                   // bytes
+  contentType?: string;
+  etag?: string;                  // quoted, as in HTTP
+  lastModified?: Date;
+  custom: Record<string, string>; // user metadata (`x-amz-meta-*` on S3)
 }
 
 interface File {

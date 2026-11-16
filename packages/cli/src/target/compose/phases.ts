@@ -59,7 +59,13 @@ import {
 	backupsRoleStatements,
 	POSTGRES_SERVICE,
 } from '../../backups/service';
-import { type AcmeDnsClients, ensureEdgeAcmeKey } from '../../compose/acmeDns';
+import {
+	type AcmeDnsClients,
+	acmeDnsSecrets,
+	acmeDnsZone,
+	ensureEdgeAcmeKey,
+	ensureEdgeDnsSecrets,
+} from '../../compose/acmeDns';
 import {
 	type HostLookup,
 	HostNotPointingAtServer,
@@ -151,7 +157,6 @@ import {
 	recordRelease,
 } from '../../deploy/state.js';
 import type { DeployResult } from '../../deploy/types';
-import { findRootDomain, normalizeDnsConfig } from '../../dns/index';
 import type { Route53DnsConfig } from '../../dns/providers';
 import { ensureDockerignore } from '../../docker/index.js';
 import { fromBuildRoot, imageLayout } from '../../docker/layout.js';
@@ -609,6 +614,12 @@ export async function validateCompose(
 	// its server: it is the host SSH reaches too, unless config names one.
 	if (!push && !stack.local) {
 		requiredServerAddress(stage, workspace.domains?.[stage], secrets?.custom);
+		// The edge's key for the wildcard's DNS challenge, where the stage
+		// supplies it: refused now, not once the stack is half up.
+		if (stack.proxy === 'traefik' && stack.wildcard?.tls === 'dns') {
+			const zone = acmeDnsZone(workspace, stage);
+			if (zone) acmeDnsSecrets(zone, stage, secrets?.custom);
+		}
 	}
 	const server = push
 		? undefined
@@ -1173,9 +1184,11 @@ export async function planCompose(
 }
 
 /**
- * The shared edge's key for the stage's wildcard certificate: the DNS
- * challenge's record, and nothing else, through the stage domain's Route 53
- * entry — before the stack's routes ask for the certificate.
+ * The shared edge's key for the stage's wildcard certificate, through the
+ * DNS provider holding the stage's domain — before the stack's routes ask
+ * for the certificate. Route 53's is issued through IAM, allowed the DNS
+ * challenge's record and nothing else; every other provider's is the
+ * stage's own secrets, written into the edge.
  */
 async function edgeAcmeKey(
 	ctx: ComposeContext,
@@ -1183,13 +1196,28 @@ async function edgeAcmeKey(
 	deps: ComposeDeps,
 ): Promise<void> {
 	const { workspace, stage } = ctx;
-	const domain = workspace.domains?.[stage];
-	const dns = workspace.dns ? normalizeDnsConfig(workspace.dns) : {};
-	const zone = domain ? findRootDomain(domain, dns) : null;
-	const config = zone ? dns[zone] : undefined;
-	if (!domain || !zone || config?.provider !== 'route53') return;
-	const route53 = config as Route53DnsConfig;
+	const zone = acmeDnsZone(workspace, stage);
+	if (!zone) return;
+	const edge = edgeRef(edgeFile(run), {
+		...(run.ref.host ? { host: run.ref.host } : {}),
+		...(run.ref.output ? { output: run.ref.output } : {}),
+	});
+	const log = (line: string) => ctx.logger.info(line);
 
+	if (zone.provider !== 'route53') {
+		await ensureEdgeDnsSecrets(deps.docker, {
+			edge,
+			zone,
+			stage,
+			custom: run.secrets?.custom,
+			...(ctx.dryRun ? { dryRun: true } : {}),
+			log,
+		});
+		return;
+	}
+
+	const { domain } = zone;
+	const route53 = zone.config as Route53DnsConfig;
 	// The edge is the server's: its key is named for the server, whichever
 	// stage on it asked first.
 	const server =
@@ -1199,17 +1227,14 @@ async function edgeAcmeKey(
 	const clients = await (deps.acmeClients ?? defaultAcmeClients)(route53);
 	await ensureEdgeAcmeKey(deps.docker, {
 		clients,
-		edge: edgeRef(edgeFile(run), {
-			...(run.ref.host ? { host: run.ref.host } : {}),
-			...(run.ref.output ? { output: run.ref.output } : {}),
-		}),
+		edge,
 		server,
 		project: run.stack.project,
 		domain,
-		zone,
+		zone: zone.zone,
 		...(route53.hostedZoneId ? { hostedZoneId: route53.hostedZoneId } : {}),
 		...(ctx.dryRun ? { dryRun: true } : {}),
-		log: (line) => ctx.logger.info(line),
+		log,
 	});
 }
 

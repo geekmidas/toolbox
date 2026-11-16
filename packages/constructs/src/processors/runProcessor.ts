@@ -1,7 +1,7 @@
 import type { EnvironmentParser } from '@geekmidas/envkit';
 import type { Logger } from '@geekmidas/logger';
 import { runWithRequestContext, ServiceDiscovery } from '@geekmidas/services';
-import type { StorageClient } from '@geekmidas/storage';
+import type { ObjectMetadata, StorageClient } from '@geekmidas/storage';
 import { defaultEnvParser } from '../endpoints/surfaceEnv';
 import {
 	DERIVED_PREFIX,
@@ -160,8 +160,20 @@ async function run(
 		source = found.response;
 		return source;
 	};
+	// One HEAD, shared by everything that asks about the object rather than
+	// for it — a size guard never downloads what it is guarding against.
+	let head: Promise<ObjectMetadata> | undefined;
+	const metadata = (): Promise<ObjectMetadata> => {
+		head ??= storage.head(key).then((found) => {
+			if (!found) throw new ProcessorSourceMissing(key);
+			return found;
+		});
+		return head;
+	};
 	const object: SourceObject = {
 		key,
+		size: async () => (await metadata()).size,
+		metadata,
 		bytes: async () => new Uint8Array(await (await load()).arrayBuffer()),
 		stream: async () => {
 			const body = (await load()).body;
@@ -169,7 +181,9 @@ async function run(
 			return body;
 		},
 		contentType: async () =>
-			(await load()).headers.get('content-type') ?? undefined,
+			source
+				? (source.headers.get('content-type') ?? undefined)
+				: (await metadata()).contentType,
 	};
 
 	let result: Awaited<ReturnType<typeof processor.handler>>;

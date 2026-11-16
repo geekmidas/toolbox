@@ -1,9 +1,11 @@
 import {
 	DeleteObjectCommand,
 	GetObjectCommand,
+	HeadObjectCommand,
 	ListObjectVersionsCommand,
 	PutObjectCommand,
 	S3Client,
+	type S3ServiceException,
 } from '@aws-sdk/client-s3';
 import {
 	createPresignedPost,
@@ -18,6 +20,7 @@ import {
 	type File,
 	type GetUploadParams,
 	type GetUploadResponse,
+	type ObjectMetadata,
 	type StorageClient,
 	StorageProvider,
 	type UploadPost,
@@ -249,6 +252,31 @@ export class AmazonStorageClient implements StorageClient {
 			'storage.object.size': Body.length,
 			'storage.object.content_type': contentType,
 		});
+	}
+
+	async head(key: string): Promise<ObjectMetadata | undefined> {
+		const command = new HeadObjectCommand({ Bucket: this.bucket, Key: key });
+
+		const head = await this.traced('head', async () => {
+			try {
+				return await this.client.send(command);
+			} catch (error) {
+				// A HEAD has no body, so a missing object is only its status.
+				if ((error as S3ServiceException).$metadata?.httpStatusCode === 404) {
+					return undefined;
+				}
+				throw error;
+			}
+		});
+		if (!head) return undefined;
+
+		return {
+			size: head.ContentLength ?? 0,
+			custom: head.Metadata ?? {},
+			...(head.ContentType ? { contentType: head.ContentType } : {}),
+			...(head.ETag ? { etag: head.ETag } : {}),
+			...(head.LastModified ? { lastModified: head.LastModified } : {}),
+		};
 	}
 
 	async delete(key: string): Promise<void> {

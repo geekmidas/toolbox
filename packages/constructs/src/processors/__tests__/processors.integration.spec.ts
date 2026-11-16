@@ -60,6 +60,26 @@ const preview = media.process('/p/*').handle(async ({ object }) => {
 	};
 });
 
+const MAX_BYTES = 3;
+let guarded = 0;
+const guard = media.process('/g/*').handle(async ({ object }) => {
+	guarded++;
+	const { size, contentType, etag, lastModified, custom } =
+		await object.metadata();
+	if ((await object.size()) > MAX_BYTES) {
+		return {
+			body: `too big:${size}:${contentType}:${await object.contentType()}`,
+			contentType: 'text/plain',
+			cache: 'none',
+		};
+	}
+	return {
+		body: `${size}:${typeof etag}:${lastModified instanceof Date}:${JSON.stringify(custom)}:${text(await object.bytes())}`,
+		contentType: 'text/plain',
+		cache: 'none',
+	};
+});
+
 const envParser = new EnvironmentParser({
 	MEDIA_CONNECTION_STRING: BUCKET_URL,
 	MEDIA_URL: 'https://media.example.com',
@@ -174,6 +194,54 @@ describe('a processor, against MinIO', () => {
 		expect((await get(`/i/64/${run}/open/cat.png`, 'POST'))?.status).toBe(405);
 		expect((await get(`/i/64/${run}/open/cat.png`, 'HEAD'))?.status).toBe(200);
 		expect(await get(`/${run}/open/cat.png`)).toBeUndefined();
+	});
+});
+
+describe('what a processor learns from a HEAD', () => {
+	/** The object paths read through a presigned GET while answering `path`. */
+	const fetched = async (path: string) => {
+		const reads: string[] = [];
+		const response = await handleProcessorRequest(
+			[guard],
+			{ method: 'GET', path },
+			{
+				serviceDiscovery,
+				fetch: (async (url: string) => {
+					reads.push(new URL(url).pathname);
+					return fetch(url);
+				}) as typeof fetch,
+			},
+		);
+		return { response, reads };
+	};
+
+	it('answers size, type and metadata without downloading the object', async () => {
+		const { response, reads } = await fetched(`/g/${run}/open/cat.png`);
+
+		expect(text(response?.body)).toBe('too big:4:image/png:image/png');
+		// Only the look for a kept derivative: the source is never read.
+		expect(reads).toEqual([
+			`/geekmidas/${DERIVED_PREFIX}g/${run}/open/cat.png`,
+		]);
+	});
+
+	it('reads the body only when the handler asks for it', async () => {
+		const { response, reads } = await fetched(`/g/${run}/open/raw.bin`);
+
+		expect(text(response?.body)).toBe('3:string:true:{}:abc');
+		expect(reads).toEqual([
+			`/geekmidas/${DERIVED_PREFIX}g/${run}/open/raw.bin`,
+			`/geekmidas/${run}/open/raw.bin`,
+		]);
+	});
+
+	it('answers 404 when the object a HEAD asks about is not there', async () => {
+		const before = guarded;
+		const { response } = await fetched(`/g/${run}/open/nope.png`);
+
+		expect(guarded).toBe(before + 1);
+		expect(response?.status).toBe(404);
+		expect(response?.headers['cache-control']).toBe('public, max-age=60');
 	});
 });
 

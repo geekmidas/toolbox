@@ -1,5 +1,6 @@
 import { randomInt } from 'node:crypto';
-import { realpathSync } from 'node:fs';
+import { readdirSync, readFileSync, realpathSync } from 'node:fs';
+import { join } from 'node:path';
 import {
 	DeleteAccessKeyCommand,
 	DeleteUserCommand,
@@ -18,6 +19,7 @@ import type {
 	DnsRecord,
 	UpsertDnsRecord,
 } from '@geekmidas/edge/dns';
+import { edgeDnsSecretPath } from '@geekmidas/edge/proxy/traefik';
 import { HttpResponse, http, passthrough } from 'msw';
 import { setupServer } from 'msw/node';
 import {
@@ -33,6 +35,7 @@ import {
 import { LOCALSTACK_URL } from '../../../../../testkit/test/ports';
 import { cleanupDir, createTempDir } from '../../../__tests__/test-helpers';
 import {
+	resolvesHere,
 	SERVER_IPV4,
 	serveFrom,
 	writeComposeApp,
@@ -42,7 +45,7 @@ import {
 	fakeDocker,
 	fakeServer,
 } from '../../../compose/__tests__/__helpers__/fakeDocker';
-import { edgeAcmeUser } from '../../../compose/acmeDns';
+import { AcmeDnsSecretsMissing, edgeAcmeUser } from '../../../compose/acmeDns';
 import { DnsCredentialMissing } from '../../../compose/dns';
 import { composeCommand } from '../../../compose/index';
 import { storedCredentials } from '../../../deploy/credentials';
@@ -159,6 +162,15 @@ function pointed(names: string[], ip = SERVER_IPV4) {
 }
 
 const PUTS = () => requests.filter((r) => r.startsWith('PUT'));
+
+/** Every file under `root`, but `node_modules`. */
+function readdirRecursive(root: string): string[] {
+	return readdirSync(root, { withFileTypes: true }).flatMap((entry) => {
+		const path = join(entry.parentPath, entry.name);
+		if (entry.name === 'node_modules') return [];
+		return entry.isDirectory() ? readdirRecursive(path) : [path];
+	});
+}
 
 /** A run of the stage through `deploy()`, with each host resolved by `lookup`. */
 async function run(
@@ -683,6 +695,81 @@ describe('a wildcard site', { timeout: RUN_TIMEOUT }, () => {
 			'PUT example.com A auth.shop',
 		]);
 		expect(logs).toContain('🌐 3 hosts confirmed by the DNS provider');
+	});
+
+	describe('behind the shared edge, with GoDaddy holding the domain', () => {
+		const KEYS = {
+			GODADDY_API_KEY: 'the-godaddy-api-key',
+			GODADDY_API_SECRET: 'the-godaddy-api-secret',
+		};
+
+		it("gives the edge the stage's GoDaddy keys before its routes ask for the certificate", async () => {
+			workspace({ wildcard: true, compose: { proxy: 'traefik' } });
+			await serveFrom(dir, 'production', SERVER_IPV4, undefined, KEYS);
+
+			const { error, logs, calls } = await run('production', {
+				lookup: resolvesHere,
+			});
+
+			expect(error).toBeUndefined();
+			expect(PUTS()).toContain('PUT example.com A *.shop');
+			expect(logs).toContain(
+				'🔑 Wrote GODADDY_API_KEY, GODADDY_API_SECRET to gkm-edge, for _acme-challenge.shop.example.com through godaddy',
+			);
+			const execs = calls
+				.filter((call) => call.op === 'exec')
+				.map(
+					(call) =>
+						call.args as { command: string[]; input?: string; service: string },
+				);
+			const writes = execs.filter((e) => e.command[0] === 'sh');
+			const key = writes.findIndex(
+				(e) => e.command[4] === edgeDnsSecretPath('GODADDY_API_KEY'),
+			);
+			const secret = writes.findIndex(
+				(e) => e.command[4] === edgeDnsSecretPath('GODADDY_API_SECRET'),
+			);
+			const routes = writes.findIndex((e) =>
+				e.command[4]?.includes('/dynamic/'),
+			);
+			expect(key).toBeGreaterThanOrEqual(0);
+			expect(secret).toBeGreaterThanOrEqual(0);
+			// Into the edge, readable by it alone, before the stack's routes.
+			expect(writes[key]!.command[5]).toBe('600');
+			expect(key).toBeLessThan(routes);
+			expect(secret).toBeLessThan(routes);
+			// No key in any file the deploy wrote here — the edge's compose
+			// file and its static configuration among them.
+			const written = readdirRecursive(dir);
+			const edgeCompose = written.find((f) => f.endsWith('/gkm-edge.yml'));
+			expect(edgeCompose).toBeDefined();
+			// The edge reads each key from the file it was written to.
+			expect(readFileSync(edgeCompose!, 'utf-8')).toContain(
+				`GODADDY_API_KEY_FILE: ${edgeDnsSecretPath('GODADDY_API_KEY')}`,
+			);
+			for (const file of written) {
+				const content = readFileSync(file, 'utf-8');
+				for (const value of Object.values(KEYS)) {
+					expect(content, file).not.toContain(value);
+				}
+			}
+		});
+
+		it('refuses a stage without the keys before anything is started', async () => {
+			workspace({ wildcard: true, compose: { proxy: 'traefik' } });
+			await serveFrom(dir, 'production', SERVER_IPV4, undefined, {
+				GODADDY_API_KEY: KEYS.GODADDY_API_KEY,
+			});
+
+			const { error, ops } = await run('production', { lookup: resolvesHere });
+
+			expect(error).toBeInstanceOf(AcmeDnsSecretsMissing);
+			expect((error as AcmeDnsSecretsMissing).keys).toEqual([
+				'GODADDY_API_SECRET',
+			]);
+			expect(ops).toEqual([]);
+			expect(PUTS()).toEqual([]);
+		});
 	});
 
 	describe('behind the shared edge, with Route 53 holding the domain', () => {

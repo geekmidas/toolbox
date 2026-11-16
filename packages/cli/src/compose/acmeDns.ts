@@ -1,6 +1,13 @@
 /**
- * The key the server's shared Traefik edge answers Let's Encrypt's DNS
- * challenge with, for a stage with a wildcard site.
+ * What the server's shared Traefik edge answers Let's Encrypt's DNS
+ * challenge with, for a stage with a wildcard site: which provider holds the
+ * stage's domain, and the edge's key for it.
+ *
+ * Every provider but Route 53 is handed the stage's own secrets
+ * (`ACME_DNS_CHALLENGES` in `@geekmidas/edge/proxy/traefik` names them):
+ * each is written into its own file in the edge's container, `0600`, and
+ * rewritten — the edge restarted to read it — when the stage's value
+ * changes. Route 53's is issued here, through IAM:
  *
  * A wildcard certificate is issued only over the DNS challenge: the edge
  * proves it holds `<domain>` by writing a TXT record at
@@ -25,12 +32,151 @@ import { createHash } from 'node:crypto';
 import type { IAMClient } from '@aws-sdk/client-iam';
 import type { Route53Client } from '@aws-sdk/client-route-53';
 import {
+	ACME_DNS_CHALLENGES,
+	type AcmeDnsProvider,
 	EDGE_AWS_CREDENTIALS,
 	EDGE_PROJECT,
+	edgeDnsSecretPath,
+	isAcmeDnsProvider,
 } from '@geekmidas/edge/proxy/traefik';
+import { findRootDomain, normalizeDnsConfig } from '../dns/index';
 import { GkmError } from '../errors';
+import type {
+	DnsProvider as DnsProviderConfig,
+	NormalizedWorkspace,
+} from '../workspace/types';
 import type { ComposeDocker, StackRef } from './docker.js';
 import { readEdgeFile, restartEdge, writeEdgeSecret } from './edge.js';
+
+/**
+ * Where a stage's wildcard certificate is challenged: its domain, the root
+ * domain in `dns` that holds it, and that entry — for a provider the edge
+ * can answer the DNS challenge through.
+ */
+export interface AcmeDnsZone {
+	domain: string;
+	zone: string;
+	provider: AcmeDnsProvider;
+	config: DnsProviderConfig;
+}
+
+/**
+ * The stage's DNS-challenge zone, or undefined where its domain has no `dns`
+ * entry the edge can answer the challenge through. The one answer the stack
+ * (which resolver its wildcard router names) and the deploy (which key it
+ * gives the edge) both read.
+ */
+export function acmeDnsZone(
+	workspace: Pick<NormalizedWorkspace, 'domains' | 'dns'>,
+	stage: string,
+): AcmeDnsZone | undefined {
+	const domain = workspace.domains?.[stage];
+	if (!domain) return undefined;
+	const dns = workspace.dns ? normalizeDnsConfig(workspace.dns) : {};
+	const zone = findRootDomain(domain, dns);
+	const config = zone ? dns[zone] : undefined;
+	if (!zone || !config || !isAcmeDnsProvider(config.provider)) {
+		return undefined;
+	}
+	return { domain, zone, provider: config.provider, config };
+}
+
+/** A stage whose DNS provider's keys the edge needs, and its secrets lack. */
+export class AcmeDnsSecretsMissing extends GkmError {
+	constructor(
+		readonly stage: string,
+		readonly provider: AcmeDnsProvider,
+		readonly domain: string,
+		readonly keys: readonly string[],
+	) {
+		super(
+			`'${stage}' has a wildcard site on ${domain}, whose certificate the ` +
+				`shared edge gets over the DNS challenge through ${provider}, and ` +
+				`its secrets lack ${keys.join(' and ')}. Set ${keys.length > 1 ? 'them' : 'it'}:\n` +
+				keys
+					.map((key) => `  gkm secrets:set ${key} '<value>' --stage ${stage}`)
+					.join('\n') +
+				`\nThey are written into the edge alone, never handed to an app.`,
+		);
+		this.name = 'AcmeDnsSecretsMissing';
+	}
+}
+
+/**
+ * The stage's values for what `provider`'s DNS challenge reads.
+ *
+ * @throws {AcmeDnsSecretsMissing} when the stage lacks any of them
+ */
+export function acmeDnsSecrets(
+	zone: Pick<AcmeDnsZone, 'provider' | 'domain'>,
+	stage: string,
+	custom: Readonly<Record<string, string>> = {},
+): Record<string, string> {
+	const keys: readonly string[] = ACME_DNS_CHALLENGES[zone.provider].secrets;
+	const missing = keys.filter((key) => !custom[key]);
+	if (missing.length > 0) {
+		throw new AcmeDnsSecretsMissing(stage, zone.provider, zone.domain, missing);
+	}
+	return Object.fromEntries(keys.map((key) => [key, custom[key]!]));
+}
+
+export interface EnsureEdgeDnsSecretsOptions {
+	/** The edge's compose project, as docker is asked about it. */
+	edge: StackRef;
+	zone: Pick<AcmeDnsZone, 'provider' | 'domain'>;
+	stage: string;
+	/** The stage's own secrets. */
+	custom: Readonly<Record<string, string>> | undefined;
+	dryRun?: boolean;
+	log?: (line: string) => void;
+}
+
+/**
+ * The stage's keys for its DNS provider, in the edge: each written to its
+ * own file where the edge reads it (`<KEY>_FILE`), and the edge restarted
+ * when one it may already have read is replaced. A key the edge holds as it
+ * is, is left alone.
+ *
+ * @throws {AcmeDnsSecretsMissing} when the stage lacks one
+ * @returns whether anything was written
+ */
+export async function ensureEdgeDnsSecrets(
+	docker: ComposeDocker,
+	options: EnsureEdgeDnsSecretsOptions,
+): Promise<boolean> {
+	const { edge, zone, stage } = options;
+	const log = options.log ?? ((line: string) => console.log(line));
+	const values = acmeDnsSecrets(zone, stage, options.custom);
+	const keys = Object.keys(values);
+	if (keys.length === 0) return false;
+
+	if (options.dryRun) {
+		log(
+			`🔑 Would give ${EDGE_PROJECT} ${keys.join(', ')} for _acme-challenge.${zone.domain} through ${zone.provider} (dry run — nothing is written)`,
+		);
+		return false;
+	}
+
+	let written = false;
+	let replaced = false;
+	for (const [key, value] of Object.entries(values)) {
+		const path = edgeDnsSecretPath(key);
+		const held = await readEdgeFile(docker, edge, path);
+		if (held === value) continue;
+		await writeEdgeSecret(docker, edge, path, value);
+		written = true;
+		if (held !== undefined) replaced = true;
+	}
+	if (written) {
+		log(
+			`🔑 Wrote ${keys.join(', ')} to ${EDGE_PROJECT}, for _acme-challenge.${zone.domain} through ${zone.provider}`,
+		);
+	}
+	// The edge reads a provider's keys once, the first time it asks for a
+	// certificate through it, and keeps them.
+	if (replaced) await restartEdge(docker, edge);
+	return written;
+}
 
 /** Where gkm's IAM users live. */
 const USER_PATH = '/gkm/';
