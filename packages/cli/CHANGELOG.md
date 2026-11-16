@@ -1,5 +1,77 @@
 # @geekmidas/cli
 
+## 10.0.0-alpha.187
+
+### Minor Changes
+
+- [#530](https://github.com/geekmidas/toolbox/pull/530) [`243d10a`](https://github.com/geekmidas/toolbox/commit/243d10ad2a5a27ebe70d85c45c9869f3c3342f56) Thanks [@geekmidas](https://github.com/geekmidas)! - :warning: **Behaviour change:** a construct that cannot be loaded fails every command but `gkm dev` with its real error
+
+  `gkm build`, `gkm compose`, `gkm exec`, `gkm deploy` and every other command
+  that reads the workspace used to warn "Could not read constructs, so apps come
+  from config alone" and carry on. A v10 config declares no apps, so the command
+  then failed as something else — `gkm build` in a Docker image whose construct
+  imported a module the image did not carry reported `NotInAnApp`. They now fail
+  with the error itself (`Cannot find module …`, or the construct's own, such as
+  `SiteHostsEndpointMissing`).
+
+  `gkm dev` still starts from config alone with the warning, so a half-written
+  declaration does not keep the dev server down. `loadWorkspaceConfig`,
+  `loadAppConfig` and `loadWorkspaceAppInfo` take `tolerateConstructErrors:
+true` for that.
+
+- 💥 [#530](https://github.com/geekmidas/toolbox/pull/530) [`243d10a`](https://github.com/geekmidas/toolbox/commit/243d10ad2a5a27ebe70d85c45c9869f3c3342f56) Thanks [@geekmidas](https://github.com/geekmidas)! - :warning: **Breaking:** a wildcard site's `hosts` is optional, named by surface and path, and required only for on-demand certificates
+
+  A `StaticSite` with `subdomain: '*'` no longer has to name a `hosts` route.
+  Tenants are rows in the app's database, which the app looks up on every
+  request anyway; behind a wildcard certificate (the DNS challenge on the
+  Traefik edge, the stage's own `deploy.compose.tls`, CloudFront's) nothing has
+  to ask before a request reaches the site.
+
+  ```ts
+  export const app = new StaticSite("App", {
+    path: "apps/app",
+    subdomain: "*",
+  }).dependsOn([api, auth]);
+  ```
+
+  `hosts` is required only where the edge gets a certificate per tenant on
+  demand — the stack's own Caddy without `deploy.compose.tls` — because Caddy
+  must ask before it issues one, or anyone could make it request certificates
+  for any label. That rule lives in one place, the compose stack, and its error
+  (`WildcardSiteCertificateMissing`) says so.
+
+  `hosts` names the route by its surface and path, so a constructs file imports
+  nothing from an app:
+
+  ```ts
+  hosts: { surface: api, path: '/tenants/hosts' },
+  ```
+
+  gkm checks that the surface serves `GET <path>` wherever it reads the whole
+  project (`SiteHostsEndpointMissing`). The endpoint value (`hosts: tenantHosts`)
+  is still accepted, and declares the same thing, but a construct that imports
+  an app's endpoint cannot load in an image pruned to another app.
+
+  - 🔥 `WildcardSiteNeedsHosts` is removed from `@geekmidas/constructs/site`.
+  - A wildcard site declares `<ID>_DOMAIN` and `<ID>_PROTECTED_SUBDOMAINS` with
+    or without `hosts`, as every target already handed them.
+
+### Patch Changes
+
+- Updated dependencies [[`243d10a`](https://github.com/geekmidas/toolbox/commit/243d10ad2a5a27ebe70d85c45c9869f3c3342f56)]:
+  - @geekmidas/constructs@10.0.0-alpha.187
+  - @geekmidas/manifest@10.0.0-alpha.187
+  - @geekmidas/edge@10.0.0-alpha.187
+  - @geekmidas/cache@10.0.0-alpha.187
+  - @geekmidas/db@10.0.0-alpha.187
+  - @geekmidas/envkit@10.0.0-alpha.187
+  - @geekmidas/errors@10.0.0-alpha.187
+  - @geekmidas/logger@10.0.0-alpha.187
+  - @geekmidas/schema@10.0.0-alpha.187
+  - @geekmidas/services@10.0.0-alpha.187
+  - @geekmidas/storage@10.0.0-alpha.187
+  - @geekmidas/telescope@10.0.0-alpha.187
+
 ## 10.0.0-alpha.186
 
 ### Minor Changes
