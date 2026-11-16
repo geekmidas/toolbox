@@ -1,5 +1,21 @@
 # @geekmidas/constructs
 
+## 9.6.1
+
+### Patch Changes
+
+- Updated dependencies [[`38bccfa`](https://github.com/geekmidas/toolbox/commit/38bccfa66957b47257571b593ebef1ed534a9786)]:
+  - @geekmidas/events@9.6.1
+  - @geekmidas/audit@9.6.1
+  - @geekmidas/cache@9.6.1
+  - @geekmidas/db@9.6.1
+  - @geekmidas/envkit@9.6.1
+  - @geekmidas/errors@9.6.1
+  - @geekmidas/logger@9.6.1
+  - @geekmidas/rate-limit@9.6.1
+  - @geekmidas/schema@9.6.1
+  - @geekmidas/services@9.6.1
+
 ## 9.6.0
 
 ### Minor Changes

@@ -1,5 +1,13 @@
 # @geekmidas/client
 
+## 9.6.1
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/constructs@9.6.1
+  - @geekmidas/schema@9.6.1
+
 ## 9.6.0
 
 ### Patch Changes

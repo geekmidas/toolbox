@@ -1,5 +1,18 @@
 # @geekmidas/cli
 
+## 9.6.1
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/constructs@9.6.1
+  - @geekmidas/envkit@9.6.1
+  - @geekmidas/errors@9.6.1
+  - @geekmidas/logger@9.6.1
+  - @geekmidas/manifest@9.6.1
+  - @geekmidas/schema@9.6.1
+  - @geekmidas/telescope@9.6.1
+
 ## 9.6.0
 
 ### Patch Changes

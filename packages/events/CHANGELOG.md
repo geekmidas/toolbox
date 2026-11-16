@@ -1,5 +1,16 @@
 # @geekmidas/events
 
+## 9.6.1
+
+### Patch Changes
+
+- [#526](https://github.com/geekmidas/toolbox/pull/526) [`38bccfa`](https://github.com/geekmidas/toolbox/commit/38bccfa66957b47257571b593ebef1ed534a9786) Thanks [@geekmidas](https://github.com/geekmidas)! - An app bundled into one file starts without `amqplib` or `pg-boss` installed
+
+  `RabbitMQConnection` and `PgBossConnection` imported their client library at the top of the module. `Publisher` and `Subscriber` only load those modules when a `rabbitmq://` or `pgboss://` string is used, but a bundler that inlines them (esbuild or rolldown with no code splitting, as a Lambda is built) moves that import to the top of the bundle, so a Lambda that only publishes to SQS crashed on load with `Cannot find package 'amqplib'`. Each connection now imports its library in `connect()`, the only place it is used.
+
+- Updated dependencies []:
+  - @geekmidas/schema@9.6.1
+
 ## 9.6.0
 
 ### Minor Changes
