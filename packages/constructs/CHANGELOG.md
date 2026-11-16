@@ -1,5 +1,37 @@
 # @geekmidas/constructs
 
+## 10.0.0-alpha.186
+
+### Minor Changes
+
+- [#528](https://github.com/geekmidas/toolbox/pull/528) [`4011635`](https://github.com/geekmidas/toolbox/commit/4011635bbd9094fcdf5fee46512c4c9c2f0dbd1b) Thanks [@geekmidas](https://github.com/geekmidas)! - :sparkles: A processor's `object.size()` and `object.metadata()`, and `StorageClient.head(key)`, read an object's metadata with a HEAD rather than downloading it (#467)
+
+  `StorageClient` gains `head(key)`: `{ size, contentType?, etag?, lastModified?, custom }` from one `HeadObject`, or `undefined` when nothing is at the key. It records a `storage.head` span.
+
+  A file server processor's `SourceObject` gains `size()` and `metadata()`, backed by one memoised HEAD, so a size guard no longer downloads what it guards against. `contentType()` answers from the body's response when it was already read and from the HEAD otherwise, so asking for the type no longer downloads the body. A missing object throws `ProcessorSourceMissing` from any of them and is answered `404`.
+
+  A custom `StorageClient` implementation must now implement `head`.
+
+### Patch Changes
+
+- Updated dependencies [[`4011635`](https://github.com/geekmidas/toolbox/commit/4011635bbd9094fcdf5fee46512c4c9c2f0dbd1b)]:
+  - @geekmidas/storage@10.0.0-alpha.186
+  - @geekmidas/audit@10.0.0-alpha.186
+  - @geekmidas/auth@10.0.0-alpha.186
+  - @geekmidas/cache@10.0.0-alpha.186
+  - @geekmidas/db@10.0.0-alpha.186
+  - @geekmidas/emailkit@10.0.0-alpha.186
+  - @geekmidas/envkit@10.0.0-alpha.186
+  - @geekmidas/errors@10.0.0-alpha.186
+  - @geekmidas/events@10.0.0-alpha.186
+  - @geekmidas/logger@10.0.0-alpha.186
+  - @geekmidas/manifest@10.0.0-alpha.186
+  - @geekmidas/rate-limit@10.0.0-alpha.186
+  - @geekmidas/schema@10.0.0-alpha.186
+  - @geekmidas/services@10.0.0-alpha.186
+  - @geekmidas/telescope@10.0.0-alpha.186
+  - @geekmidas/testkit@10.0.0-alpha.186
+
 ## 10.0.0-alpha.185
 
 ### Patch Changes

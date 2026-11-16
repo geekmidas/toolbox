@@ -1,5 +1,67 @@
 # @geekmidas/cli
 
+## 10.0.0-alpha.186
+
+### Minor Changes
+
+- [#529](https://github.com/geekmidas/toolbox/pull/529) [`edce8e7`](https://github.com/geekmidas/toolbox/commit/edce8e7f1a2670bc8092e46862cba222dd463c9c) Thanks [@geekmidas](https://github.com/geekmidas)! - Every Next.js build gkm runs gets a deployment id and a stable server actions key (#508)
+
+  A deploy that replaced a Next site's container left tabs opened before it
+  asking for chunks that no longer existed ("This page couldn't load") and
+  submitting server actions the new build could not find. Now:
+
+  - `NEXT_DEPLOYMENT_ID` is the release — the image's `<tag>-<stage>` on a
+    server stage, the deploy's tag on SST — so Next does a full page load when an
+    old tab navigates, with no `deploymentId` in `next.config`.
+  - `NEXT_SERVER_ACTIONS_ENCRYPTION_KEY` is generated once per stage on its first
+    deploy, kept in the stage's secrets, never rotated by a deploy, and handed to
+    a Next site's build and its server — no other app.
+
+### Patch Changes
+
+- [#527](https://github.com/geekmidas/toolbox/pull/527) [`7d835af`](https://github.com/geekmidas/toolbox/commit/7d835af79a61c86db64ecf209f64290217cf102a) Thanks [@geekmidas](https://github.com/geekmidas)! - A wildcard site's certificate through GoDaddy: the shared Traefik edge answers
+  Let's Encrypt's DNS challenge through whichever provider holds the stage's
+  domain, Route 53 or GoDaddy
+
+  - **`ACME_DNS_CHALLENGES`** (`@geekmidas/edge/proxy/traefik`) maps each DNS
+    provider gkm knows to Traefik's (lego's) name for it and the stage secrets it
+    reads. The edge's static configuration has one DNS-challenge resolver per
+    entry, each with its own ACME store, so stages on different providers share
+    one server; the stack's wildcard router names its own provider's
+    (`acmeDnsResolver`). Another provider is one entry.
+  - **GoDaddy**: `dns: { 'example.com': { provider: 'godaddy' } }` with
+    `proxy: 'traefik'` now gets a `*.<domain>` certificate from the
+    `letsencrypt-dns-godaddy` resolver instead of stopping at
+    `WildcardSiteCertificateMissing`. The edge reads the stage's
+    `GODADDY_API_KEY` and `GODADDY_API_SECRET` (a GoDaddy API key and secret —
+    not `GODADDY_API_TOKEN`): the deploy writes each into its own `0600` file in
+    the edge's container before the stack's routes ask for the certificate, and
+    the edge's environment names only the files (`GODADDY_API_KEY_FILE`, …). A
+    rotated value is rewritten and the edge restarted. Neither is handed to an
+    app (`isStackKey`). A stage without them is refused before anything starts,
+    with `AcmeDnsSecretsMissing`, naming the `gkm secrets:set` lines.
+  - **Route 53 is unchanged**: its resolver keeps its name (`letsencrypt-dns`)
+    and its store (`/acme/acme-dns.json`), its routers render as before, and its
+    key is still issued through IAM. The edge's static configuration gains the
+    GoDaddy resolver, so the edge is recreated once on the first deploy after
+    upgrading.
+  - The apex and every named host keep their HTTP-challenge certificates, on
+    either provider: a wildcard covers one label, never the domain itself.
+
+- Updated dependencies [[`4011635`](https://github.com/geekmidas/toolbox/commit/4011635bbd9094fcdf5fee46512c4c9c2f0dbd1b), [`7d835af`](https://github.com/geekmidas/toolbox/commit/7d835af79a61c86db64ecf209f64290217cf102a)]:
+  - @geekmidas/storage@10.0.0-alpha.186
+  - @geekmidas/constructs@10.0.0-alpha.186
+  - @geekmidas/edge@10.0.0-alpha.186
+  - @geekmidas/cache@10.0.0-alpha.186
+  - @geekmidas/db@10.0.0-alpha.186
+  - @geekmidas/envkit@10.0.0-alpha.186
+  - @geekmidas/errors@10.0.0-alpha.186
+  - @geekmidas/logger@10.0.0-alpha.186
+  - @geekmidas/manifest@10.0.0-alpha.186
+  - @geekmidas/schema@10.0.0-alpha.186
+  - @geekmidas/services@10.0.0-alpha.186
+  - @geekmidas/telescope@10.0.0-alpha.186
+
 ## 10.0.0-alpha.185
 
 ### Minor Changes
