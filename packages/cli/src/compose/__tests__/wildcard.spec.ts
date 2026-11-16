@@ -54,6 +54,10 @@ function deployed(
 	options: {
 		proxy?: 'caddy' | 'traefik';
 		route53?: boolean;
+		/** The DNS provider holding `example.com` — `route53` with `route53`. */
+		dns?: string;
+		/** The stage's own secrets, beyond the fixture's. */
+		custom?: Record<string, string>;
 		tls?: boolean;
 		hosts?: boolean;
 	} = {},
@@ -65,8 +69,14 @@ function deployed(
 			staging: 'staging.shop.example.com',
 		},
 		protectedSubdomains: ['www', 'mail'],
-		...(options.route53
-			? { dns: { 'example.com': { provider: 'route53' } } }
+		...(options.route53 || options.dns
+			? {
+					dns: {
+						'example.com': {
+							provider: options.dns ?? 'route53',
+						} as never,
+					},
+				}
 			: {}),
 		deploy: {
 			...workspace.deploy,
@@ -99,6 +109,7 @@ function deployed(
 			custom: {
 				AUTH_SECRET: 'the-production-signing-secret',
 				REDIS_PASSWORD: 'the-redis-password',
+				...options.custom,
 			},
 		},
 		ports: {},
@@ -149,6 +160,61 @@ describe('a wildcard site behind the shared Traefik edge', () => {
 			host: '*.shop.example.com',
 			tls: 'dns',
 		});
+	});
+
+	describe('with GoDaddy holding the domain', () => {
+		const GODADDY = {
+			GODADDY_API_KEY: 'the-godaddy-api-key',
+			GODADDY_API_SECRET: 'the-godaddy-api-secret',
+		};
+
+		it('gets one *.<domain> certificate over the DNS challenge, through GoDaddy', () => {
+			const s = deployed({ proxy: 'traefik', dns: 'godaddy', custom: GODADDY });
+			const routers = parse(s.traefik!).http.routers;
+
+			expect(routers[`${s.project}-web`].tls).toEqual({
+				certResolver: 'letsencrypt-dns-godaddy',
+				domains: [{ main: '*.shop.example.com' }],
+			});
+			// The stack's own services reach the site on the same certificate.
+			expect(routers[`${s.project}-web-stack`].tls).toEqual(
+				routers[`${s.project}-web`].tls,
+			);
+			// Every named host keeps its HTTP-challenge certificate, which no
+			// DNS provider takes part in.
+			expect(routers[`${s.project}-api`].tls).toEqual({
+				certResolver: 'letsencrypt',
+			});
+			expect(s.wildcard).toEqual({
+				site: 'Web',
+				host: '*.shop.example.com',
+				tls: 'dns',
+			});
+		});
+
+		it("never writes GoDaddy's keys into the stack, nor hands them to an app", () => {
+			const s = deployed({ proxy: 'traefik', dns: 'godaddy', custom: GODADDY });
+			const everything = JSON.stringify(s);
+
+			for (const value of Object.values(GODADDY)) {
+				expect(everything).not.toContain(value);
+			}
+			for (const app of [...s.apps, ...s.workers]) {
+				expect(JSON.stringify(app)).not.toContain('GODADDY_API_');
+			}
+		});
+
+		it('composes without the keys, which the deploy asks for', () => {
+			const s = deployed({ proxy: 'traefik', dns: 'godaddy' });
+
+			expect(s.wildcard?.tls).toBe('dns');
+		});
+	});
+
+	it('names every DNS provider the edge can answer the challenge through', () => {
+		expect(() => deployed({ proxy: 'traefik', dns: 'hostinger' })).toThrow(
+			/provider: 'route53' \| 'godaddy'/,
+		);
 	});
 
 	it("serves the stage's own certificate where it set one", () => {

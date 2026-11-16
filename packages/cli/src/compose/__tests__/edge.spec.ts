@@ -17,12 +17,16 @@ import {
 } from '@geekmidas/edge/certificates/local';
 import { edgeCaddyfile } from '@geekmidas/edge/proxy/caddy';
 import {
+	ACME_DNS_CHALLENGES,
+	ACME_DNS_SECRET_KEYS,
+	acmeDnsResolver,
 	claimsOverlap,
 	DEFAULT_EDGE_PROJECT,
 	EDGE_NETWORK,
 	EDGE_PROJECT,
 	edgeClaims,
 	edgeCompose,
+	edgeDnsSecretPath,
 	edgeProject,
 	readEdgeClaims,
 	TRAEFIK_IMAGE,
@@ -660,11 +664,153 @@ describe('the edge', () => {
 		expect(compose.services.traefik.extra_hosts).toEqual([
 			'host.docker.internal:host-gateway',
 		]);
-		// The DNS challenge's key, read from the file a stage with a wildcard
-		// site writes — never a key in the compose file itself.
+		// The DNS challenge's keys, read from the files a stage with a
+		// wildcard site writes — never a key in the compose file itself.
 		expect(compose.services.traefik.environment).toEqual({
 			AWS_SHARED_CREDENTIALS_FILE: '/etc/gkm-edge/certs/aws-credentials',
 			AWS_REGION: 'us-east-1',
+			GODADDY_API_KEY_FILE: '/etc/gkm-edge/certs/acme-dns-GODADDY_API_KEY',
+			GODADDY_API_SECRET_FILE:
+				'/etc/gkm-edge/certs/acme-dns-GODADDY_API_SECRET',
+		});
+	});
+
+	describe('answering the DNS challenge', () => {
+		const resolvers = () =>
+			(
+				traefikStatic({ https: 443, http: 80 }) as {
+					certificatesResolvers: Record<
+						string,
+						{ acme: Record<string, unknown> }
+					>;
+				}
+			).certificatesResolvers;
+
+		it("keeps Route 53's resolver as it was, its certificates where they were", () => {
+			expect(acmeDnsResolver('route53')).toBe('letsencrypt-dns');
+			expect(resolvers()['letsencrypt-dns']).toEqual({
+				acme: {
+					storage: '/acme/acme-dns.json',
+					dnsChallenge: {
+						provider: 'route53',
+						resolvers: ['1.1.1.1:53', '8.8.8.8:53'],
+					},
+				},
+			});
+			// The HTTP challenge's, which every named host uses, likewise.
+			expect(resolvers().letsencrypt).toEqual({
+				acme: {
+					storage: '/acme/acme.json',
+					httpChallenge: { entryPoint: 'web' },
+				},
+			});
+		});
+
+		it('has a resolver through GoDaddy, with an ACME store of its own', () => {
+			expect(acmeDnsResolver('godaddy')).toBe('letsencrypt-dns-godaddy');
+			expect(resolvers()['letsencrypt-dns-godaddy']).toEqual({
+				acme: {
+					storage: '/acme/acme-dns-godaddy.json',
+					dnsChallenge: {
+						provider: 'godaddy',
+						resolvers: ['1.1.1.1:53', '8.8.8.8:53'],
+					},
+				},
+			});
+		});
+
+		it('has one resolver per provider, whichever a stack on the server uses', () => {
+			const names = Object.keys(
+				ACME_DNS_CHALLENGES,
+			) as (keyof typeof ACME_DNS_CHALLENGES)[];
+			expect(Object.keys(resolvers()).sort()).toEqual(
+				['letsencrypt', ...names.map(acmeDnsResolver)].sort(),
+			);
+		});
+
+		it('hands the edge where each key is, and never a key', () => {
+			const { services } = edgeCompose({
+				ports: { https: 443, http: 80 },
+				staticConfig: 'x',
+				logging: { driver: 'json-file', options: {} },
+			}) as { services: { traefik: { environment: Record<string, string> } } };
+
+			expect(ACME_DNS_SECRET_KEYS).toEqual([
+				'GODADDY_API_KEY',
+				'GODADDY_API_SECRET',
+			]);
+			for (const key of ACME_DNS_SECRET_KEYS) {
+				// lego reads `<KEY>_FILE` in place of `<KEY>`.
+				expect(services.traefik.environment[key]).toBeUndefined();
+				expect(services.traefik.environment[`${key}_FILE`]).toBe(
+					edgeDnsSecretPath(key),
+				);
+				expect(edgeDnsSecretPath(key).startsWith('/etc/gkm-edge/certs/')).toBe(
+					true,
+				);
+			}
+		});
+
+		/** A wildcard site and the site at its domain, through `provider`. */
+		const wildcardAndApex = (provider: 'route53' | 'godaddy') =>
+			(
+				traefikDynamic(
+					[
+						{
+							name: 'home',
+							host: 'aqora.dev',
+							upstreams: [{ service: 'home', port: 3000 }],
+							streaming: true,
+						},
+						{
+							name: 'web',
+							host: '*.aqora.dev',
+							upstreams: [{ service: 'web', port: 3001 }],
+							streaming: true,
+							wildcard: {
+								domain: 'aqora.dev',
+								except: ['admin', 'api'],
+								tls: { kind: 'dns', provider },
+							},
+						},
+					],
+					{ project: 'aqora-staging', tls: { kind: 'acme' } },
+				) as {
+					http: { routers: Record<string, { rule: string; tls: unknown }> };
+				}
+			).http.routers;
+
+		it("certifies a wildcard through the domain's provider, and the apex beside it", () => {
+			const routers = wildcardAndApex('godaddy');
+
+			expect(routers['aqora-staging-web']!.tls).toEqual({
+				certResolver: 'letsencrypt-dns-godaddy',
+				domains: [{ main: '*.aqora.dev' }],
+			});
+			// `*.aqora.dev` covers one label, never `aqora.dev` itself: the
+			// apex is certified on its own router, over the HTTP challenge,
+			// which needs no DNS provider at all.
+			expect(routers['aqora-staging-home']).toMatchObject({
+				rule: 'Host(`aqora.dev`)',
+				tls: { certResolver: 'letsencrypt' },
+			});
+		});
+
+		it("renders Route 53's wildcard as it did", () => {
+			const routers = wildcardAndApex('route53');
+
+			expect(routers['aqora-staging-web']!.tls).toEqual({
+				certResolver: 'letsencrypt-dns',
+				domains: [{ main: '*.aqora.dev' }],
+			});
+			expect(routers['aqora-staging-home']!.tls).toEqual({
+				certResolver: 'letsencrypt',
+			});
+			// The provider is the only difference between the two.
+			const godaddy = wildcardAndApex('godaddy');
+			expect(JSON.stringify(routers).replaceAll('letsencrypt-dns"', 'X"')).toBe(
+				JSON.stringify(godaddy).replaceAll('letsencrypt-dns-godaddy"', 'X"'),
+			);
 		});
 	});
 

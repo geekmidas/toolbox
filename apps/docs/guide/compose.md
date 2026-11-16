@@ -1382,11 +1382,39 @@ Let's Encrypt issues a wildcard certificate only over the DNS challenge, so
 each proxy gets the tenants' certificates its own way:
 
 - **Traefik (the shared edge)**: one `*.<stage domain>` certificate per stage,
-  obtained and renewed by the edge over the DNS challenge when Route 53 holds
-  the domain (`dns: { 'example.com': { provider: 'route53' } }`). The wildcard
-  router (`HostRegexp`, priority 1) sits below every named host's. The deploy
-  creates what the edge writes the challenge with: an IAM user for the server,
-  `gkm-edge-acme-<hash>` under `/gkm/`, with one inline policy per stack
+  obtained and renewed by the edge over the DNS challenge when Route 53 or
+  GoDaddy holds the domain (`dns: { 'example.com': { provider: 'route53' } }`,
+  or `provider: 'godaddy'`). The wildcard router (`HostRegexp`, priority 1)
+  sits below every named host's. The apex and every named host keep their own
+  certificates over the HTTP challenge: `*.example.com` covers one label, never
+  `example.com` itself, and the HTTP challenge needs no DNS provider.
+
+  The edge has one resolver per provider — `letsencrypt-dns` for Route 53,
+  `letsencrypt-dns-godaddy` for GoDaddy, each with its own ACME store — so
+  stages on different providers share one server.
+
+  **GoDaddy** writes the challenge record with the stage's own API key and
+  secret ([developer.godaddy.com/keys](https://developer.godaddy.com/keys), a
+  production key; GoDaddy's API answers only accounts it allows, see
+  `GoDaddyApiAccessDenied`):
+
+  ```bash
+  gkm secrets:set GODADDY_API_KEY '<key>' --stage production
+  gkm secrets:set GODADDY_API_SECRET '<secret>' --stage production
+  ```
+
+  They are not the `GODADDY_API_TOKEN` the deploy writes the hosts' records
+  with: the edge's ACME client (lego) signs with a key and secret. The deploy
+  writes each into its own file in the edge's `certs` volume (`0600`), and the
+  edge's environment names only the files (`GODADDY_API_KEY_FILE`,
+  `GODADDY_API_SECRET_FILE`) — neither value is in the edge's compose file, its
+  static configuration, or any app's environment. A rotated value is rewritten
+  and the edge restarted to read it. A stage without them is refused before
+  anything starts, with `AcmeDnsSecretsMissing`. The edge is the server's, so
+  it holds one pair: stages sharing a server write the same account's key.
+
+  **Route 53**: the deploy creates what the edge writes the challenge with:
+  an IAM user for the server, `gkm-edge-acme-<hash>` under `/gkm/`, with one inline policy per stack
   allowing `ChangeResourceRecordSets` on the stage's zone for the TXT record
   `_acme-challenge.<stage domain>` alone — plus `ListResourceRecordSets` on
   that zone, `GetChange` and `ListHostedZonesByName`, which write nothing. Its

@@ -7,6 +7,8 @@
  * Pure.
  */
 
+import type { AcmeDnsProvider } from '../proxy/traefik';
+
 /** Where a route sends its requests. */
 export type Upstream = ServiceUpstream | HostUpstream;
 
@@ -166,11 +168,15 @@ export interface EdgeWildcard {
 	 * Where its certificate comes from:
 	 * - `stage`: the stage's own (`deploy.compose.tls`), a wildcard one;
 	 * - `dns`: one `*.<domain>` certificate from Let's Encrypt over the DNS
-	 *   challenge, which the shared Traefik edge answers through Route 53;
+	 *   challenge, which the shared Traefik edge answers through `provider`
+	 *   — the DNS provider holding the domain;
 	 * - `on-demand`: one per host, as Caddy is first asked for it, once the
 	 *   site's `hosts` route — `ask`, on the stack's network — answers 200.
 	 */
-	tls: { kind: 'stage' } | { kind: 'dns' } | { kind: 'on-demand'; ask: string };
+	tls:
+		| { kind: 'stage' }
+		| { kind: 'dns'; provider: AcmeDnsProvider }
+		| { kind: 'on-demand'; ask: string };
 	/**
 	 * The site's `hosts` route, asked before each request a label makes —
 	 * `GET <path>?domain=<host>` on `upstream` — where a certificate already
