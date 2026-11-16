@@ -1,10 +1,11 @@
 import type { ConstructManifest } from '@geekmidas/manifest';
 import { provisionOrder } from '@geekmidas/manifest';
 import { describe, expect, it } from 'vitest';
-import { hostsFor, sitesFor, toCaddyfile } from '../caddyfile';
+import { toCaddyfile } from '../caddyfile';
 import { portKeys, primaryPortKey } from '../containers';
 import { envFor } from '../env';
 import { planFor } from '../plan';
+import { hostsFor, localRoutes } from '../routes';
 import { TEST_CREDENTIALS } from './__helpers__/credentials';
 
 /**
@@ -87,10 +88,10 @@ describe('aliases and redirects, locally', () => {
 
 	it('serve aliases from the site block and redirect to the canonical host', () => {
 		const { plan, edge } = resolve();
-		const caddyfile = toCaddyfile(sitesFor(plan, 'shop', addresses), {
-			certificate: '/etc/caddy/sites/dev.pem',
-			port: edge,
-		});
+		const caddyfile = toCaddyfile(
+			localRoutes(plan, 'shop', { addresses, port: edge }),
+			{ certificate: '/etc/caddy/sites/dev.pem' },
+		);
 
 		expect(caddyfile).toContain(
 			'https://api.shop.localhost, https://rest.shop.localhost {',

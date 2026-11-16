@@ -56,6 +56,7 @@ import {
 	verifyCompose,
 } from './phases';
 
+export { EdgePortInvalid, edgePorts } from '../../compose/edge';
 export {
 	ComposeAppsUnhealthy,
 	type HealthProbe,
@@ -69,8 +70,6 @@ export {
 	ComposePushNeedsBuild,
 	type ComposeRun,
 	type ComposeRunOptions,
-	EdgePortInvalid,
-	edgePorts,
 	gitRevision,
 	NoGitRevision,
 	RedisClientMissing,

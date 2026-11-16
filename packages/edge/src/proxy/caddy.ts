@@ -18,6 +18,7 @@ import {
 	type EdgeRoute,
 	type EdgeTls,
 	type Upstream,
+	upstreamAddress,
 } from '../routes';
 
 /** Where Caddy reads a stage's own certificate, inside its container. */
@@ -39,9 +40,9 @@ export interface CaddyfileOptions {
 	redirects?: boolean;
 }
 
-/** An upstream on the stack's own network: its service name. */
-function address({ service, port }: Upstream): string {
-	return `${service}:${port}`;
+/** An upstream on the stack's own network — its service name — or on the host. */
+function address(upstream: Upstream): string {
+	return upstreamAddress(upstream);
 }
 
 /** The Caddyfile for a stack's edge. */
@@ -165,7 +166,13 @@ function siteBlock(
 	# Answered by another service: ${handler.name}.
 	@handler${index} path ${handler.prefixes.map((prefix) => `${prefix}*`).join(' ')}
 	handle @handler${index} {
-		reverse_proxy ${handler.upstreams.map(address).join(' ')}
+		reverse_proxy ${handler.upstreams.map(address).join(' ')}${
+			handler.under
+				? ` {
+			rewrite ${handler.under}{uri}
+		}`
+				: ''
+		}
 	}
 `,
 				)

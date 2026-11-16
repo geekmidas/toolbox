@@ -1,7 +1,8 @@
 import { type ConstructManifest, provisionOrder } from '@geekmidas/manifest';
 import { describe, expect, it } from 'vitest';
-import { sitesFor, toCaddyfile } from '../caddyfile';
+import { toCaddyfile } from '../caddyfile';
 import { planFor } from '../plan';
+import { localRoutes, MINIO_UPSTREAM } from '../routes';
 
 /**
  * The edge routes only what it can reach: a file server with a bucket behind
@@ -20,21 +21,23 @@ const api = {
 	},
 } as const satisfies ConstructManifest;
 
-describe('sitesFor', () => {
+describe('localRoutes', () => {
 	it('defaults the port by scheme when the address names none', () => {
 		const sites = (address: string) =>
-			sitesFor(plan(api), 'shop', { Api: address });
+			localRoutes(plan(api), 'shop', { addresses: { Api: address } });
 
-		expect(sites('http://localhost')[0]?.upstream).toBe(
-			'http://host.docker.internal:80',
-		);
-		expect(sites('https://localhost')[0]?.upstream).toBe(
-			'http://host.docker.internal:443',
-		);
+		expect(sites('http://localhost')[0]?.upstreams).toEqual([
+			{ onHost: true, port: 80 },
+		]);
+		expect(sites('https://localhost')[0]?.upstreams).toEqual([
+			{ onHost: true, port: 443 },
+		]);
 	});
 
 	it('routes nothing to an address it cannot read', () => {
-		expect(sitesFor(plan(api), 'shop', { Api: 'not a url' })).toEqual([]);
+		expect(
+			localRoutes(plan(api), 'shop', { addresses: { Api: 'not a url' } }),
+		).toEqual([]);
 	});
 
 	it('skips a file server whose bucket is not in the plan', () => {
@@ -48,7 +51,7 @@ describe('sitesFor', () => {
 			},
 		} as const satisfies ConstructManifest;
 
-		expect(sitesFor(plan(orphan), 'shop')).toEqual([]);
+		expect(localRoutes(plan(orphan), 'shop')).toEqual([]);
 	});
 });
 
@@ -57,13 +60,17 @@ describe('toCaddyfile', () => {
 		const file = toCaddyfile(
 			[
 				{
+					name: 'api',
 					host: 'api.shop.localhost',
-					upstream: 'http://host.docker.internal:3000',
+					upstreams: [{ onHost: true, port: 3000 }],
+					streaming: true,
 				},
 				{
+					name: 'files',
 					host: 'files.shop.localhost',
-					upstream: 'http://minio:9000',
-					rewrite: '/uploads{uri}',
+					upstreams: [MINIO_UPSTREAM],
+					streaming: false,
+					prefix: '/uploads',
 				},
 			],
 			{ certificate: '/etc/caddy/sites/dev.pem' },

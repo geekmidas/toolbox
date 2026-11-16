@@ -66,6 +66,10 @@ export class ComposeTlsFileMissing extends GkmError {
  * behind a Traefik edge on this machine. The per-stage map sets each stage it
  * names, and a stage it leaves out is on Caddy: it is how one stage runs
  * something else (`proxy: { development: 'caddy', production: 'traefik' }`).
+ *
+ * The one place a stage's proxy is decided: `gkm compose` reads it for the
+ * stage it runs, and `gkm dev` and `gkm test` for the local stage
+ * (`localEdgeFor`).
  */
 export function proxyFor(
 	config: ComposeWorkspaceConfig | undefined,

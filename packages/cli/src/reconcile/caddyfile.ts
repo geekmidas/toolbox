@@ -1,350 +1,25 @@
 /**
- * The Caddy configuration a plan implies.
+ * The local edge's routes, rendered for the Caddy of this project's — the
+ * proxy `gkm dev` and `gkm test` run behind unless the local stage's
+ * `deploy.compose.proxy` is Traefik (see `localEdge.ts`).
  *
- * A file server is a *domain that serves a bucket*, and locally it had neither:
- * `UPLOADS_URL` resolved to MinIO's path-style address, which works and
- * is not the deployed shape. MinIO's own virtual-host mode cannot fix that —
- * it reads the leading label *as the bucket name*, so it produces the right
- * shape only when the server's id and the bucket's happen to agree, and never
- * for a server fronting two buckets.
+ * The routes are data (`routes.ts`, as `@geekmidas/edge/routes` models them
+ * for every proxy); this is one adapter over them. One Caddy serves every
+ * stage — the same way one Postgres holds `orders` and `orders_test` — so its
+ * root config only imports, and each stage's routes are a file of their own.
  *
- * So the mapping lives in front of MinIO instead: one host per file server,
- * rewriting the bucket in as a path prefix. That is the whole of it — no
- * caching, because caching is not what is missing locally, and a caching proxy
- * would add an invalidation story a local stack has no use for.
- *
- * What it buys beyond the shape is a certificate: gkm's local authority
- * (`@geekmidas/edge/certificates/local`) issues one for the stage's hosts, which the edge
- * serves the way a deployed edge serves the stage's own, so a local address is
- * `https://` like the deployed one, and
- * everything downstream of that — `Secure` cookies, `SameSite`, a cookie domain
- * with more than one host under it — starts behaving the way it will in
- * production rather than the way `http://localhost` allows.
- *
- * Pure, like `composeFor`: what should exist is data, and rendering it is one
- * line at the edge.
+ * Pure, like `composeFor`: rendering the routes is one string.
  */
 
 import { clientIpRule } from '@geekmidas/edge/proxy/caddy';
-import { WILDCARD_SUBDOMAIN } from '@geekmidas/manifest';
-import { processorsDevRoute } from '../generators/processorRoute.js';
-import { fileServerLabel } from '../workspace/fileServerLabel.js';
-import type { Plan, PlannedResource } from './plan';
-
-/** One host on the edge, and what answers behind it. */
-export interface CaddySite {
-	/** e.g. `api.kitchen-sink.localhost` */
-	host: string;
-	/** Where the request is sent, e.g. `http://minio:9000`. */
-	upstream: string;
-	/**
-	 * More hosts answered exactly as `host` is — a construct's `aliases`,
-	 * under the project: `rest.kitchen-sink.localhost`.
-	 */
-	aliases?: readonly string[];
-	/**
-	 * Hosts that answer with a permanent redirect to `host`, path and query
-	 * kept — a site's `redirects`: `www.kitchen-sink.localhost`.
-	 */
-	redirects?: readonly string[];
-	/**
-	 * A path to rewrite to, where the upstream expects a different one.
-	 *
-	 * The bucket prefix on an object store is the case. A surface and a site
-	 * want none: they are already serving the paths the client asked for.
-	 */
-	rewrite?: string;
-	/**
-	 * Path prefixes sent somewhere else on the same host: a file server's
-	 * processor patterns, to the dev server holding them, under the route it
-	 * mounts them on.
-	 */
-	processors?: {
-		prefixes: readonly string[];
-		upstream: string;
-		/** Prepended to the path: `/__gkm/processors/AssetsServer`. */
-		under: string;
-	};
-	/**
-	 * For a wildcard site: what keeps a host that is not a tenant from
-	 * reaching it — the hosts nothing but an app may answer on, refused
-	 * outright, and the route asked about every other host before it is
-	 * served.
-	 */
-	tenants?: {
-		/** Full hosts — `api.shop.localhost`, `www.shop.localhost`. */
-		protected: readonly string[];
-		/** Its `hosts` route: `200` serves the host, anything else is returned. */
-		hosts?: { upstream: string; uri: string };
-	};
-}
-
-/**
- * The kinds the edge serves.
- *
- * Everything that owns a *public address*. Deployed, each of these has a real
- * hostname and a certificate, so this is what makes the local shape the same
- * one rather than a near-enough one — and the application is indifferent
- * either way, because it reads whichever address was injected and never
- * composes one.
- *
- * Adding a kind here is the whole of adding it to the edge.
- */
-export const EDGE_KINDS: Readonly<Record<string, true>> = {
-	'file-server': true,
-	'rest-api': true,
-	// Caddy proxies the upgrade as it is; nothing about the route differs.
-	'websocket-api': true,
-	site: true,
-};
-
-/**
- * How the edge reaches the host, from inside its container.
- *
- * A surface and a site are served by processes `gkm dev` starts on the host,
- * not by containers — so the edge has to leave Docker's network to reach them.
- * Docker Desktop resolves this name already; on Linux the compose definition
- * maps it to the host gateway.
- */
-const HOST_GATEWAY = 'host.docker.internal';
+import {
+	type EdgeRoute,
+	type Upstream,
+	upstreamAddress,
+} from '@geekmidas/edge/routes';
 
 /** Where the edge's container reads `.gkm/caddy-sites/` — routes and certificates. */
 export const CADDY_SITES_IN_CONTAINER = '/etc/caddy/sites';
-
-/**
- * The suffix every local host shares.
- *
- * `.localhost` rather than a made-up TLD because it resolves to loopback
- * without touching `/etc/hosts` — macOS and systemd-resolved both answer for
- * subdomains of it.
- */
-export const LOCAL_TLD = 'localhost';
-
-/**
- * The sites a plan implies, one per file server.
- *
- * The leading label is the *server's* stage-scoped name rather than the
- * bucket's, which is the difference that matters: two servers over one bucket
- * are a legitimate arrangement — two cache behaviours, one origin — and naming
- * the host after the bucket would make them collide.
- */
-export function sitesFor(
-	plan: Plan,
-	project: string,
-	/**
-	 * Where surfaces and sites answer on the host, keyed by construct id.
-	 *
-	 * Assigned by whatever starts them rather than published by a container,
-	 * which is why they arrive here instead of being read off a port.
-	 */
-	addresses: Readonly<Record<string, string>> = {},
-	/**
-	 * Where each file server's processors answer, keyed by the file server's
-	 * id: the dev server of the app holding them.
-	 */
-	processorAddresses: Readonly<Record<string, string>> = {},
-): CaddySite[] {
-	const byId = new Map(plan.resources.map((r) => [r.id, r]));
-	const sites: CaddySite[] = [];
-
-	for (const resource of plan.resources) {
-		if (!EDGE_KINDS[resource.kind]) continue;
-
-		const host = hostFor(resource, project);
-
-		if (resource.kind === 'file-server') {
-			// The bucket is a prefix on the origin, never part of the address: the
-			// client asks for the key it stored.
-			const origin = resource.of ? byId.get(resource.of) : undefined;
-			if (!origin) continue;
-
-			// Its processors' patterns go to the dev server holding them, once
-			// it has an address; everything else is still the bucket.
-			const address = processorAddresses[resource.id];
-			const port = address ? portOf(address) : undefined;
-			sites.push({
-				host,
-				upstream: 'http://minio:9000',
-				rewrite: `/${origin.name}{uri}`,
-				...(resource.processors?.length && port
-					? {
-							processors: {
-								prefixes: resource.processors,
-								upstream: `http://${HOST_GATEWAY}:${port}`,
-								under: processorsDevRoute(resource.id),
-							},
-						}
-					: {}),
-			});
-			continue;
-		}
-
-		// A surface or a site: a process on the host, at an address something
-		// else assigned. Without one there is nothing to route to — which is the
-		// ordinary state before `gkm dev` has decided where things listen.
-		const address = addresses[resource.id];
-		if (!address) continue;
-
-		const port = portOf(address);
-		if (!port) continue;
-
-		const upstream = `http://${HOST_GATEWAY}:${port}`;
-		if (resource.subdomain === WILDCARD_SUBDOMAIN) {
-			sites.push({
-				host,
-				upstream,
-				tenants: tenantsOf(resource, host, addresses),
-			});
-			continue;
-		}
-
-		const { aliases, redirects } = hostsFor(resource, project);
-		sites.push({
-			host,
-			upstream,
-			...(aliases.length ? { aliases } : {}),
-			...(redirects.length ? { redirects } : {}),
-		});
-	}
-
-	return sites;
-}
-
-/**
- * What stands between a wildcard site and a host that is not a tenant.
- *
- * Caddy already prefers a named host to the `*`, so `api.shop.localhost`
- * reaches the API whatever the wildcard says. What it cannot know is the
- * labels nothing is running on: `www`, or an app this stage has not started.
- * Those are refused here, so no slug that a deploy would protect is ever
- * served locally either.
- *
- * The `hosts` route is asked through `forward_auth`, which is a deployed
- * edge's check in miniature: a `2xx` lets the request through, and any other
- * answer — the app's own `404` — is what the browser gets, so a mistyped
- * slug fails here and not first in production. Without an address for the
- * surface serving it there is nothing to ask, and every host is served.
- */
-function tenantsOf(
-	resource: PlannedResource,
-	host: string,
-	addresses: Readonly<Record<string, string>>,
-): CaddySite['tenants'] {
-	const domain = host.slice(`${WILDCARD_SUBDOMAIN}.`.length);
-	const surface = resource.hosts
-		? addresses[resource.hosts.surface]
-		: undefined;
-	const port = surface ? portOf(surface) : undefined;
-
-	return {
-		protected: (resource.protectedSubdomains ?? []).map(
-			(label) => `${label}.${domain}`,
-		),
-		...(resource.hosts && port
-			? {
-					hosts: {
-						upstream: `http://${HOST_GATEWAY}:${port}`,
-						uri: `${resource.hosts.path}?domain={host}`,
-					},
-				}
-			: {}),
-	};
-}
-
-/** The port a local address answers on, defaulting by scheme. */
-function portOf(address: string): string | undefined {
-	try {
-		const { port, protocol } = new URL(address);
-
-		return port || (protocol === 'https:' ? '443' : '80');
-	} catch {
-		return undefined;
-	}
-}
-
-/**
- * Where one file server answers, including the stage its name carries.
- *
- * The project is a label rather than a decoration: it is what keeps two
- * checkouts from answering on one address. Omitted when there is no project to
- * name, because an empty label makes `uploads..localhost` — a host nothing
- * resolves and no certificate can be issued for.
- */
-export function hostFor(resource: PlannedResource, project: string): string {
-	// The root site answers on the project's bare host, as it does on the base
-	// domain deployed; everything else on a subdomain of it. A stage other than
-	// the local one keeps a label — the stage — because one edge serves every
-	// stage, and `gkm test` claiming the bare host would take it from `gkm dev`.
-	// Only under a project: without one, the "bare host" is `localhost` itself,
-	// which is nobody's domain to take.
-	const label =
-		resource.root && project ? stageOf(resource) : labelOf(resource);
-
-	// A wildcard site answers on every label under the stage's own domain —
-	// `*.shop.localhost`, `*.test.shop.localhost` — so a stage is a label of
-	// that domain rather than a suffix on the `*`.
-	if (resource.subdomain === WILDCARD_SUBDOMAIN) {
-		return [WILDCARD_SUBDOMAIN, stageOf(resource), project, LOCAL_TLD]
-			.filter(Boolean)
-			.join('.');
-	}
-
-	return [label, project, LOCAL_TLD].filter(Boolean).join('.');
-}
-
-/** Every host a resource answers on: its own, its aliases, its redirects. */
-export interface ResourceHosts {
-	/** The canonical one — what its `<ID>_URL` is built on. */
-	host: string;
-	/** Answered exactly as `host` is. */
-	aliases: string[];
-	/** Answered with a permanent redirect to `host`. */
-	redirects: string[];
-}
-
-/**
- * Where a resource answers, every host of it: {@link hostFor}'s, and each
- * alias and redirect label under the project, carrying the stage as its own
- * label does — `www-test.shop.localhost` for `gkm test`.
- */
-export function hostsFor(
-	resource: PlannedResource,
-	project: string,
-): ResourceHosts {
-	const stage = stageOf(resource);
-	const under = (label: string) =>
-		[stage ? `${label}-${stage}` : label, project, LOCAL_TLD]
-			.filter(Boolean)
-			.join('.');
-	return {
-		host: hostFor(resource, project),
-		aliases: (resource.aliases ?? []).map(under),
-		redirects: (resource.redirects ?? []).map(under),
-	};
-}
-
-/**
- * A resource's own label: its `subdomain` where it declared one, and a file
- * server's own name — the label a deploy uses too — with the stage it carries
- * kept, so `gkm test` and `gkm dev` still answer on different hosts.
- */
-function labelOf(resource: PlannedResource): string {
-	const own =
-		resource.kind === 'file-server'
-			? fileServerLabel(resource.id)
-			: resource.subdomain;
-	if (!own) return resource.name;
-	const stage = stageOf(resource);
-	return stage ? `${own}-${stage}` : own;
-}
-
-/** The stage a resource's name carries, or nothing for the local stage's. */
-function stageOf(resource: PlannedResource): string | undefined {
-	const base = resource.id.toLowerCase();
-	return resource.name === base
-		? undefined
-		: resource.name.slice(base.length + 1);
-}
 
 /**
  * The static root config, which only ever imports.
@@ -369,8 +44,15 @@ import ${CADDY_SITES_IN_CONTAINER}/*.caddy
 `;
 }
 
+/** An upstream as Caddy dials it from this project's network. */
+function dial(upstreams: readonly Upstream[]): string {
+	return upstreams
+		.map((upstream) => `http://${upstreamAddress(upstream)}`)
+		.join(' ');
+}
+
 /**
- * One stage's sites, as the file imported above.
+ * One stage's routes, as the file imported above.
  *
  * `rewrite` rather than a path prefix on the address: the bucket is the
  * origin's business, and the client asks for the key it stored.
@@ -380,7 +62,7 @@ import ${CADDY_SITES_IN_CONTAINER}/*.caddy
  * it look for a bucket named after the domain.
  */
 export function toCaddyfile(
-	sites: readonly CaddySite[],
+	routes: readonly EdgeRoute[],
 	options: {
 		/**
 		 * The stage's certificate and key, one PEM file, as the edge's
@@ -389,77 +71,74 @@ export function toCaddyfile(
 		certificate: string;
 		/** The stack's token: see {@link clientIpRule}. */
 		edgeToken?: string;
-		/**
-		 * The port the edge is published on, where it is not 443: what a
-		 * redirect to a canonical host keeps.
-		 */
-		port?: number;
 	},
 ): string {
-	if (sites.length === 0) {
+	if (routes.length === 0) {
 		return `${GENERATED}
 # No file server is declared in this stage, so it routes nothing.
 `;
 	}
 
-	const port = options.port && options.port !== 443 ? `:${options.port}` : '';
-	const blocks = sites.map(
-		({ host, upstream, rewrite, processors, tenants, aliases, redirects }) => {
-			const proxy = `reverse_proxy ${upstream} {${
-				rewrite
-					? `
-		rewrite ${rewrite}
+	const blocks = routes.map((route) => {
+		const { host, prefix, handlers, wildcard, aliases, redirects } = route;
+		const proxy = `reverse_proxy ${dial(route.upstreams)} {${
+			prefix
+				? `
+		rewrite ${prefix}{uri}
 		# MinIO routes and signs on the Host header, so forwarding the requested
 		# hostname would make it look for a bucket named after the domain.
 		header_up Host {upstream_hostport}`
-					: `
+				: `
 		# The application reads whatever address was injected, so it has to see
 		# the one a caller used — that is what makes a redirect, a cookie domain
 		# and a generated link point back here rather than at the upstream.
 		header_up Host {host}
 		header_up X-Forwarded-Proto {scheme}`
-			}
+		}
 	}`;
 
-			// Each redirect host, one block: the browser is sent to the
-			// canonical host with its path and query, and nothing is proxied.
-			const redirectBlocks = (redirects ?? [])
-				.map(
-					(from) => `
+		// Each redirect host, one block: the browser is sent to the
+		// canonical host with its path and query, and nothing is proxied.
+		const redirectBlocks = (redirects?.hosts ?? [])
+			.map(
+				(from) => `
 https://${from} {
 	tls ${options.certificate} ${options.certificate}
 
-	redir https://${host}${port}{uri} permanent
+	redir ${redirects?.to}{uri} permanent
 }`,
-				)
-				.join('');
-			const names = [host, ...(aliases ?? [])]
-				.map((name) => `https://${name}`)
-				.join(', ');
+			)
+			.join('');
+		const names = [host, ...(aliases ?? [])]
+			.map((name) => `https://${name}`)
+			.join(', ');
 
-			return `
+		return `
 ${names} {
 	tls ${options.certificate} ${options.certificate}
 
 ${clientIpRule(options.edgeToken)}
-${
-	processors
-		? `
+${(handlers ?? [])
+	.map(
+		(handler) => `
 	# Its processors' patterns, to the dev server holding them — under the
 	# route it mounts them on. Answered there, so the bucket below never is.
-	@processors path ${processors.prefixes.map((prefix) => `${prefix}*`).join(' ')}
-	handle @processors {
-		reverse_proxy ${processors.upstream} {
-			rewrite ${processors.under}{uri}
+	@${handler.name} path ${handler.prefixes.map((p) => `${p}*`).join(' ')}
+	handle @${handler.name} {
+		reverse_proxy ${dial(handler.upstreams)} {${
+			handler.under
+				? `
+			rewrite ${handler.under}{uri}`
+				: ''
+		}
 			header_up Host {host}
 		}
 	}
-`
-		: ''
-}${tenants ? tenantBlock(tenants, proxy) : `	${proxy}`}
+`,
+	)
+	.join('')}${wildcard ? tenantBlock(wildcard, proxy) : `	${proxy}`}
 }${redirectBlocks}`;
-		},
-	);
+	});
 
 	return `${GENERATED}${blocks.join('\n')}\n`;
 }
@@ -470,25 +149,25 @@ ${
  * because Caddy orders directives itself and would proxy before it refused.
  */
 function tenantBlock(
-	tenants: NonNullable<CaddySite['tenants']>,
+	wildcard: NonNullable<EdgeRoute['wildcard']>,
 	proxy: string,
 ): string {
-	const refused = tenants.protected.length
+	const refused = wildcard.except.length
 		? `
 	# Labels an app answers on, or that the workspace protects: never a
 	# tenant's, whether or not anything is running on them.
-	@protected host ${tenants.protected.join(' ')}
+	@protected host ${wildcard.except.map((label) => `${label}.${wildcard.domain}`).join(' ')}
 	handle @protected {
 		respond 404
 	}
 `
 		: '';
-	const check = tenants.hosts
+	const check = wildcard.hosts
 		? `
 		# Which hosts are tenants is the app's to say: its \`hosts\` route
 		# answers 200 to serve this one, and anything else goes back as is.
-		forward_auth ${tenants.hosts.upstream} {
-			uri ${tenants.hosts.uri}
+		forward_auth ${dial([wildcard.hosts.upstream])} {
+			uri ${wildcard.hosts.path}?domain={host}
 		}
 `
 		: '';

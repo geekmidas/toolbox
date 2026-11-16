@@ -17,7 +17,11 @@ import {
 	type WorkerUnit,
 	workerUnits,
 } from '../build/workers.js';
+import { edgePorts } from '../compose/edge.js';
+import { proxyFor } from '../compose/proxy.js';
+import { composeProject } from '../compose/stack.js';
 import { loadPortState, savePortState } from '../credentials/index.js';
+import { deployIdentity } from '../deploy/identity.js';
 import { objectsRoute } from '../generators/subscriberRoute.js';
 import {
 	cacheBackendFor,
@@ -47,7 +51,7 @@ import {
 	objectsWebhookToken,
 	watchedBuckets,
 } from './objectEvents.js';
-import { planFor } from './plan.js';
+import { type LocalEdge, planFor } from './plan.js';
 
 /**
  * Every constructs glob in the workspace, resolved against its app.
@@ -57,6 +61,29 @@ import { planFor } from './plan.js';
  */
 export function constructGlobs(workspace: NormalizedWorkspace): string[] {
 	return allConstructGlobs(workspace);
+}
+
+/**
+ * The edge in front of a stage's surfaces, sites and file servers under
+ * `gkm dev` and `gkm test`: the local stage's proxy, as `proxyFor` decides it
+ * for `gkm compose` — one edge on this machine for every stage reconcile
+ * runs, `test` included. Behind Traefik, the stage registers with the shared
+ * edge under its compose project, as `gkm compose --stage <stage>` does.
+ */
+export function localEdgeFor(
+	workspace: NormalizedWorkspace,
+	stage: string,
+	env: NodeJS.ProcessEnv = process.env,
+): LocalEdge {
+	if (proxyFor(workspace.deploy?.compose, workspace.stages.local) === 'caddy') {
+		return { proxy: 'caddy' };
+	}
+	const { https, http } = edgePorts(env);
+	return {
+		proxy: 'traefik',
+		ports: { https, http },
+		project: composeProject(deployIdentity(workspace, stage)),
+	};
 }
 
 /** The backends a workspace's target implies, as the plan takes them. */
@@ -92,6 +119,7 @@ export async function derivedContainers(
 	return planFor(found, stage, provisionOrder(found), {
 		localStage: workspace.stages.local,
 		...backendsOf(workspace),
+		edge: localEdgeFor(workspace, stage),
 	}).containers;
 }
 
@@ -191,6 +219,7 @@ export async function reconcileWorkspace(
 		stage: options.stage,
 		localStage: workspace.stages.local,
 		...backendsOf(workspace),
+		edge: localEdgeFor(workspace, options.stage),
 		...(workspace.protectedSubdomains
 			? { protectedSubdomains: workspace.protectedSubdomains }
 			: {}),

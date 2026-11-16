@@ -39,6 +39,59 @@ import type {
 	StackRef,
 } from './docker.js';
 
+/** The ports the edge is published on, and the variables that move them. */
+export const EDGE_PORT_ENV = {
+	https: 'GKM_COMPOSE_HTTPS_PORT',
+	http: 'GKM_COMPOSE_HTTP_PORT',
+} as const;
+
+/**
+ * The variable that moves the local stage's OpenObserve off its loopback
+ * port, 5080 — which the local stage takes from nowhere else, since it
+ * ignores `deploy.telemetry`. Another stack, or another tool, may hold 5080.
+ */
+export const LOGS_PORT_ENV = 'GKM_COMPOSE_LOGS_PORT';
+
+/** A port variable that does not hold a port. */
+export class EdgePortInvalid extends GkmError {
+	constructor(
+		readonly variable: string,
+		readonly value: string,
+	) {
+		super(
+			`${variable}=${value} is not a port. Set it to a number between 1 and 65535, or unset it for the default.`,
+		);
+		this.name = 'EdgePortInvalid';
+	}
+}
+
+/**
+ * The edge's ports, from the environment — 443 and 80 when unset: where
+ * `gkm compose` publishes a stack's own Caddy or the shared Traefik edge, and
+ * where `gkm dev` finds that edge.
+ */
+export function edgePorts(env: NodeJS.ProcessEnv = process.env): {
+	https: number;
+	http: number;
+	logs?: number;
+} {
+	const read = (variable: string, fallback: number) => {
+		const value = env[variable];
+		if (value === undefined || value === '') return fallback;
+		const port = Number(value);
+		if (!Number.isInteger(port) || port < 1 || port > 65_535) {
+			throw new EdgePortInvalid(variable, value);
+		}
+		return port;
+	};
+	const logs = env[LOGS_PORT_ENV] ? read(LOGS_PORT_ENV, 0) : undefined;
+	return {
+		https: read(EDGE_PORT_ENV.https, 443),
+		http: read(EDGE_PORT_ENV.http, 80),
+		...(logs ? { logs } : {}),
+	};
+}
+
 /** The edge's compose project, as docker is asked about it. */
 export function edgeRef(
 	file: string,

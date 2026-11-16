@@ -190,13 +190,13 @@ declared.
 | You declared | What starts |
 |---|---|
 | `new KyselyDatabase('…')` | `postgres` |
-| `new ObjectStorage('…')` / `new FileServer('…')` | `minio`, and `caddy` for a file server |
+| `new ObjectStorage('…')` / `new FileServer('…')` | `minio`, and the edge for a file server |
 | `new Cache('…')`, deploying to AWS | `redis` + the HTTP proxy |
 | `new Cache('…')`, deploying to a server | nothing — it is a table |
 | `new Email('…')` | `mailpit` |
 | a topic or queue, deploying to AWS | the AWS emulator (SNS and SQS) |
 | a topic, queue or worker, deploying to a server | nothing — pg-boss lives in Postgres |
-| a `RestApi` or `StaticSite` | `caddy`, the edge each app answers behind |
+| a `RestApi` or `StaticSite` | the edge each app answers behind: `caddy`, or — with `proxy: 'traefik'` — the shared `gkm-edge` (see [The local edge](#the-local-edge)) |
 | a `Telemetry` given to a surface or worker | `openobserve`, the local collector and its UI |
 
 There is no `services` block and no flag that starts a container. The containers
@@ -270,11 +270,35 @@ above. That is the address the other apps receive (`API_URL`, and
 origins and cookie domain name. The right is the local port the edge forwards
 to; nothing is handed out as `http://localhost:<port>`.
 
-The edge is one Caddy container for every checkout of the project, and it
-reads its routes from the checkout that started it (`.gkm/caddy-sites/`). So
-`gkm dev` keeps a running edge only when this checkout started it; one a
-worktree left running is recreated with this checkout's routes, rather than
-forwarding to the ports the worktree's apps had.
+#### The local edge {#the-local-edge}
+
+`gkm dev` follows `deploy.compose.proxy`, read for the local stage the way
+`gkm compose` reads it — one setting decides the proxy for both:
+
+| The local stage's `proxy` | The edge `gkm dev` runs behind |
+| --- | --- |
+| none, `'caddy'`, or a map naming `caddy` (or leaving the local stage out) | a Caddy container of the project's, on a port it was assigned (`https://api.<project>.localhost:28010`) |
+| `'traefik'`, or a map naming `traefik` for the local stage | this machine's shared Traefik edge (`gkm-edge`) on 80 and 443 — the one `gkm compose --stage <local>` uses — and no Caddy (`https://api.<project>.localhost`) |
+
+To keep Caddy for `gkm dev` while the deployed stages are on Traefik, name
+the local stage in the map: `proxy: { development: 'caddy', production: 'traefik' }`.
+
+Behind Caddy, the edge is one container for every checkout of the project,
+and it reads its routes from the checkout that started it
+(`.gkm/caddy-sites/`). So `gkm dev` keeps a running edge only when this
+checkout started it; one a worktree left running is recreated with this
+checkout's routes, rather than forwarding to the ports the worktree's apps
+had. A route that changes while `gkm dev` runs is applied with a Caddy reload.
+
+Behind Traefik, `gkm dev` starts the shared edge where it is not running and
+registers the stage's routes with it, as a `gkm compose` stack does — the same
+routers on the same hosts, from the same route plan, sent to the apps on the
+host through `host.docker.internal`. The edge watches the file, so a changed
+route — a new app, another worktree's ports — is served without a restart, and
+an edge restarted or re-registered by `gkm compose` is registered with again on
+the next reconcile. 80 and 443 must be free for it, or held by the edge
+already; `GKM_COMPOSE_HTTPS_PORT`/`GKM_COMPOSE_HTTP_PORT` move it, as they do
+for `gkm compose`. See [The local stage behind the shared edge](./compose.md#the-local-stage-behind-the-shared-edge).
 
 The site the base domain points at when deployed answers on the project's bare
 host locally — `https://shop.localhost` — by the same rule: the only site, else

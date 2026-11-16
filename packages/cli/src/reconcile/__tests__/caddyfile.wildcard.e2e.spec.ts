@@ -27,11 +27,11 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
 	CADDY_SITES_IN_CONTAINER,
 	caddyfileRoot,
-	sitesFor,
 	toCaddyfile,
 } from '../caddyfile';
 import { DEFAULT_IMAGES } from '../containers';
 import { planFor } from '../plan';
+import { localRoutes } from '../routes';
 
 const run = promisify(execFile);
 const e2e = process.env.GKM_E2E === '1';
@@ -130,9 +130,11 @@ describe.skipIf(!e2e)('a wildcard site behind the dev edge', () => {
 			localStage: 'dev',
 			protectedSubdomains: ['www'],
 		});
-		const sites = sitesFor(plan, 'shop', {
-			Api: `http://localhost:${apiProcess.port}`,
-			App: `http://localhost:${appProcess.port}`,
+		const sites = localRoutes(plan, 'shop', {
+			addresses: {
+				Api: `http://localhost:${apiProcess.port}`,
+				App: `http://localhost:${appProcess.port}`,
+			},
 		});
 
 		dir = await mkdtemp(join(tmpdir(), 'gkm-wildcard-'));

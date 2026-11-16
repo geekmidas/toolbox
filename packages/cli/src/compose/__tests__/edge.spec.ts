@@ -283,6 +283,52 @@ describe('a route whose processor paths go elsewhere', () => {
 		);
 	});
 
+	it('reaches a process on the host under the path it mounts the handler on, on either proxy', () => {
+		// `gkm dev`'s shape: the processors are a dev server on this machine,
+		// mounted under a route of their own.
+		const local: EdgeRoute = {
+			...PROCESSED,
+			handlers: [
+				{
+					name: 'processors',
+					prefixes: ['/i/'],
+					upstreams: [{ onHost: true, port: 3000 }],
+					under: '/__gkm/processors/AssetsServer',
+				},
+			],
+		};
+		const { http } = traefikDynamic([local], {
+			project: 'shop-dev',
+			tls: { kind: 'acme' },
+		}) as {
+			http: {
+				routers: Record<string, { middlewares: string[] }>;
+				services: Record<
+					string,
+					{ loadBalancer: { servers: { url: string }[] } }
+				>;
+				middlewares: Record<string, unknown>;
+			};
+		};
+
+		const handler = 'shop-dev-files-assets-server-processors';
+		expect(http.services[handler]?.loadBalancer.servers).toEqual([
+			{ url: 'http://host.docker.internal:3000' },
+		]);
+		expect(http.routers[handler]?.middlewares).toEqual([
+			'shop-dev-strip-gkm-headers',
+			`${handler}-under`,
+		]);
+		expect(http.middlewares[`${handler}-under`]).toEqual({
+			addPrefix: { prefix: '/__gkm/processors/AssetsServer' },
+		});
+		expect(edgeCaddyfile([local], { tls: { kind: 'acme' } })).toContain(
+			`reverse_proxy host.docker.internal:3000 {
+			rewrite /__gkm/processors/AssetsServer{uri}
+		}`,
+		);
+	});
+
 	it('is never combined with a check every handler would need too', () => {
 		const conflicted = { ...PROCESSED, allow: ['10.0.0.0/8'] };
 
@@ -610,6 +656,10 @@ describe('the edge', () => {
 			edge: { name: EDGE_NETWORK, external: true },
 		});
 		expect(compose.volumes).toEqual({ acme: {}, dynamic: {}, certs: {} });
+		// A process on the host — an app `gkm dev` runs — through its gateway.
+		expect(compose.services.traefik.extra_hosts).toEqual([
+			'host.docker.internal:host-gateway',
+		]);
 		// The DNS challenge's key, read from the file a stage with a wildcard
 		// site writes — never a key in the compose file itself.
 		expect(compose.services.traefik.environment).toEqual({
