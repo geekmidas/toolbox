@@ -1,5 +1,71 @@
 # @geekmidas/cli
 
+## 10.0.0-alpha.185
+
+### Minor Changes
+
+- [#524](https://github.com/geekmidas/toolbox/pull/524) [`80349a4`](https://github.com/geekmidas/toolbox/commit/80349a402d8de7430db71bf397b3a4afb6ff724d) Thanks [@geekmidas](https://github.com/geekmidas)! - :warning: **Behaviour change:** `gkm dev` follows `deploy.compose.proxy`, so `proxy: 'traefik'` runs it behind Traefik (#522)
+
+  `gkm dev`, `gkm test` and `gkm setup` now read the local stage's proxy
+  through `proxyFor`, the function `gkm compose` uses. With `proxy: 'traefik'`
+  (or a map naming `traefik` for the local stage) they start no `caddy`
+  container: they start the shared `gkm-edge` on this machine, on 80 and 443,
+  where it is not running, and register the stage's routes with it — the same
+  routers on the same hosts, from the same route plan, as
+  `gkm compose --stage <local stage>` registers, sent to the apps on the host.
+  The certificate is still gkm's local CA's. A route that changes while
+  `gkm dev` runs is picked up by the edge without a restart. The apps' URLs
+  lose the Caddy port (`https://api.<project>.localhost`).
+
+  No `proxy`, `proxy: 'caddy'`, or a map that keeps the local stage on Caddy
+  behaves exactly as before. To keep Caddy for `gkm dev`:
+  `proxy: { development: 'caddy', staging: 'traefik', production: 'traefik' }`.
+  See the upgrading guide, "After 10.0.0-alpha.184: `gkm dev` follows
+  `deploy.compose.proxy`".
+
+  `@geekmidas/edge`: a route's upstream can be a process on the Docker host
+  (`{ onHost: true, port }`, reached through `host.docker.internal`), a handler
+  can name the path it is sent under (`under`), and a wildcard route can name
+  the `hosts` route Caddy asks before serving a label. The shared edge maps
+  `host.docker.internal` to the host gateway, so an existing edge is recreated
+  once on its next start.
+
+- [#523](https://github.com/geekmidas/toolbox/pull/523) [`f5ec741`](https://github.com/geekmidas/toolbox/commit/f5ec7419f459723e70875d034a8e5d773d2ffdc0) Thanks [@geekmidas](https://github.com/geekmidas)! - :sparkles: Point-in-time recovery for a compose stage's Postgres (#456)
+
+  A stage's backups entry takes `pitr: true` — or
+  `pitr: { keep: '14d', base: '1d' }` — and its stack's Postgres is built with
+  WAL-G and archives its WAL every minute,
+  while the `backups` service takes a base backup on the `base` schedule from the
+  data volume, mounted read-only. Both are encrypted with `PITR_KEY`, a stage
+  secret the deploy generates once, and kept in the project bucket under
+  `backups/pitr/`; the stage's key stays put-only, and the bucket's lifecycle
+  expires base backups after `keep` and WAL one base interval later.
+
+  `gkm backup:restore --to <time>` brings the whole cluster back to that second —
+  a fresh base backup first, then the stack stopped while the recovered cluster
+  is swapped in — and `--into <name>` restores beside the live one instead, as
+  `<name>_<database>`, for inspection or the monthly restore drill.
+  `gkm backup:list` shows the restore window, `gkm backup:now --base` takes a
+  base backup, and the `backups` container is unhealthy when `archive_command`
+  fails, a WAL segment waits more than five minutes, or the last base backup is
+  too old.
+
+### Patch Changes
+
+- Updated dependencies [[`80349a4`](https://github.com/geekmidas/toolbox/commit/80349a402d8de7430db71bf397b3a4afb6ff724d)]:
+  - @geekmidas/edge@10.0.0-alpha.185
+  - @geekmidas/cache@10.0.0-alpha.185
+  - @geekmidas/constructs@10.0.0-alpha.185
+  - @geekmidas/db@10.0.0-alpha.185
+  - @geekmidas/envkit@10.0.0-alpha.185
+  - @geekmidas/errors@10.0.0-alpha.185
+  - @geekmidas/logger@10.0.0-alpha.185
+  - @geekmidas/manifest@10.0.0-alpha.185
+  - @geekmidas/schema@10.0.0-alpha.185
+  - @geekmidas/services@10.0.0-alpha.185
+  - @geekmidas/storage@10.0.0-alpha.185
+  - @geekmidas/telescope@10.0.0-alpha.185
+
 ## 10.0.0-alpha.184
 
 ### Minor Changes
