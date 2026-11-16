@@ -23,6 +23,18 @@ exports[`the edge > redirects HTTP to HTTPS, answers ACME, and watches one direc
         "storage": "/acme/acme-dns.json",
       },
     },
+    "letsencrypt-dns-godaddy": {
+      "acme": {
+        "dnsChallenge": {
+          "provider": "godaddy",
+          "resolvers": [
+            "1.1.1.1:53",
+            "8.8.8.8:53",
+          ],
+        },
+        "storage": "/acme/acme-dns-godaddy.json",
+      },
+    },
   },
   "entryPoints": {
     "ping": {

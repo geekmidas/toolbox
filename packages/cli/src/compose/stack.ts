@@ -23,6 +23,7 @@ import {
 } from '@geekmidas/edge/certificates/local';
 import { CADDY_TLS_DIR, edgeCaddyfile } from '@geekmidas/edge/proxy/caddy';
 import {
+	ACME_DNS_CHALLENGES,
 	EDGE_NETWORK,
 	edgeAlias,
 	edgeCertificatePaths,
@@ -72,7 +73,6 @@ import {
 } from '../deploy/devServices.js';
 import { isMainFrontendApp, resolveHost } from '../deploy/domain.js';
 import { type DeployIdentity, imageRef, stageTag } from '../deploy/identity.js';
-import { findRootDomain, normalizeDnsConfig } from '../dns/index';
 import { validateImageRef } from '../docker/imageRef.js';
 import {
 	appDockerfile,
@@ -158,6 +158,7 @@ import type {
 	NormalizedWorkspace,
 	S3ObjectsConfig,
 } from '../workspace/types.js';
+import { acmeDnsZone } from './acmeDns.js';
 import { isReservedStageKey } from './dnsConfig.js';
 import type { AppImage } from './images.js';
 import {
@@ -576,7 +577,7 @@ export interface ComposeStack {
 	/**
 	 * A deployed stage's wildcard site: its id, the `*.<domain>` host its
 	 * one DNS record is written for, and where its certificate comes from —
-	 * `dns` when the deploy has to give the shared edge its Route 53 key.
+	 * `dns` when the deploy has to give the shared edge its DNS provider's key.
 	 */
 	wildcard?: {
 		site: string;
@@ -2304,8 +2305,12 @@ export class WildcardSiteCertificateMissing extends GkmError {
 				? `'${site}' answers on every subdomain of ${domain}, and '${stage}' ` +
 						`has no certificate for them. Set deploy.compose.tls for ` +
 						`'${stage}' to a *.${domain} certificate, or manage ${domain} ` +
-						`with dns: { '<root domain>': { provider: 'route53' } } so the ` +
-						`shared edge gets one over the DNS challenge.`
+						`with dns: { '<root domain>': { provider: ${Object.keys(
+							ACME_DNS_CHALLENGES,
+						)
+							.map((p) => `'${p}'`)
+							.join(' | ')} } } so the shared edge gets one over the ` +
+						`DNS challenge.`
 				: `'${site}' answers on every subdomain of ${domain}, and '${stage}' ` +
 						`has no certificate for them. Set deploy.compose.tls for ` +
 						`'${stage}' to a *.${domain} certificate, or give the site ` +
@@ -2319,7 +2324,8 @@ export class WildcardSiteCertificateMissing extends GkmError {
  * A deployed stage's wildcard site, as its edge serves it: the labels it
  * never takes, and its certificate — the stage's own (`deploy.compose.tls`)
  * first; then, on the shared Traefik edge, a `*.<domain>` one over the DNS
- * challenge when Route 53 manages the domain; on the stack's own Caddy, one
+ * challenge when a provider the edge can answer it through manages the
+ * domain (`ACME_DNS_CHALLENGES`); on the stack's own Caddy, one
  * per host on demand, asked of the site's `hosts` route.
  *
  * @throws {WildcardSiteCertificateMissing} when neither applies
@@ -2349,9 +2355,8 @@ function stackWildcard(
 	const tls = ((): EdgeWildcard['tls'] => {
 		if (options.certificate) return { kind: 'stage' };
 		if (proxy === 'traefik') {
-			const dns = workspace.dns ? normalizeDnsConfig(workspace.dns) : {};
-			const root = findRootDomain(domain, dns);
-			if (root && dns[root]?.provider === 'route53') return { kind: 'dns' };
+			const zone = acmeDnsZone(workspace, stage);
+			if (zone) return { kind: 'dns', provider: zone.provider };
 		} else if (declaration.hosts) {
 			const surface = apps.find((a) => a.id === declaration.hosts?.surface);
 			if (surface) {

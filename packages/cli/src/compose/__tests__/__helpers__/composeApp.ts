@@ -490,6 +490,8 @@ export async function serveFrom(
 	stage = 'production',
 	ipv4 = SERVER_IPV4,
 	home?: string,
+	/** More of the stage's own secrets, as `gkm secrets:set` stores them. */
+	custom: Record<string, string> = {},
 ): Promise<void> {
 	const { loadWorkspaceSettings } = await import('../../../config');
 	const { secretsStoreFor } = await import('../../../secrets/store');
@@ -501,7 +503,7 @@ export async function serveFrom(
 		(await store.read(stage).catch(() => null)) ?? initStageSecrets(stage);
 	await store.write(stage, {
 		...stored,
-		custom: { ...stored.custom, GKM_SERVER_IPV4: ipv4 },
+		custom: { ...stored.custom, ...custom, GKM_SERVER_IPV4: ipv4 },
 	});
 }
 

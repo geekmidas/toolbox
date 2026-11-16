@@ -80,18 +80,122 @@ export const EDGE_CERTS_DIR = '/etc/gkm-edge/certs';
 export const ACME_RESOLVER = 'letsencrypt';
 
 /**
- * The resolver a wildcard site's `*.<domain>` certificate comes from: Let's
- * Encrypt issues a wildcard only over the DNS challenge, which the edge
- * answers by writing an `_acme-challenge` TXT record through Route 53.
+ * The key the edge writes Route 53's challenge records with, inside its
+ * container: written by the deploy of a stage with a wildcard site, and
+ * allowed nothing but each such stage's `_acme-challenge` record (see
+ * `acmeDns.ts`).
  */
+export const EDGE_AWS_CREDENTIALS = `${EDGE_CERTS_DIR}/aws-credentials`;
+
+/**
+ * How the edge answers Let's Encrypt's DNS challenge through one DNS
+ * provider: Traefik's (lego's) name for it, and what it reads.
+ */
+export interface AcmeDnsChallenge {
+	/** The provider's code in Traefik's `dnsChallenge.provider`. */
+	provider: string;
+	/**
+	 * The stage secrets the provider reads, by the variable lego reads each
+	 * from. The deploy writes each into its own file in the edge's container
+	 * (`0600`, see {@link edgeDnsSecretPath}), and the edge is handed only
+	 * the file's path, as `<KEY>_FILE` — which lego reads in place of `<KEY>`.
+	 * Never a value in the compose file or the static configuration.
+	 */
+	secrets: readonly string[];
+	/** What else the edge's environment says for it — never a secret. */
+	environment?: Readonly<Record<string, string>>;
+}
+
+/**
+ * Every DNS provider the edge can get a wildcard certificate through, by the
+ * name a workspace's `dns` entry gives it. Another provider is one entry
+ * here — lego's code for it and the variables it reads — and nothing else:
+ * its resolver, its ACME storage and its edge environment follow from it.
+ *
+ * Route 53's key is the one exception to "from the stage's secrets": the
+ * deploy issues it through IAM, scoped to the stage's challenge record
+ * alone, and writes it into the edge itself (`acmeDns.ts`).
+ */
+export const ACME_DNS_CHALLENGES = {
+	route53: {
+		provider: 'route53',
+		secrets: [],
+		environment: {
+			AWS_SHARED_CREDENTIALS_FILE: EDGE_AWS_CREDENTIALS,
+			AWS_REGION: 'us-east-1',
+		},
+	},
+	godaddy: {
+		provider: 'godaddy',
+		secrets: ['GODADDY_API_KEY', 'GODADDY_API_SECRET'],
+	},
+} as const satisfies Record<string, AcmeDnsChallenge>;
+
+/** A DNS provider the edge answers the DNS challenge through. */
+export type AcmeDnsProvider = keyof typeof ACME_DNS_CHALLENGES;
+
+/** Whether the edge can answer the DNS challenge through `provider`. */
+export function isAcmeDnsProvider(
+	provider: unknown,
+): provider is AcmeDnsProvider {
+	return (
+		typeof provider === 'string' && Object.hasOwn(ACME_DNS_CHALLENGES, provider)
+	);
+}
+
+/** Route 53's DNS-challenge resolver — see {@link acmeDnsResolver}. */
 export const ACME_DNS_RESOLVER = 'letsencrypt-dns';
 
 /**
- * The key the edge writes those records with, inside its container: written
- * by the deploy of a stage with a wildcard site, and allowed nothing but
- * each such stage's `_acme-challenge` record (see `acmeDns.ts`).
+ * The resolver a wildcard site's `*.<domain>` certificate comes from, for
+ * the DNS provider that holds the domain: Let's Encrypt issues a wildcard
+ * only over the DNS challenge, which the edge answers by writing an
+ * `_acme-challenge` TXT record through that provider. Route 53's keeps the
+ * name it had before there were others, so its certificates stay where they
+ * are.
  */
-export const EDGE_AWS_CREDENTIALS = `${EDGE_CERTS_DIR}/aws-credentials`;
+export function acmeDnsResolver(provider: AcmeDnsProvider): string {
+	return provider === 'route53'
+		? ACME_DNS_RESOLVER
+		: `${ACME_DNS_RESOLVER}-${provider}`;
+}
+
+/** Where a DNS-challenge resolver keeps its account and certificates. */
+function acmeDnsStorage(provider: AcmeDnsProvider): string {
+	return provider === 'route53'
+		? '/acme/acme-dns.json'
+		: `/acme/acme-dns-${provider}.json`;
+}
+
+/**
+ * A DNS provider's secret, inside the edge's container: one file per key,
+ * beside the certificates, readable by the edge alone.
+ */
+export function edgeDnsSecretPath(key: string): string {
+	return `${EDGE_CERTS_DIR}/acme-dns-${key}`;
+}
+
+/** Every stage secret the edge's DNS challenge reads, for any provider. */
+export const ACME_DNS_SECRET_KEYS: readonly string[] = Object.values(
+	ACME_DNS_CHALLENGES,
+).flatMap((challenge) => [...challenge.secrets]);
+
+/**
+ * What the edge's environment says for the DNS challenge, every provider's:
+ * where each key is read from, never a key.
+ */
+function acmeDnsEnvironment(): Record<string, string> {
+	const environment: Record<string, string> = {};
+	const challenges: readonly AcmeDnsChallenge[] =
+		Object.values(ACME_DNS_CHALLENGES);
+	for (const challenge of challenges) {
+		Object.assign(environment, challenge.environment);
+		for (const key of challenge.secrets) {
+			environment[`${key}_FILE`] = edgeDnsSecretPath(key);
+		}
+	}
+	return environment;
+}
 
 /** The internal entrypoint the edge's health check asks; never published. */
 const PING_PORT = 8082;
@@ -157,17 +261,26 @@ export function traefikStatic(ports: EdgePorts): Record<string, unknown> {
 					httpChallenge: { entryPoint: 'web' },
 				},
 			},
-			[ACME_DNS_RESOLVER]: {
-				acme: {
-					storage: '/acme/acme-dns.json',
-					dnsChallenge: {
-						provider: 'route53',
-						// Asked directly, so the record is seen as soon as Route 53
-						// serves it rather than when a cache on the server expires.
-						resolvers: ['1.1.1.1:53', '8.8.8.8:53'],
+			// One per DNS provider, whichever the stacks on the server use: the
+			// edge is shared, and a stage on another provider must not take
+			// this one's resolver away.
+			...Object.fromEntries(
+				Object.entries(ACME_DNS_CHALLENGES).map(([name, challenge]) => [
+					acmeDnsResolver(name as AcmeDnsProvider),
+					{
+						acme: {
+							storage: acmeDnsStorage(name as AcmeDnsProvider),
+							dnsChallenge: {
+								provider: challenge.provider,
+								// Asked directly, so the record is seen as soon as the
+								// provider serves it rather than when a cache on the
+								// server expires.
+								resolvers: ['1.1.1.1:53', '8.8.8.8:53'],
+							},
+						},
 					},
-				},
-			},
+				]),
+			),
 		},
 		log: { level: 'INFO' },
 	};
@@ -209,12 +322,10 @@ export function edgeCompose(options: {
 						.digest('hex')
 						.slice(0, 16),
 				},
-				// What the DNS challenge writes with: read from the file a stage
+				// What the DNS challenge writes with: read from the files a stage
 				// with a wildcard site puts there, and never needed otherwise.
-				environment: {
-					AWS_SHARED_CREDENTIALS_FILE: EDGE_AWS_CREDENTIALS,
-					AWS_REGION: 'us-east-1',
-				},
+				// Paths only — never a key.
+				environment: acmeDnsEnvironment(),
 				networks: ['edge'],
 				// A process on the host — an app `gkm dev` runs — is reached
 				// through the host's gateway. Docker Desktop resolves the name
@@ -344,7 +455,7 @@ export function traefikDynamic(
 		const certificate = (): Record<string, unknown> =>
 			route.wildcard?.tls.kind === 'dns'
 				? {
-						certResolver: ACME_DNS_RESOLVER,
+						certResolver: acmeDnsResolver(route.wildcard.tls.provider),
 						domains: [{ main: `*.${route.wildcard.domain}` }],
 					}
 				: tls.kind === 'acme'
