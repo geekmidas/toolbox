@@ -1279,8 +1279,25 @@ after the start, which asks `127.0.0.1` and trusts gkm's root.
 `gkm compose --stage development --down` unregisters the stack and leaves the
 edge running.
 
+**`gkm dev` follows the same setting.** It reads the local stage's proxy the
+way `gkm compose` does, so with `proxy: 'traefik'` it runs no Caddy of its
+own: it starts the same `gkm-edge` on this machine where it is not running,
+and registers the stage's routes with it — the same routers, on the same
+hosts, under the same `<scope>-<stage>` project, worked out from the same
+route plan. Only where each route sends differs: to the processes `gkm dev`
+runs on the host (through `host.docker.internal`), where the stack sends to
+its containers. The certificate is gkm's local CA's, so a browser that
+trusts it needs nothing new, and the apps answer on the edge's port —
+`https://api.<project>.localhost`, with no port at 443. A route that changes
+while `gkm dev` runs — a new app, another worktree — is written to the edge's
+watched directory and picked up without a restart. `gkm test` registers its
+own stage beside it. `gkm dev` and `gkm compose --stage development` share one
+registration for the stage, so whichever ran last serves its hosts. See the
+[dev server's edge](./dev-server.md#the-local-edge) for the Caddy side.
+
 To keep the local stage on its own Caddy while the deployed stages are behind
-Traefik, name each stage in the per-stage map:
+Traefik — for `gkm dev` and `gkm compose` alike — name each stage in the
+per-stage map:
 
 ```ts
 deploy: {

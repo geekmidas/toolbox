@@ -18,11 +18,12 @@ import {
 import type { ConstructManifest } from '@geekmidas/manifest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { processEnv } from '../apps';
-import { sitesFor, toCaddyfile } from '../caddyfile';
+import { toCaddyfile } from '../caddyfile';
 import type { Docker } from '../index';
 import { COMPOSE_PATH, reconcile } from '../index';
 import { LEGACY_LOCAL_LOGIN } from '../logins';
 import { isPortFree } from '../ports';
+import { localRoutes } from '../routes';
 import { planHash, saveState } from '../state';
 import { TEST_CREDENTIALS } from './__helpers__/credentials';
 
@@ -626,7 +627,7 @@ describe('reconcile', () => {
 		await saveState(root, {
 			stage: 'development',
 			hash: planHash(first.plan, first.compose, {
-				caddyfile: toCaddyfile(sitesFor(first.plan, 'toolbox'), {
+				caddyfile: toCaddyfile(localRoutes(first.plan, 'toolbox'), {
 					certificate: '/etc/caddy/sites/development.pem',
 				}),
 			}),

@@ -9,8 +9,8 @@ import { prepareEntryCredentials } from '../../credentials/index';
 import { FileSecretsStore } from '../../secrets/file';
 import { keystoreProject } from '../../secrets/keystore';
 import { initStageSecrets } from '../../secrets/storage';
+import { EDGE_PORT_ENV } from '../edge';
 import { composeCommand } from '../index';
-import { EDGE_PORT_ENV } from '../stack';
 import {
 	resolvesHere,
 	serveFrom,

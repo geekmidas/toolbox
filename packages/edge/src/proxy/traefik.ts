@@ -28,8 +28,10 @@ import {
 	EDGE_LIMITS,
 	type EdgeRoute,
 	type EdgeTls,
+	HOST_GATEWAY,
 	routeHosts,
 	type Upstream,
+	upstreamAddress,
 } from '../routes';
 
 /**
@@ -214,6 +216,10 @@ export function edgeCompose(options: {
 					AWS_REGION: 'us-east-1',
 				},
 				networks: ['edge'],
+				// A process on the host — an app `gkm dev` runs — is reached
+				// through the host's gateway. Docker Desktop resolves the name
+				// already; on Linux it needs saying.
+				extra_hosts: [`${HOST_GATEWAY}:host-gateway`],
 				// Every stack on the server shares it, so it is sized for the one
 				// that holds the most sockets — see `EDGE_LIMITS`.
 				...EDGE_LIMITS,
@@ -252,8 +258,10 @@ export function traefikDynamic(
 	const { project, tls, edgeToken } = options;
 	const name = (route: EdgeRoute, suffix?: string) =>
 		`${project}-${route.name}${suffix ? `-${suffix}` : ''}`;
-	const url = ({ service, port }: Upstream) =>
-		`http://${edgeAlias(project, service)}:${port}`;
+	// A service of the stack by its alias on the shared network; a process on
+	// the host — an app `gkm dev` runs — through the host's gateway.
+	const url = (upstream: Upstream) =>
+		`http://${upstreamAddress(upstream, (service) => edgeAlias(project, service))}`;
 
 	const routers: Record<string, unknown> = {};
 	const services: Record<string, unknown> = {};
@@ -347,6 +355,11 @@ export function traefikDynamic(
 		// route's, to a service of its own.
 		for (const handler of route.handlers ?? []) {
 			const handlerName = name(route, handler.name);
+			// Sent under the path the upstream mounts it on, where it names one.
+			const under = name(route, `${handler.name}-under`);
+			if (handler.under) {
+				middlewares[under] = { addPrefix: { prefix: handler.under } };
+			}
 			routers[handlerName] = {
 				// Every host of the route, as its own router's rule has them.
 				rule: `${hostRule(route)} && (${handler.prefixes
@@ -356,7 +369,7 @@ export function traefikDynamic(
 				priority: 10_000,
 				entryPoints: ['websecure'],
 				service: handlerName,
-				middlewares: [strip],
+				middlewares: handler.under ? [strip, under] : [strip],
 				tls: certificate(),
 			};
 			services[handlerName] = {

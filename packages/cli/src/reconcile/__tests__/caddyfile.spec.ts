@@ -1,8 +1,9 @@
 import { type ConstructManifest, provisionOrder } from '@geekmidas/manifest';
 import { describe, expect, it } from 'vitest';
 import { AmbiguousRootSite } from '../../workspace/rootSite';
-import { caddyfileRoot, hostFor, sitesFor, toCaddyfile } from '../caddyfile';
+import { caddyfileRoot, toCaddyfile } from '../caddyfile';
 import { planFor } from '../plan';
+import { hostFor, localRoutes, MINIO_UPSTREAM } from '../routes';
 
 const manifest = {
 	Uploads: { kind: 'objects', id: 'Uploads', provides: ['UPLOADS_URL'] },
@@ -28,26 +29,26 @@ const plan = (stage = 'development') =>
 		localStage: 'development',
 	});
 
-describe('sitesFor', () => {
+describe('localRoutes', () => {
 	it('gives each file server a host of its own', () => {
 		// The leading label is the *server's* name, not the bucket's — which is
 		// what lets two servers front one bucket. Naming the host after the
 		// bucket would make them collide, and that arrangement is legitimate.
-		const hosts = sitesFor(plan(), 'shop').map((s) => s.host);
+		const hosts = localRoutes(plan(), 'shop').map((s) => s.host);
 
 		expect(hosts).toEqual(['uploads.shop.localhost', 'assets.shop.localhost']);
 	});
 
 	it('points both at the one bucket behind them', () => {
-		// The bucket is a rewrite on a shared origin rather than part of either
+		// The bucket is a prefix on a shared origin rather than part of either
 		// address — which is what lets two servers front one bucket at all.
-		expect(sitesFor(plan(), 'shop').map((s) => s.rewrite)).toEqual([
-			'/uploads{uri}',
-			'/uploads{uri}',
+		expect(localRoutes(plan(), 'shop').map((s) => s.prefix)).toEqual([
+			'/uploads',
+			'/uploads',
 		]);
-		expect(sitesFor(plan(), 'shop').map((s) => s.upstream)).toEqual([
-			'http://minio:9000',
-			'http://minio:9000',
+		expect(localRoutes(plan(), 'shop').map((s) => s.upstreams)).toEqual([
+			[MINIO_UPSTREAM],
+			[MINIO_UPSTREAM],
 		]);
 	});
 
@@ -62,12 +63,12 @@ describe('sitesFor', () => {
 			},
 		} as const satisfies ConstructManifest;
 
-		const [site] = sitesFor(
+		const [site] = localRoutes(
 			planFor(named, 'development', provisionOrder(named), {
 				localStage: 'development',
 			}),
 			'shop',
-			{ Api: 'http://localhost:3000' },
+			{ addresses: { Api: 'http://localhost:3000' } },
 		);
 
 		expect(site?.host).toBe('v1.shop.localhost');
@@ -88,25 +89,38 @@ describe('sitesFor', () => {
 			},
 		} as const satisfies ConstructManifest;
 
-		const sites = sitesFor(
+		const sites = localRoutes(
 			planFor(withSurface, 'development', provisionOrder(withSurface), {
 				localStage: 'development',
 			}),
 			'shop',
-			{ Api: 'http://localhost:3000', Web: 'http://localhost:5173' },
+			{
+				addresses: {
+					Api: 'http://localhost:3000',
+					Web: 'http://localhost:5173',
+				},
+			},
 		);
 
 		expect(sites).toEqual([
 			{
+				name: 'api',
 				host: 'api.shop.localhost',
-				upstream: 'http://host.docker.internal:3000',
+				upstreams: [{ onHost: true, port: 3000 }],
+				streaming: true,
 			},
 			// The only site holds the base domain, as it does deployed.
 			{
+				name: 'web',
 				host: 'shop.localhost',
-				upstream: 'http://host.docker.internal:5173',
+				upstreams: [{ onHost: true, port: 5173 }],
+				streaming: true,
 			},
 		]);
+		// Through the host's gateway, from a Caddy on this project's network.
+		expect(
+			toCaddyfile(sites, { certificate: '/etc/caddy/sites/dev.pem' }),
+		).toContain('reverse_proxy http://host.docker.internal:3000 {');
 	});
 
 	describe('the site the base domain points at', () => {
@@ -179,7 +193,7 @@ describe('sitesFor', () => {
 		} as const satisfies ConstructManifest;
 
 		expect(
-			sitesFor(
+			localRoutes(
 				planFor(withSurface, 'development', provisionOrder(withSurface), {
 					localStage: 'development',
 				}),
@@ -191,10 +205,12 @@ describe('sitesFor', () => {
 	it('separates stages by host rather than by path', () => {
 		// The stage is already in the resource name, so it lands in the label and
 		// two stages cannot answer on one address.
-		expect(sitesFor(plan('test'), 'shop')[0]).toEqual({
+		expect(localRoutes(plan('test'), 'shop')[0]).toEqual({
+			name: 'files-uploads-server',
 			host: 'uploads-test.shop.localhost',
-			upstream: 'http://minio:9000',
-			rewrite: '/uploads-test{uri}',
+			upstreams: [MINIO_UPSTREAM],
+			streaming: false,
+			prefix: '/uploads-test',
 		});
 	});
 
@@ -204,7 +220,7 @@ describe('sitesFor', () => {
 		} as const satisfies ConstructManifest;
 
 		expect(
-			sitesFor(
+			localRoutes(
 				planFor(bucketOnly, 'development', provisionOrder(bucketOnly), {
 					localStage: 'development',
 				}),
@@ -243,24 +259,24 @@ describe("a file server's processors under gkm dev", () => {
 		});
 
 	it('sends their patterns to the dev server holding them, and the rest to the bucket', () => {
-		const [site] = sitesFor(
-			processingPlan(),
-			'shop',
-			{},
-			{
-				UploadsServer: 'http://localhost:3000',
-			},
-		);
+		const [site] = localRoutes(processingPlan(), 'shop', {
+			processorAddresses: { UploadsServer: 'http://localhost:3000' },
+		});
 
 		expect(site).toEqual({
+			name: 'files-uploads-server',
 			host: 'uploads.shop.localhost',
-			upstream: 'http://minio:9000',
-			rewrite: '/uploads{uri}',
-			processors: {
-				prefixes: ['/i/', '/pdf/'],
-				upstream: 'http://host.docker.internal:3000',
-				under: '/__gkm/processors/UploadsServer',
-			},
+			upstreams: [MINIO_UPSTREAM],
+			streaming: false,
+			prefix: '/uploads',
+			handlers: [
+				{
+					name: 'processors',
+					prefixes: ['/i/', '/pdf/'],
+					upstreams: [{ onHost: true, port: 3000 }],
+					under: '/__gkm/processors/UploadsServer',
+				},
+			],
 		});
 
 		const caddyfile = toCaddyfile([site!], {
@@ -277,9 +293,9 @@ describe("a file server's processors under gkm dev", () => {
 	});
 
 	it('routes them nowhere until the dev server has an address', () => {
-		const [site] = sitesFor(processingPlan(), 'shop');
+		const [site] = localRoutes(processingPlan(), 'shop');
 
-		expect(site).not.toHaveProperty('processors');
+		expect(site).not.toHaveProperty('handlers');
 		expect(
 			toCaddyfile([site!], { certificate: '/etc/caddy/sites/dev.pem' }),
 		).not.toContain('@processors');
@@ -315,7 +331,7 @@ describe('caddyfileRoot', () => {
 
 describe('toCaddyfile', () => {
 	const rendered = () =>
-		toCaddyfile(sitesFor(plan(), 'shop'), {
+		toCaddyfile(localRoutes(plan(), 'shop'), {
 			certificate: '/etc/caddy/sites/dev.pem',
 		});
 
@@ -346,10 +362,17 @@ describe('toCaddyfile', () => {
 		const caddyfile = toCaddyfile(
 			[
 				{
+					name: 'api',
 					host: 'api.shop.localhost',
-					upstream: 'http://host.docker.internal:3000',
+					upstreams: [{ onHost: true, port: 3000 }],
+					streaming: true,
 				},
-				{ host: 'uploads.shop.localhost', upstream: 'http://minio:9000' },
+				{
+					name: 'files-uploads',
+					host: 'uploads.shop.localhost',
+					upstreams: [MINIO_UPSTREAM],
+					streaming: false,
+				},
 			],
 			{ certificate: '/etc/caddy/sites/dev.pem' },
 		);
@@ -365,8 +388,10 @@ describe('toCaddyfile', () => {
 		const caddyfile = toCaddyfile(
 			[
 				{
+					name: 'auth',
 					host: 'auth.shop.localhost',
-					upstream: 'http://host.docker.internal:3001',
+					upstreams: [{ onHost: true, port: 3001 }],
+					streaming: true,
 				},
 			],
 			{ certificate: '/etc/caddy/sites/dev.pem', edgeToken: 'stack-token' },

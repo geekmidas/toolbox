@@ -104,12 +104,6 @@ import {
 import { servesOnCdn } from '../providers/s3/config.js';
 import { plannedSignedOrigin } from '../providers/s3/plannedOrigin.js';
 import { networkEnv, processEnvKeys } from '../reconcile/apps.js';
-import {
-	hostFor,
-	hostsFor,
-	LOCAL_TLD,
-	type ResourceHosts,
-} from '../reconcile/caddyfile.js';
 import { type ComposeService, composeFor } from '../reconcile/compose.js';
 import { DEFAULT_IMAGES, portKeys } from '../reconcile/containers.js';
 import type { BoundSubscriber } from '../reconcile/discover.js';
@@ -133,6 +127,12 @@ import {
 } from '../reconcile/objectEvents.js';
 import { type Plan, type PlannedResource, planFor } from '../reconcile/plan.js';
 import { bucketLifecycles, bucketPolicies } from '../reconcile/provision.js';
+import {
+	hostFor,
+	hostsFor,
+	LOCAL_TLD,
+	type ResourceHosts,
+} from '../reconcile/routes.js';
 import { signedOrigins } from '../reconcile/signedOrigins.js';
 import type { StageSecrets } from '../secrets/types.js';
 import { NoDomainForStage } from '../target/dokploy/domain.js';
@@ -200,19 +200,6 @@ export function stackDir(stage: string): string {
 export function composeProject(identity: DeployIdentity): string {
 	return `${identity.scope}-${identity.stage}`;
 }
-
-/** The ports the edge is published on, and the variables that move them. */
-export const EDGE_PORT_ENV = {
-	https: 'GKM_COMPOSE_HTTPS_PORT',
-	http: 'GKM_COMPOSE_HTTP_PORT',
-} as const;
-
-/**
- * The variable that moves the local stage's OpenObserve off its loopback
- * port, 5080 — which the local stage takes from nowhere else, since it
- * ignores `deploy.telemetry`. Another stack, or another tool, may hold 5080.
- */
-export const LOGS_PORT_ENV = 'GKM_COMPOSE_LOGS_PORT';
 
 /**
  * Containers this target does not run.
@@ -830,7 +817,7 @@ export interface StackInput {
 	ports?: {
 		https?: number;
 		http?: number;
-		/** The local stage's OpenObserve port — see {@link LOGS_PORT_ENV}. */
+		/** The local stage's OpenObserve port — see `LOGS_PORT_ENV` (`compose/edge.ts`). */
 		logs?: number;
 	};
 	/**

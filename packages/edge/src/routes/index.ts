@@ -7,12 +7,44 @@
  * Pure.
  */
 
+/** Where a route sends its requests. */
+export type Upstream = ServiceUpstream | HostUpstream;
+
 /** A service of the stack that a route sends to. */
-export interface Upstream {
+export interface ServiceUpstream {
 	/** Its compose service name — `api`, `minio`. */
 	service: string;
 	/** The port it listens on, inside the network. */
 	port: number;
+}
+
+/**
+ * A process on the Docker host itself, outside every stack — an app `gkm dev`
+ * runs, or a port a container publishes there — reached from the proxy's
+ * container through the host's gateway ({@link HOST_GATEWAY}).
+ */
+export interface HostUpstream {
+	onHost: true;
+	/** The port it listens on, on the host. */
+	port: number;
+}
+
+/**
+ * The host's own address, from inside a container. Docker Desktop resolves
+ * it already; on Linux the proxy's compose definition maps it to the host
+ * gateway (`extra_hosts`).
+ */
+export const HOST_GATEWAY = 'host.docker.internal';
+
+/** An upstream's `host:port`, as a proxy on the stack's network dials it. */
+export function upstreamAddress(
+	upstream: Upstream,
+	/** How a service of the stack is named where the proxy runs. */
+	service: (name: string) => string = (name) => name,
+): string {
+	return 'onHost' in upstream
+		? `${HOST_GATEWAY}:${upstream.port}`
+		: `${service(upstream.service)}:${upstream.port}`;
 }
 
 /** One public host and what answers it. */
@@ -139,6 +171,16 @@ export interface EdgeWildcard {
 	 *   site's `hosts` route — `ask`, on the stack's network — answers 200.
 	 */
 	tls: { kind: 'stage' } | { kind: 'dns' } | { kind: 'on-demand'; ask: string };
+	/**
+	 * The site's `hosts` route, asked before each request a label makes —
+	 * `GET <path>?domain=<host>` on `upstream` — where a certificate already
+	 * covers every label (gkm's local one): a 2xx serves the label, and any
+	 * other answer is what the client gets. Rendered by Caddy (`forward_auth`);
+	 * Traefik's `forwardAuth` cannot hand the host as `domain`, so behind it
+	 * every label but `except` reaches the site, as a deployed Traefik stage's
+	 * do.
+	 */
+	hosts?: { upstream: Upstream; path: string };
 }
 
 /** Some of a route's paths, answered by another upstream. */
@@ -148,6 +190,12 @@ export interface EdgeHandler {
 	/** e.g. `/i/` — everything under it. */
 	prefixes: readonly string[];
 	upstreams: readonly Upstream[];
+	/**
+	 * A path prefix added before the request is sent — where the upstream
+	 * mounts what it answers: a dev server holding a file server's
+	 * processors, under `/__gkm/processors/<id>`.
+	 */
+	under?: string;
 }
 
 /** A route with handlers and a check that would have to hold for each of them. */

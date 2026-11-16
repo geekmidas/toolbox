@@ -1,10 +1,11 @@
 import type { ConstructManifest } from '@geekmidas/manifest';
 import { provisionOrder } from '@geekmidas/manifest';
 import { describe, expect, it } from 'vitest';
-import { hostFor, sitesFor, toCaddyfile } from '../caddyfile';
+import { toCaddyfile } from '../caddyfile';
 import { portKeys, primaryPortKey } from '../containers';
 import { envFor } from '../env';
 import { planFor } from '../plan';
+import { hostFor, localRoutes } from '../routes';
 import { TEST_CREDENTIALS } from './__helpers__/credentials';
 
 /**
@@ -83,9 +84,11 @@ describe('a wildcard site, locally', () => {
 	it('is a site block of its own on the dev edge', () => {
 		const { plan } = resolve();
 		const caddyfile = toCaddyfile(
-			sitesFor(plan, 'shop', {
-				Api: 'http://localhost:3000',
-				App: 'http://localhost:3001',
+			localRoutes(plan, 'shop', {
+				addresses: {
+					Api: 'http://localhost:3000',
+					App: 'http://localhost:3001',
+				},
 			}),
 			{ certificate: '/etc/caddy/sites/dev.pem' },
 		);
@@ -96,43 +99,55 @@ describe('a wildcard site, locally', () => {
 
 	it('refuses every protected label and asks the hosts route about the rest', () => {
 		const { plan } = resolve();
-		const site = sitesFor(plan, 'shop', {
-			Api: 'http://localhost:3000',
-			App: 'http://localhost:3001',
-		}).find((s) => s.host === '*.shop.localhost');
-
-		expect(site?.tenants).toEqual({
-			protected: [
-				'api.shop.localhost',
-				'status.shop.localhost',
-				'web.shop.localhost',
-				'www.shop.localhost',
-			],
-			hosts: {
-				upstream: 'http://host.docker.internal:3000',
-				uri: '/tenants/hosts?domain={host}',
+		const routes = localRoutes(plan, 'shop', {
+			addresses: {
+				Api: 'http://localhost:3000',
+				App: 'http://localhost:3001',
 			},
 		});
+		const site = routes.find((s) => s.host === '*.shop.localhost');
+
+		expect(site?.wildcard).toEqual({
+			domain: 'shop.localhost',
+			except: ['api', 'status', 'web', 'www'],
+			tls: { kind: 'stage' },
+			hosts: { upstream: { onHost: true, port: 3000 }, path: '/tenants/hosts' },
+		});
+		const caddyfile = toCaddyfile(routes, {
+			certificate: '/etc/caddy/sites/dev.pem',
+		});
+		expect(caddyfile).toContain(
+			'@protected host api.shop.localhost status.shop.localhost web.shop.localhost www.shop.localhost',
+		);
+		expect(caddyfile).toContain(`forward_auth http://host.docker.internal:3000 {
+			uri /tenants/hosts?domain={host}`);
 	});
 
 	it('keeps the stage in the protected hosts, as in its own domain', () => {
 		const { plan } = resolve('test');
-		const site = sitesFor(plan, 'shop', {
-			Api: 'http://localhost:3000',
-			App: 'http://localhost:3001',
-		}).find((s) => s.host === '*.test.shop.localhost');
+		const routes = localRoutes(plan, 'shop', {
+			addresses: {
+				Api: 'http://localhost:3000',
+				App: 'http://localhost:3001',
+			},
+		});
 
-		expect(site?.tenants?.protected).toContain('api.test.shop.localhost');
+		expect(
+			routes.find((s) => s.host === '*.test.shop.localhost')?.wildcard?.domain,
+		).toBe('test.shop.localhost');
+		expect(
+			toCaddyfile(routes, { certificate: '/etc/caddy/sites/test.pem' }),
+		).toContain('api.test.shop.localhost');
 	});
 
 	it('serves every host when the surface with the hosts route is not running', () => {
 		const { plan } = resolve();
-		const site = sitesFor(plan, 'shop', {
-			App: 'http://localhost:3001',
+		const site = localRoutes(plan, 'shop', {
+			addresses: { App: 'http://localhost:3001' },
 		}).find((s) => s.host === '*.shop.localhost');
 
-		expect(site?.tenants?.hosts).toBeUndefined();
-		expect(site?.tenants?.protected).toContain('www.shop.localhost');
+		expect(site?.wildcard?.hosts).toBeUndefined();
+		expect(site?.wildcard?.except).toContain('www');
 	});
 
 	it('never holds the base domain, so the other site does', () => {

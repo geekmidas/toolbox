@@ -12,6 +12,41 @@ gkm upgrade --all
 `10.0.0-alpha.x` project), never goes backwards, and with `--all` also raises
 third-party packages to the floor of the peer ranges the new version declares.
 
+## After 10.0.0-alpha.184: `gkm dev` follows `deploy.compose.proxy` {#dev-follows-proxy}
+
+`gkm dev` (and `gkm test`, `gkm setup`) now reads the local stage's proxy the
+way `gkm compose` does. Before, it always ran its own Caddy, whatever
+`deploy.compose.proxy` said ([alpha.183](#proxy-every-stage)).
+
+**A project on `proxy: 'traefik'`** (or a map naming `traefik` for the local
+stage): its next `gkm dev` runs no `caddy` container. It starts the shared
+Traefik edge (`gkm-edge`) on this machine, on **80 and 443**, where it is not
+running already, and registers the stage's routes with it — the routes
+`gkm compose --stage <local stage>` registers. What changes:
+
+- The apps' addresses lose the Caddy port: `https://api.<project>.localhost`
+  instead of `https://api.<project>.localhost:28010`. The hosts and the
+  certificate (gkm's local CA) are the same, so a browser that trusts it needs
+  nothing new; a URL copied from an earlier run, with the old port, is stale.
+- 80 and 443 must be free, or held by the edge. A local stack's own Caddy
+  from `gkm compose` is moved off them, as `gkm compose` moves it; anything
+  else is refused, naming what holds the port. `GKM_COMPOSE_HTTPS_PORT` and
+  `GKM_COMPOSE_HTTP_PORT` move the edge, for `gkm dev` and `gkm compose` alike.
+- `gkm test` registers its stage with the same edge.
+
+To keep Caddy for `gkm dev`, name the local stage in the per-stage map:
+
+```ts
+deploy: {
+  compose: {
+    proxy: { development: 'caddy', staging: 'traefik', production: 'traefik' },
+  },
+},
+```
+
+A project with no `proxy`, `proxy: 'caddy'`, or a map that leaves the local
+stage on Caddy changes nothing.
+
 ## After 10.0.0-alpha.183: `proxy: 'traefik'` includes the local stage {#proxy-every-stage}
 
 `deploy.compose.proxy: 'traefik'` now applies to every stage, the local one
@@ -26,7 +61,8 @@ stack's Caddy off the ports
 ([Compose](./compose.md#switching-a-server-from-caddy-to-the-shared-edge)),
 and the hosts, the Mailpit inbox and the local certificate stay the same
 ([Compose](./compose.md#the-local-stage-behind-the-shared-edge)).
-`gkm dev` is not affected: it runs its own edge, not the compose stack's.
+`gkm dev` was not affected by this release; it follows the setting from
+[alpha.184](#dev-follows-proxy).
 
 To keep Caddy locally, name every stage in the per-stage map. A stage the map
 leaves out is on Caddy:

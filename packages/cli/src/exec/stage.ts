@@ -19,6 +19,7 @@ import { spawn } from 'node:child_process';
 import { constants } from 'node:os';
 import type { ConstructManifest } from '@geekmidas/manifest';
 import { type ComposeDocker, dockerCompose } from '../compose/docker.js';
+import { edgePorts } from '../compose/edge.js';
 import { deployedStackSecrets } from '../compose/secrets.js';
 import {
 	type ComposeServer,
@@ -42,7 +43,6 @@ import { discover } from '../reconcile/discover.js';
 import { constructGlobs } from '../reconcile/workspace.js';
 import { secretsStoreFor } from '../secrets/store.js';
 import type { StageSecrets } from '../secrets/types.js';
-import { edgePorts } from '../target/compose/phases.js';
 import { assertDeployedStage } from '../workspace/stages.js';
 import type { NormalizedWorkspace } from '../workspace/types.js';
 

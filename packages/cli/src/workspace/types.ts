@@ -217,9 +217,11 @@ export interface ComposeWorkspaceConfig<S extends string = string> {
 	 *
 	 * One value applies to every stage, the local one included: on
 	 * `'traefik'` the local stack runs behind a Traefik edge on this machine,
-	 * the path the deployed stages take on their servers. A map sets each
-	 * stage it names, and a stage it leaves out is on Caddy — the way to run
-	 * one stage on something else.
+	 * the path the deployed stages take on their servers. `gkm dev` and
+	 * `gkm test` follow the local stage's: behind Traefik they register their
+	 * routes with that same edge and run no Caddy. A map sets each stage it
+	 * names, and a stage it leaves out is on Caddy — the way to run one stage
+	 * on something else.
 	 *
 	 * ```ts
 	 * proxy: 'traefik' // every stage, the local one included

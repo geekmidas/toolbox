@@ -40,9 +40,9 @@ import {
 import { appKey } from '../workspace/derive.js';
 import { rootSite } from '../workspace/rootSite.js';
 import { protectedSubdomains } from '../workspace/subdomains.js';
-import { EDGE_KINDS } from './caddyfile';
 import { fakeKey, type PlannedFake } from './containers';
 import type { LocalFake } from './fakes';
+import { EDGE_KINDS } from './routes';
 
 /**
  * Which container serves a kind.
@@ -403,6 +403,11 @@ export interface Plan {
 	 * means the broker's connection strings are resolved.
 	 */
 	workerBroker?: true;
+	/**
+	 * The edge in front of the stage's surfaces, sites and file servers, when
+	 * one serves anything: whose address each of them resolves to.
+	 */
+	edge?: LocalEdge;
 	/** Containers to start, deduplicated. */
 	containers: string[];
 	/**
@@ -418,6 +423,25 @@ export interface Plan {
 	resources: PlannedResource[];
 }
 
+/**
+ * The proxy in front of the local stage's surfaces, sites and file servers —
+ * the local stage's `deploy.compose.proxy`, as `proxyFor` decides it for
+ * `gkm compose` too.
+ */
+export type LocalEdge =
+	/** A Caddy of this project's, on the port it was assigned. */
+	| { proxy: 'caddy' }
+	/**
+	 * This machine's shared Traefik edge — the one `gkm compose` registers the
+	 * local stage with — on its ports, the stage's routes registered under
+	 * `project`: the stage's compose project, as `gkm compose` names it.
+	 */
+	| {
+			proxy: 'traefik';
+			ports: { https: number; http: number };
+			project: string;
+	  };
+
 /** What the plan needs that the manifest cannot tell it. */
 export interface PlanOptions {
 	/**
@@ -427,18 +451,20 @@ export interface PlanOptions {
 	 */
 	localStage?: string;
 	/**
-	 * Whether the local edge fronts the addresses this plan resolves.
+	 * The local edge that fronts the addresses this plan resolves, or `false`
+	 * for none.
 	 *
 	 * On by default, because deployed every surface, site and file server has a
 	 * real hostname and a certificate, and the point of the local target is to
 	 * be the same shape rather than a near-enough one. Off falls back to
-	 * `http://localhost:<port>`.
+	 * `http://localhost:<port>`. Caddy unless the local stage's proxy is
+	 * Traefik — see {@link LocalEdge}.
 	 *
 	 * Config rather than declaration for the same reason `cache` is: the
 	 * application reads whichever address was injected and composes none, so it
 	 * cannot tell the difference.
 	 */
-	edge?: boolean;
+	edge?: false | LocalEdge;
 	/**
 	 * Where a declared cache lives, which decides both the container it needs
 	 * locally and the protocol its URL speaks.
@@ -518,8 +544,8 @@ export function containerFor(
 	cache: CacheBackend = DEFAULT_CACHE.aws,
 	/** Whether the declaration named a parent — see the `cache` branch. */
 	derived = false,
-	/** Whether the local edge exists — see the `file-server` branch. */
-	edge = true,
+	/** Whether a Caddy of this project's is the edge — see `file-server`. */
+	caddy = true,
 ): string | undefined {
 	if (EVENT_KINDS[kind]) {
 		// pg-boss is deliberately absent from EVENT_CONTAINERS: it is a schema
@@ -531,7 +557,9 @@ export function containerFor(
 	// A file server answers on the edge, which is what gives it a host of its
 	// own. With the edge off it falls back to the object store that holds its
 	// objects — a path under MinIO, which works and is not the deployed shape.
-	if (kind === 'file-server') return edge ? 'caddy' : CONTAINERS.objects;
+	// Behind the shared Traefik edge, which is no container of this project's,
+	// its container is the object store too: the edge reaches MinIO there.
+	if (kind === 'file-server') return caddy ? 'caddy' : CONTAINERS.objects;
 
 	// The same shape: a cache in the database lives in the database's container.
 	if (kind === 'cache') {
@@ -566,6 +594,8 @@ export function planFor(
 
 	const events = options.events ?? DEFAULT_EVENTS;
 	const cache = options.cache ?? DEFAULT_CACHE.aws;
+	const edge: LocalEdge | undefined =
+		options.edge === false ? undefined : (options.edge ?? { proxy: 'caddy' });
 
 	for (const id of order) {
 		const declaration: Declaration | undefined = manifest[id];
@@ -597,7 +627,7 @@ export function planFor(
 						events,
 						cache,
 						'of' in declaration && typeof declaration.of === 'string',
-						options.edge !== false,
+						edge?.proxy === 'caddy',
 					);
 		if (!container && !CONTAINERLESS[declaration.kind]) continue;
 
@@ -745,12 +775,12 @@ export function planFor(
 	// `edge: false` opts out, and then every local address is
 	// `http://localhost:<port>` as before. The application cannot tell: it reads
 	// whichever address was injected and composes none.
-	if (
-		options.edge !== false &&
-		resources.some((r) => EDGE_KINDS[r.kind] === true)
-	) {
-		containers.add('caddy');
-	}
+	//
+	// Only Caddy is a container of this project's. The shared Traefik edge is
+	// this machine's, started and registered with as `gkm compose` does.
+	const served =
+		edge !== undefined && resources.some((r) => EDGE_KINDS[r.kind] === true);
+	if (served && edge.proxy === 'caddy') containers.add('caddy');
 
 	for (const extra of options.extraContainers ?? []) containers.add(extra);
 
@@ -843,6 +873,7 @@ export function planFor(
 		resources,
 		...(Object.keys(fakes).length ? { fakes } : {}),
 		...(workerBroker ? { workerBroker: true as const } : {}),
+		...(served ? { edge } : {}),
 	};
 }
 

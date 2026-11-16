@@ -19,15 +19,7 @@
  */
 
 import { existsSync } from 'node:fs';
-import {
-	chmod,
-	mkdir,
-	readdir,
-	readFile,
-	rm,
-	writeFile,
-} from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
 import {
 	ensureLocalAuthority,
 	ensureLocalCertificate,
@@ -35,17 +27,13 @@ import {
 	localAuthorityPaths,
 	localCertificateNames,
 } from '@geekmidas/edge/certificates/local';
+import { routeHosts } from '@geekmidas/edge/routes';
 import { type ConstructManifest, provisionOrder } from '@geekmidas/manifest';
+import { type ComposeDocker, dockerCompose } from '../compose/docker.js';
 import { gkmHome } from '../home';
 import { scopeTelemetryEnv } from '../telemetry/edges';
 import type { CacheBackend, EventsBackend } from '../types';
 import { TEST_STAGE } from '../workspace/stages';
-import {
-	CADDY_SITES_IN_CONTAINER,
-	caddyfileRoot,
-	sitesFor,
-	toCaddyfile,
-} from './caddyfile';
 import { bucketClient, carrierClient, pgClient } from './clients';
 import {
 	type ComposeFile,
@@ -61,10 +49,12 @@ import {
 	serviceAddresses,
 } from './containers';
 import { dockerCli } from './docker';
-import { edgeToken, envFor, LOCAL_CA_KEY } from './env';
+import { edgeToken, envFor, LOCAL_CA_KEY, localEdgePort } from './env';
 import type { LocalFake } from './fakes';
+import { write } from './files';
 import { lanAddress } from './lan';
 import type { LocalCredentials, Login } from './localCredentials';
+import { caddyEdge, edgeCertificatePath, traefikEdge } from './localEdge';
 import { ensureLogins, type LoginOutcome } from './logins';
 import type { ObjectWebhook } from './objectEvents';
 import {
@@ -101,10 +91,11 @@ import {
 	postgresStatements,
 	type SqlClient,
 } from './provision';
+import { localRoutes } from './routes';
 import { loadState, planHash, saveState } from './state';
 
 export type { ComposeFile } from './compose';
-export type { Plan, PlannedResource } from './plan';
+export type { LocalEdge, Plan, PlannedResource } from './plan';
 export type { PortAssignments, PortMove } from './ports';
 
 /**
@@ -121,37 +112,10 @@ export const COMPOSE_PATH = 'docker-compose.constructs.yml';
 export const PROJECT_COMPOSE_PATH = 'docker-compose.yml';
 
 /**
- * The local edge's config, beside the compose file that mounts it.
- *
- * Relative in the compose volume, so it resolves against `.gkm/` wherever the
- * project lives.
- */
-export const CADDYFILE_PATH = '.gkm/Caddyfile';
-
-/**
  * The containers that mount this checkout's files: Caddy reads its routes out
  * of `.gkm/`, so one started from a worktree serves that worktree's ports.
  */
 const CHECKOUT_MOUNTS = ['caddy'];
-
-/**
- * Where one stage's routes live, imported by the file above.
- *
- * Per stage because one edge serves every stage, the same way one Postgres
- * holds `orders` and `orders_test`. A single file would mean `gkm test`
- * deleting the routes `gkm dev` is serving.
- */
-export const caddySitesPath = (stage: string) =>
-	`.gkm/caddy-sites/${stage}.caddy`;
-
-/**
- * Where one stage's certificate is kept: certificate and key in one PEM,
- * issued from gkm's local authority (`@geekmidas/edge/certificates/local`), beside the
- * stage's routes — so the edge reads it through the mount it already has, and
- * a stage removed takes its certificate with it.
- */
-export const caddyCertificatePath = (stage: string) =>
-	`.gkm/caddy-sites/${stage}.pem`;
 
 /**
  * The Docker operations reconcile needs.
@@ -274,8 +238,12 @@ export interface ReconcileOptions {
 	 * brought up with and every URL carries. See `localCredentials.ts`.
 	 */
 	credentials: LocalCredentials;
-	/** Whether the local edge fronts surfaces, sites and file servers. */
-	edge?: boolean;
+	/**
+	 * The local edge that fronts surfaces, sites and file servers — the local
+	 * stage's proxy (`localEdgeFor`) — or `false` for none. A Caddy of this
+	 * project's when not given.
+	 */
+	edge?: PlanOptions['edge'];
 	/** The workspace's `protectedSubdomains` — see `PlanOptions`. */
 	protectedSubdomains?: readonly string[];
 	/**
@@ -319,6 +287,11 @@ export interface ReconcileOptions {
 	 */
 	processorAddresses?: Readonly<Record<string, string>>;
 	docker?: Docker;
+	/**
+	 * Docker as `gkm compose` drives it, for the shared Traefik edge: started,
+	 * and the stage's routes written into it. Injected for tests.
+	 */
+	edgeDocker?: ComposeDocker;
 	probe?: PortProbe;
 	/** Injected for tests; the defaults talk to the containers just started. */
 	sql?: (port: number, login: Login) => SqlClient;
@@ -475,29 +448,52 @@ export async function reconcile(
 	// The edge's config is part of what "converged" means: a file server added or
 	// a bucket renamed changes the routing without changing a container, and a
 	// hash that ignored it would leave the old routes in place.
-	const sites = sitesFor(
-		plan,
-		project,
-		options.addresses,
-		options.processorAddresses,
-	);
-	const edged = plan.containers.includes('caddy');
-	const authorityPaths = options.authority ?? localAuthorityPaths(gkmHome());
-	const edgePort = ports[primaryPortKey('caddy')];
-	const caddyfile = toCaddyfile(sites, {
-		certificate: `${CADDY_SITES_IN_CONTAINER}/${stage}.pem`,
-		// What the apps are handed (`envFor`), so a service calling a sibling
-		// through this edge keeps the client's address.
-		edgeToken: edgeToken(project, seed),
+	//
+	// One route plan, whichever proxy serves it: a Caddy of this project's
+	// reaches MinIO on its network, and the shared Traefik edge — on none of
+	// this project's — on the port MinIO publishes on the host.
+	const edgePort = localEdgePort(plan, ports);
+	const minioPort = ports[primaryPortKey('minio')];
+	const routes = localRoutes(plan, project, {
+		...(options.addresses ? { addresses: options.addresses } : {}),
+		...(options.processorAddresses
+			? { processorAddresses: options.processorAddresses }
+			: {}),
+		...(plan.edge?.proxy === 'traefik' && minioPort !== undefined
+			? { objects: { onHost: true, port: minioPort } }
+			: {}),
 		...(edgePort !== undefined ? { port: edgePort } : {}),
 	});
+	const edged = plan.edge !== undefined;
+	const authorityPaths = options.authority ?? localAuthorityPaths(gkmHome());
+	// What the apps are handed (`envFor`), so a service calling a sibling
+	// through the edge keeps the client's address.
+	const token = edgeToken(project, seed);
+	const edge =
+		plan.edge?.proxy === 'traefik'
+			? traefikEdge({
+					root,
+					edge: plan.edge,
+					routes,
+					edgeToken: token,
+					docker: options.edgeDocker ?? dockerCompose,
+				})
+			: caddyEdge({
+					root,
+					stage,
+					...(options.localStage ? { localStage: options.localStage } : {}),
+					routes,
+					edgeToken: token,
+					docker,
+					composePath,
+				});
 	// And so is what provisioning runs. A toolbox upgrade that changes the role
 	// DDL — a new grant — changes no container and no route, so a hash without
 	// it reported convergence and the existing database never got the grant.
 	const postgres = postgresStatements(plan, project, seed)
 		.map((statement) => statement.create)
 		.join(';\n');
-	const hash = planHash(plan, compose, { caddyfile, postgres });
+	const hash = planHash(plan, compose, { ...edge.generated, postgres });
 	const services = serviceAddresses(running, ports, plan.fakes);
 	// Only a project with a mobile app reads it, so only one looks for it.
 	const lan = plan.resources.some((r) => r.kind === 'mobile-app')
@@ -554,15 +550,8 @@ export async function reconcile(
 	const certificate = edged
 		? await ensureLocalCertificate(
 				await ensureLocalAuthority(authorityPaths),
-				localCertificateNames(
-					project,
-					sites.flatMap((site) => [
-						site.host,
-						...(site.aliases ?? []),
-						...(site.redirects ?? []),
-					]),
-				),
-				join(root, caddyCertificatePath(stage)),
+				localCertificateNames(project, routes.flatMap(routeHosts)),
+				join(root, edgeCertificatePath(stage)),
 			)
 		: undefined;
 
@@ -578,6 +567,9 @@ export async function reconcile(
 			(await docker.healthy(composePath, running, {
 				mounted: CHECKOUT_MOUNTS,
 			}))) &&
+		// The shared edge is no container of this project's: whether it still
+		// serves this stage's routes is asked of it.
+		(!start || !edged || (await edge.serving())) &&
 		// Every checkout shares one Postgres, so another one's test teardown can
 		// drop a database this checkout's state still records as created.
 		(!start ||
@@ -594,13 +586,8 @@ export async function reconcile(
 	// Owner-only: it carries the containers' generated logins.
 	await write(composePath, toYaml(compose), 0o600);
 
-	// Before the containers: Caddy reads these at startup, and mounting a file
-	// that does not exist yet gets a directory instead.
-	if (edged) {
-		await write(join(root, CADDYFILE_PATH), caddyfileRoot());
-		await write(join(root, caddySitesPath(stage)), caddyfile);
-		await pruneCaddySites(root, [stage, options.localStage, TEST_STAGE]);
-	}
+	// Before the containers: what the edge reads as it starts.
+	if (edged) await edge.prepare();
 
 	if (start && running.length > 0) {
 		options.progress?.(
@@ -613,13 +600,9 @@ export async function reconcile(
 		);
 	}
 
-	// A running Caddy does not notice a changed import or a certificate issued
-	// again, so what this reconcile just wrote is inert until it is told.
-	// Failing is not fatal: the container may have only this second come up, in
-	// which case it already read them.
-	if (start && edged) {
-		await docker.reload(composePath, 'caddy').catch(() => {});
-	}
+	// The edge told about the routes and their certificate: a running Caddy
+	// reloaded, or the shared edge started and the stage registered with it.
+	if (start && certificate) await edge.apply(certificate);
 
 	// A container that already had data may have been made with another
 	// login — an older gkm's fixed one. Brought in line before anything signs
@@ -790,52 +773,4 @@ async function observedPorts(
 	}
 
 	return observed;
-}
-
-/** Write a file only when its content would change, so mtimes stay meaningful. */
-/**
- * Remove the routes of stages this project no longer reconciles.
- *
- * Only the local stage and `test` are ever written, so any other file is left
- * over from a stage that was renamed — `development` becoming `dev`. Caddy
- * imports every file, and the leftover declares the same hosts as its
- * replacement: it refuses the whole config as ambiguous, and every URL behind
- * the edge goes with it.
- */
-async function pruneCaddySites(
-	root: string,
-	stages: ReadonlyArray<string | undefined>,
-): Promise<void> {
-	const dir = dirname(join(root, caddySitesPath(TEST_STAGE)));
-	const keep = new Set(
-		stages.flatMap((stage) =>
-			stage ? [`${stage}.caddy`, `${stage}.pem`] : [],
-		),
-	);
-
-	for (const file of await readdir(dir)) {
-		// A stage's certificate goes with its routes.
-		if (/\.(caddy|pem)$/.test(file) && !keep.has(file)) {
-			await rm(join(dir, file));
-		}
-	}
-}
-
-async function write(
-	path: string,
-	content: string,
-	mode?: number,
-): Promise<void> {
-	try {
-		if ((await readFile(path, 'utf-8')) === content) {
-			if (mode !== undefined) await chmod(path, mode);
-			return;
-		}
-	} catch {
-		// Absent or unreadable — write it.
-	}
-
-	await mkdir(dirname(path), { recursive: true });
-	await writeFile(path, content, mode === undefined ? {} : { mode });
-	if (mode !== undefined) await chmod(path, mode);
 }

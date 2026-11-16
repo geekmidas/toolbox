@@ -33,7 +33,6 @@ import {
 import { LOGS_ORG, otlpHeaders } from '../compose/logs.js';
 import { GkmError } from '../errors';
 import { telemetryEnv } from '../telemetry/config.js';
-import { hostFor, hostsFor } from './caddyfile';
 import { primaryPortKey } from './containers';
 import {
 	EMULATOR_REGION,
@@ -46,6 +45,7 @@ import type { ContainerCredentials } from './localCredentials';
 import { objectsWebhookToken } from './objectEvents';
 import { PgBossNeedsDatabase, type Plan, type PlannedResource } from './plan';
 import type { PortAssignments } from './ports';
+import { hostFor, hostsFor } from './routes';
 import { signedOrigins } from './signedOrigins';
 
 /** Where Node reads extra roots from: gkm's local CA, behind the local edge. */
@@ -635,9 +635,7 @@ function aliasAddressesFor(
 	options: EnvOptions,
 ): Record<string, readonly string[]> {
 	if (options.aliasAddresses) return { ...options.aliasAddresses };
-	const edge = plan.containers.includes('caddy')
-		? options.ports[primaryPortKey('caddy')]
-		: undefined;
+	const edge = localEdgePort(plan, options.ports);
 	if (edge === undefined) return {};
 	const aliased: Record<string, readonly string[]> = {};
 	for (const resource of plan.resources) {
@@ -646,9 +644,29 @@ function aliasAddressesFor(
 		aliased[resource.id] = hostsFor(
 			resource,
 			options.project ?? '',
-		).aliases.map((host) => `https://${host}:${edge}`);
+		).aliases.map((host) => onEdge('https', host, edge));
 	}
 	return aliased;
+}
+
+/**
+ * The port the local edge answers on, on this machine — its Caddy's assigned
+ * one, or the shared Traefik edge's — or undefined where no edge serves the
+ * stage.
+ */
+export function localEdgePort(
+	plan: Plan,
+	ports: PortAssignments,
+): number | undefined {
+	if (!plan.edge) return undefined;
+	return plan.edge.proxy === 'caddy'
+		? ports[primaryPortKey('caddy')]
+		: plan.edge.ports.https;
+}
+
+/** A host's address on the local edge: its port kept where it is not 443. */
+function onEdge(scheme: 'https' | 'wss', host: string, port: number): string {
+	return `${scheme}://${host}${port === 443 ? '' : `:${port}`}`;
 }
 
 /**
@@ -882,24 +900,20 @@ function urlFor(
 	// so this is the target's decision alone.
 	if (resource.kind === 'rest-api' || resource.kind === 'site') {
 		const address = addresses?.[resource.id];
-		const edge = plan.containers.includes('caddy')
-			? ports[primaryPortKey('caddy')]
-			: undefined;
+		const edge = localEdgePort(plan, ports);
 
 		return address && edge !== undefined
-			? `https://${hostFor(resource, project)}:${edge}`
+			? onEdge('https', hostFor(resource, project), edge)
 			: address;
 	}
 
 	// The same address, in the scheme a WebSocket client opens.
 	if (resource.kind === 'websocket-api') {
 		const address = addresses?.[resource.id];
-		const edge = plan.containers.includes('caddy')
-			? ports[primaryPortKey('caddy')]
-			: undefined;
+		const edge = localEdgePort(plan, ports);
 
 		return address && edge !== undefined
-			? `wss://${hostFor(resource, project)}:${edge}`
+			? onEdge('wss', hostFor(resource, project), edge)
 			: address?.replace(/^http/, 'ws');
 	}
 
@@ -1013,8 +1027,9 @@ function urlFor(
 			// works: a path under the object store. It is not the deployed shape,
 			// and the application still cannot tell — it reads the key it was
 			// given and never composes one.
-			return plan.containers.includes('caddy')
-				? `https://${hostFor(resource, project)}:${port}`
+			const edge = localEdgePort(plan, ports);
+			return edge !== undefined
+				? onEdge('https', hostFor(resource, project), edge)
 				: `http://${LOCAL_HOST}:${port}/${origin.name}`;
 		}
 

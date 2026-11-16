@@ -44,8 +44,6 @@ export {
 	ComposeAppsUnhealthy,
 	ComposePinNeedsPull,
 	ComposePushNeedsBuild,
-	EdgePortInvalid,
-	edgePorts,
 	gitRevision,
 	NoGitRevision,
 	RedisClientMissing,
@@ -55,7 +53,13 @@ export {
 	NetworkCreateFailed,
 	PushDigestUnknown,
 } from './docker';
-export { ComposeProxyClash, EdgeHostClaimed, EdgeWriteFailed } from './edge';
+export {
+	ComposeProxyClash,
+	EdgeHostClaimed,
+	EdgePortInvalid,
+	EdgeWriteFailed,
+	edgePorts,
+} from './edge';
 export {
 	assertImagesExist,
 	ImageDigestMismatch,

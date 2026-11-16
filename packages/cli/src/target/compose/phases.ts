@@ -81,6 +81,7 @@ import {
 import {
 	assertEdgeHostsFree,
 	assertEdgePorts,
+	edgePorts,
 	edgeRef,
 	ensureEdge,
 	removeEdgeRoutes,
@@ -116,10 +117,8 @@ import {
 	type ComposeStack,
 	composeProject,
 	composeStack,
-	EDGE_PORT_ENV,
 	envFile,
 	LOG_ROTATION,
-	LOGS_PORT_ENV,
 	LOOPBACK_SERVICES,
 	replicaNames,
 	type StackApp,
@@ -371,19 +370,6 @@ export class ComposePinNeedsPull extends GkmError {
 	}
 }
 
-/** A port variable that does not hold a port. */
-export class EdgePortInvalid extends GkmError {
-	constructor(
-		readonly variable: string,
-		readonly value: string,
-	) {
-		super(
-			`${variable}=${value} is not a port. Set it to a number between 1 and 65535, or unset it for the default.`,
-		);
-		this.name = 'EdgePortInvalid';
-	}
-}
-
 /**
  * A site that pre-renders against its stage (`prerender: 'stage'`) whose
  * APIs do not answer, so it is not built: pages built without their data
@@ -457,29 +443,6 @@ export async function gitRevision(root: string): Promise<string> {
 		cwd: root,
 	}).catch(() => '');
 	return status.trim() ? `${sha}-dirty` : sha;
-}
-
-/** The edge's ports, from the environment — 443 and 80 when unset. */
-export function edgePorts(env: NodeJS.ProcessEnv = process.env): {
-	https: number;
-	http: number;
-	logs?: number;
-} {
-	const read = (variable: string, fallback: number) => {
-		const value = env[variable];
-		if (value === undefined || value === '') return fallback;
-		const port = Number(value);
-		if (!Number.isInteger(port) || port < 1 || port > 65_535) {
-			throw new EdgePortInvalid(variable, value);
-		}
-		return port;
-	};
-	const logs = env[LOGS_PORT_ENV] ? read(LOGS_PORT_ENV, 0) : undefined;
-	return {
-		https: read(EDGE_PORT_ENV.https, 443),
-		http: read(EDGE_PORT_ENV.http, 80),
-		...(logs ? { logs } : {}),
-	};
 }
 
 /**
