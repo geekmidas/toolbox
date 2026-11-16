@@ -106,26 +106,46 @@ A multi-tenant app can serve each tenant on its own host,
 `acme.example.com/orders/42`, by declaring one site with `subdomain: '*'`:
 
 ```ts
-// endpoints/tenants.ts — 200 for a host it serves, 404 for anything else
-export const tenantHosts = api
-  .get('/tenants/hosts')
-  .query(z.object({ domain: z.string() }))
-  .handle(async ({ query, db }) => { … });
-
 // constructs/app.ts
 export const app = new StaticSite('App', {
   path: 'apps/app',
   variant: 'next',
   subdomain: '*',
-  hosts: tenantHosts,
 }).dependsOn([api, auth]);
 ```
 
 - **Named hosts win.** `api.`, `auth.`, `admin.` and every other app keep their
   own hosts; the wildcard site gets whatever is left. It never holds the base
   domain, and a project has at most one.
-- **`hosts`** is a `GET` endpoint the edge asks, `?domain=<host>`, before it
-  serves a host. It runs without a session.
+- **Tenants are the app's.** A tenant is a row in the app's database, so the
+  app looks it up on every request and answers an unknown one itself.
+- **`hosts`, where the edge must ask first.** A `GET` route the edge asks,
+  `?domain=<host>`, answering `200` for a tenant and `404` otherwise. It is
+  required only where the edge gets a certificate per tenant on demand — the
+  stack's own Caddy without a wildcard certificate (see
+  [Compose](./compose.md#a-site-on-every-subdomain)) — so nobody can make it
+  request certificates for hosts that are no tenant. Name it by its surface
+  and path, so the construct imports nothing from an app:
+
+  ```ts
+  // apps/api/endpoints/tenants.ts — 200 for a host it serves, 404 otherwise
+  export const tenantHosts = api
+    .get('/tenants/hosts')
+    .query(z.object({ domain: z.string() }))
+    .handle(async ({ query, db }) => { … });
+
+  // constructs/app.ts
+  export const app = new StaticSite('App', {
+    path: 'apps/app',
+    subdomain: '*',
+    hosts: { surface: api, path: '/tenants/hosts' },
+  }).dependsOn([api, auth]);
+  ```
+
+  gkm checks that the surface serves `GET /tenants/hosts` wherever it reads
+  the project (`SiteHostsEndpointMissing`). It runs without a session. The
+  endpoint itself (`hosts: tenantHosts`) is still accepted, but a construct
+  that imports it cannot load in an image pruned to another app.
 - **Protected subdomains.** A tenant can never take a label the stage needs:
   every app's own (derived, never listed) and the names no construct declares,
   listed once in the workspace config. Listing an app's own is an error:
@@ -157,10 +177,11 @@ address with a tenant to open:
    app  https://*.shop.localhost:8443 -> http://localhost:3001 (open a tenant: https://acme.shop.localhost:8443)
 ```
 
-The dev edge asks the `hosts` endpoint about every host before serving it,
-so a slug that is not a tenant gets the endpoint's own `404` locally, as it
-will deployed, and a protected label (`www`, or an app that is not running) is
-refused without asking. In a feature test, `browser.on('acme')` acts on a
+A protected label (`www`, or an app that is not running) is refused locally.
+Every other label reaches the site, which answers an unknown tenant itself.
+Where the site names `hosts`, the dev edge also asks it about every host
+before serving it, so a slug that is not a tenant gets the route's own `404`
+without reaching the site. In a feature test, `browser.on('acme')` acts on a
 tenant's host: see [Feature Tests](./testing#feature-tests).
 
 `gkm compose` routes, certifies and points DNS at every subdomain — see
@@ -169,8 +190,8 @@ tenant's host: see [Feature Tests](./testing#feature-tests).
 On AWS the site is one CloudFront distribution under `*.example.com`: a
 wildcard certificate in `us-east-1`, validated through the stage's Route 53
 zone when it deploys, and one `*.example.com` alias record. Nothing is created
-per tenant: a tenant exists because the app says so, and the `hosts` route
-answers an unknown one with a `404`. It needs the stage's domain on the stack,
+per tenant: a tenant exists because the app says so, and the app answers an
+unknown one. `hosts` is not needed. It needs the stage's domain on the stack,
 `new App({ domain, hostedZoneId })` in `sst.config.ts`; without one the deploy
 refuses the site by name (`WildcardSiteNeedsDomain`).
 

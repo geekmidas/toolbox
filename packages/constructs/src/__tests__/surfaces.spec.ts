@@ -17,7 +17,6 @@ import {
 	SiteHostsNotGet,
 	StaticSite,
 	WildcardSiteCannotBeRoot,
-	WildcardSiteNeedsHosts,
 } from '../site';
 
 const api = new RestApi('Api', {
@@ -100,18 +99,40 @@ describe('StaticSite', () => {
 			});
 		});
 
-		it('is refused without a hosts check, or with one on a single host', () => {
-			expect(
-				() => new StaticSite('App', { path: 'apps/app', subdomain: '*' }),
-			).toThrow(WildcardSiteNeedsHosts);
-			expect(
-				() =>
-					new StaticSite('App', {
-						path: 'apps/app',
-						subdomain: 'app',
-						hosts,
-					}),
-			).toThrow(SiteHostsNeedsWildcard);
+		it('names its hosts route by surface and path, without the endpoint', () => {
+			const app = new StaticSite('App', {
+				path: 'apps/app',
+				subdomain: '*',
+				hosts: { surface: api, path: '/tenants/hosts' },
+			});
+
+			expect(app.declare()[0]).toMatchObject({
+				hosts: { surface: 'Api', path: '/tenants/hosts' },
+			});
+		});
+
+		it('needs no hosts check, and still reads its tenant off the host', () => {
+			const app = new StaticSite('App', { path: 'apps/app', subdomain: '*' });
+			const [declaration] = app.declare();
+
+			expect(declaration).not.toHaveProperty('hosts');
+			expect(declaration).toMatchObject({
+				subdomain: '*',
+				provides: ['APP_URL', 'APP_DOMAIN', 'APP_PROTECTED_SUBDOMAINS'],
+			});
+		});
+
+		it('is refused a hosts check on a single host', () => {
+			for (const check of [hosts, { surface: api, path: '/tenants/hosts' }]) {
+				expect(
+					() =>
+						new StaticSite('App', {
+							path: 'apps/app',
+							subdomain: 'app',
+							hosts: check,
+						}),
+				).toThrow(SiteHostsNeedsWildcard);
+			}
 		});
 
 		it('is refused a hosts check the edge cannot ask with GET', () => {

@@ -1462,13 +1462,22 @@ each proxy gets the tenants' certificates its own way:
 - **Caddy (the stack's own)**: one certificate per tenant, on demand. Before
   Caddy gets one for a host, it asks the site's `hosts` route on the stack's
   network (`GET <path>?domain=<host>`); a host that is no tenant gets no
-  certificate, so it fails in the browser rather than reaching the app.
+  certificate, so it fails in the browser rather than reaching the app. This
+  is the one case that needs `hosts`
+  (`hosts: { surface: api, path: '/tenants/hosts' }`): without it anyone
+  could make Caddy request certificates for any label.
 - **Either**: the stage's own wildcard certificate, `deploy.compose.tls` (see
   [Certificates](#certificates)), wins over both, for a server that must hold
   no key.
 
+Behind a wildcard certificate — the DNS challenge or the stage's own — nothing
+asks before a request reaches the site, so the site needs no `hosts`: every
+label but the protected ones reaches it, and the app answers an unknown tenant
+from its own database.
+
 A stage with none of these is refused with `WildcardSiteCertificateMissing`,
-naming what would give it one. Two stages on one server each get their own
+naming what would give it one — on Caddy, a `deploy.compose.tls` certificate or
+the site's `hosts`. Two stages on one server each get their own
 router and certificate: a wildcard covers one label, so `*.example.com` never
 matches `acme.staging.example.com`.
 
