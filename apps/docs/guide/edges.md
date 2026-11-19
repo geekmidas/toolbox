@@ -145,6 +145,27 @@ runtime, as a backend does.
 A bundle never gets a `Telemetry` node's keys. The exporter belongs to the
 server.
 
+### The stage, under the prefix
+
+A bundle also gets the stage it is built for under its prefix:
+`NEXT_PUBLIC_STAGE`, `VITE_STAGE` or `EXPO_PUBLIC_STAGE`. It is the build-time
+counterpart of the `STAGE` every process is handed. Client code gates
+production-only integrations (analytics, error reporting) on it:
+
+```ts
+const isProd = process.env.NEXT_PUBLIC_STAGE === 'production';
+```
+
+Every command sets it: a compose image build, an EAS build, the AWS target,
+and `gkm dev` and `gkm test` (where it is the local or test stage). So a gate
+behaves the same locally as when it is deployed.
+
+- **It is inlined.** The value is fixed when the image is built. An image
+  promoted from one stage to another keeps the stage it was built for.
+- **A stage secret of the same name wins.** If a stage already sets
+  `NEXT_PUBLIC_STAGE` with `gkm secrets:set` (to `prod` on a stage named
+  `production`, say), that value is still the one inlined.
+
 ## Beyond the edges
 
 Every process also gets:
@@ -154,7 +175,8 @@ Every process also gets:
   the ones gkm keeps for the stack itself (a container's login, the server's
   address);
 - **`GKM_EDGE_TOKEN`**, which a call to a sibling through the edge carries;
-- `PORT`, `STAGE` and `NODE_ENV`.
+- `PORT`, `STAGE` and `NODE_ENV`. A bundle gets its stage at build time
+  instead, as [`<prefix>STAGE`](#the-stage-under-the-prefix).
 
 A **Worker**'s process gets the edges of everything built from it: each cron,
 queue consumer and subscriber. It also gets `EVENT_PUBLISHER_CONNECTION_STRING`,

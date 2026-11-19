@@ -6,6 +6,7 @@ import {
 	type PublicDeclaration,
 	providedKeyFor,
 	publicEnvFor,
+	publicStageKey,
 	publicValues,
 	type SiteDeclaration,
 } from '@geekmidas/manifest';
@@ -38,14 +39,16 @@ export class SiteBuildValueUnresolved extends GkmError {
 	}
 }
 
-/** How {@link publicBuildValues} treats a value it inlines that is missing. */
+/** The stage a site is built for, and how a missing value is treated. */
 export interface PublicBuildOptions {
+	/** The stage being built for: inlined as `publicStageKey`. */
+	stage: string;
 	/**
 	 * Refuse a build whose file origins — each file server's URL, each
 	 * bucket's signed origin — the stage has not resolved, naming the stage.
 	 * A deployed stage's build; locally every one resolves.
 	 */
-	requireFileOrigins?: { stage: string };
+	requireFileOrigins?: boolean;
 }
 
 /**
@@ -65,6 +68,9 @@ export interface PublicBuildOptions {
  *   variant's public prefix (`NEXT_PUBLIC_APP_STORE_URL` on a `next` site) was
  *   declared public by whoever named it, so it is passed. Anything else is
  *   not: a secret without the prefix never reaches a site's build.
+ * - **The stage it is built for**, under the prefix (`NEXT_PUBLIC_STAGE`):
+ *   what a bundle gates production-only code on, as a process reads `STAGE`.
+ *   A stage secret of that name wins, unlike every other derived value.
  *
  * A value the stage resolves to nothing is left out rather than passed empty
  * — except, with `requireFileOrigins`, where its pages load files from.
@@ -76,7 +82,7 @@ export function publicBuildValues(
 	manifest: ConstructManifest,
 	resolve: (key: string) => string | undefined,
 	secrets: Readonly<Record<string, string>>,
-	options: PublicBuildOptions = {},
+	options: PublicBuildOptions,
 ): Record<string, string> {
 	const args: Record<string, string> = {};
 
@@ -100,16 +106,11 @@ export function publicBuildValues(
 	}
 
 	const prefix = PUBLIC_PREFIX[site.variant];
-	const required = options.requireFileOrigins;
-	if (required) {
+	if (options.requireFileOrigins) {
 		for (const value of publicValues(site, manifest)) {
 			if (value.kind === 'file-server' && value.role === 'url') {
 				if (!resolve(value.key)) {
-					throw new SiteBuildValueUnresolved(
-						site.id,
-						value.key,
-						required.stage,
-					);
+					throw new SiteBuildValueUnresolved(site.id, value.key, options.stage);
 				}
 			}
 			// A signed origin is derived: what has to resolve is the connection.
@@ -124,7 +125,7 @@ export function publicBuildValues(
 					throw new SiteBuildValueUnresolved(
 						site.id,
 						value.key,
-						required.stage,
+						options.stage,
 						connection,
 					);
 				}
@@ -145,6 +146,7 @@ export function publicBuildValues(
 			args[key] = value;
 		}
 	}
+	args[publicStageKey(site)] ??= options.stage;
 
 	return args;
 }

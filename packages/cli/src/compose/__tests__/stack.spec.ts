@@ -467,6 +467,8 @@ describe('a static site', () => {
 			VITE_WEB_URL: 'https://compose-app.localhost:8443',
 			VITE_API_URL: 'https://api.compose-app.localhost:8443',
 			VITE_AUTH_URL: 'https://auth.compose-app.localhost:8443',
+			// And the stage it is built for, as a process reads `STAGE`.
+			VITE_STAGE: 'development',
 		});
 		// Every one declared, or the build drops it.
 		for (const key of Object.keys(s.compose.services.web!.build!.args!)) {
@@ -485,6 +487,7 @@ describe('a static site', () => {
 		expect(s.compose.services.web?.build?.args).toEqual({
 			WEB_URL: 'https://compose-app.localhost:8443',
 			VITE_WEB_URL: 'https://compose-app.localhost:8443',
+			VITE_STAGE: 'development',
 		});
 		expect(dockerfileOf(s)).toContain('ARG WEB_URL=""');
 	});
@@ -1038,6 +1041,7 @@ describe('mail and storage on a deployed stage', () => {
 		expect(phone(prod)).toEqual({
 			APP_SCHEME: 'compose-app',
 			EXPO_PUBLIC_API_URL: 'https://api.shop.example.com',
+			EXPO_PUBLIC_STAGE: 'production',
 		});
 		expect(Object.keys(app(prod, 'web').build?.args ?? {})).not.toContain(
 			'VITE_MAIL_INBOX_URL',
@@ -2195,6 +2199,7 @@ describe('a stack that only builds (--build --push)', () => {
 			VITE_WEB_URL: 'https://shop.example.com',
 			VITE_API_URL: 'https://api.shop.example.com',
 			VITE_AUTH_URL: 'https://auth.shop.example.com',
+			VITE_STAGE: 'production',
 		});
 	});
 

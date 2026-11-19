@@ -2,6 +2,7 @@ import {
 	type ConstructManifest,
 	PUBLIC_PREFIX,
 	providedKeyFor,
+	publicStageKey,
 	trustsOrigin,
 } from '@geekmidas/manifest';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -144,6 +145,8 @@ describe('a wildcard site on AWS', () => {
 		expect(
 			env[`${prefix}${providedKeyFor('App', 'site', 'protectedSubdomains')}`],
 		).toBe('admin,api,www');
+		// And the stage it is built for, as every target inlines it.
+		expect(env[publicStageKey({ variant: 'next' })]).toBe('production');
 	});
 
 	it('has the surfaces it calls trust every tenant’s origin, one label deep', async () => {

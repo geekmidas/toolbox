@@ -89,9 +89,11 @@ export {
 	imageOriginsFor,
 	isDerived,
 	PUBLIC_PREFIX,
+	PUBLIC_STAGE_KEYS,
 	type PublicValue,
 	provisionOrder,
 	publicEnvFor,
+	publicStageKey,
 	publicValues,
 	reachesServerHalf,
 } from './derive';
