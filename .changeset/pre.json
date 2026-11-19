@@ -259,6 +259,7 @@
     "single-app-paths",
     "site-build-args",
     "site-build-offline-warmup",
+    "site-build-public-stage",
     "site-hosts-only-when-needed",
     "site-image-client",
     "site-password-construct",

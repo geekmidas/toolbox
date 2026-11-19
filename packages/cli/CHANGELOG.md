@@ -1,5 +1,40 @@
 # @geekmidas/cli
 
+## 10.0.0-alpha.188
+
+### Minor Changes
+
+- [#540](https://github.com/geekmidas/toolbox/pull/540) [`076daf0`](https://github.com/geekmidas/toolbox/commit/076daf034063ae04877f5876cd6428238ad5a42d) Thanks [@geekmidas](https://github.com/geekmidas)! - :sparkles: A site's or mobile app's build gets its stage as `<prefix>STAGE`
+
+  Every deployed process is handed `STAGE`, but a bundle had no way to know which
+  stage it was built for. A client-side gate such as
+  `process.env.NEXT_PUBLIC_STAGE === 'production'` read `undefined` and was
+  silently false, so production-only analytics and error reporting never ran.
+
+  The stage is now inlined under the variant's public prefix: `NEXT_PUBLIC_STAGE`,
+  `VITE_STAGE` or `EXPO_PUBLIC_STAGE` (`publicStageKey`). Every path sets it: a
+  compose image build (declared as a Dockerfile `ARG`), an EAS build, the AWS
+  target, and `gkm dev`/`gkm test`, where it is the local or test stage. A stage
+  secret of the same name still wins, so a stage that already sets one keeps its
+  value. The value is fixed when the image is built, so an image promoted to
+  another stage keeps the stage it was built for.
+
+### Patch Changes
+
+- Updated dependencies [[`076daf0`](https://github.com/geekmidas/toolbox/commit/076daf034063ae04877f5876cd6428238ad5a42d)]:
+  - @geekmidas/manifest@10.0.0-alpha.188
+  - @geekmidas/edge@10.0.0-alpha.188
+  - @geekmidas/cache@10.0.0-alpha.188
+  - @geekmidas/constructs@10.0.0-alpha.188
+  - @geekmidas/db@10.0.0-alpha.188
+  - @geekmidas/envkit@10.0.0-alpha.188
+  - @geekmidas/errors@10.0.0-alpha.188
+  - @geekmidas/logger@10.0.0-alpha.188
+  - @geekmidas/schema@10.0.0-alpha.188
+  - @geekmidas/services@10.0.0-alpha.188
+  - @geekmidas/storage@10.0.0-alpha.188
+  - @geekmidas/telescope@10.0.0-alpha.188
+
 ## 10.0.0-alpha.187
 
 ### Minor Changes

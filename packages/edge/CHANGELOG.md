@@ -1,5 +1,12 @@
 # @geekmidas/edge
 
+## 10.0.0-alpha.188
+
+### Patch Changes
+
+- Updated dependencies [[`076daf0`](https://github.com/geekmidas/toolbox/commit/076daf034063ae04877f5876cd6428238ad5a42d)]:
+  - @geekmidas/manifest@10.0.0-alpha.188
+
 ## 10.0.0-alpha.187
 
 ### Patch Changes
