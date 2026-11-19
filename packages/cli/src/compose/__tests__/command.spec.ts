@@ -39,6 +39,7 @@ import { StaleStageSecrets } from '../../secrets/stale';
 import { initStageSecrets } from '../../secrets/storage';
 import { ensureStageSecrets } from '../../setup/index';
 import { HealthRequestTimedOut } from '../../target/compose/health';
+import { CHECK_LOG_LINES } from '../../target/compose/startupCheck';
 import { DeploySeedsFailed } from '../../target/seeds';
 import { DnsCredentialMissing } from '../dns';
 import {
@@ -52,6 +53,10 @@ import {
 	lookupRef,
 	RedisClientMissing,
 	RegistryRequired,
+	StartupCheckFailed,
+	StartupCheckNeedsBuild,
+	StartupCheckNeedsDeployedStage,
+	StartupCheckStageProtected,
 } from '../index';
 import {
 	resolvesHere,
@@ -1847,6 +1852,212 @@ describe('gkm compose --build --push', { timeout: RUN_TIMEOUT }, () => {
 				digestsFile: 'digests.json',
 			}),
 		).rejects.toBeInstanceOf(ComposePinNeedsPull);
+	});
+});
+
+describe('gkm compose --build --check', { timeout: RUN_TIMEOUT }, () => {
+	const REGISTRY = 'registry.example.com/acme/compose-app';
+
+	beforeEach(async () => {
+		dir = await project();
+	});
+	afterEach(async () => {
+		await cleanupDir(dir);
+	});
+
+	/** The deps a check runs on: Docker and Postgres as recorders. */
+	function checkDeps(fake: ReturnType<typeof fakeDocker>) {
+		return {
+			lookup: resolvesHere,
+			docker: fake.docker,
+			server: fakeServer(fake.calls),
+			probe: answering(fake.calls),
+			logins: signedIn,
+			sql: () => ({ query: async () => [] }),
+			migrate: async () => {
+				fake.calls.push({ op: 'migrate' });
+				return [];
+			},
+			seed: async () => {
+				fake.calls.push({ op: 'seed' });
+				return [];
+			},
+			buckets: recordingBuckets(fake.calls),
+			healthAttempts: 1,
+			healthIntervalMs: 0,
+		};
+	}
+
+	it("starts every image here with the stage's secrets and its migrated services, then removes it all and pushes nothing", async () => {
+		const fake = fakeDocker();
+
+		const result = await composeCommand(
+			{
+				cwd: dir,
+				stage: 'production',
+				build: true,
+				check: true,
+				tag: 'v2',
+				allowDevServices: true,
+			},
+			checkDeps(fake),
+		);
+
+		const sequence = fake.ops().filter((op, i, all) => op !== all[i - 1]);
+		expect(sequence).toEqual([
+			'build',
+			'up',
+			'port',
+			'migrate',
+			'up',
+			'down --volumes',
+		]);
+		const ups = fake.calls.filter((call) => call.op === 'up');
+		expect(ups.at(-1)?.args).toEqual(['api', 'auth', 'web', 'jobs']);
+		// Here, on this machine's engine, never the stage's server.
+		expect(fake.calls.filter((call) => call.host)).toEqual([]);
+		// As a project of its own: the stage's stack is never touched.
+		expect(fake.calls.find((call) => call.op === 'down --volumes')?.args).toBe(
+			'compose-app-production-check',
+		);
+		// Not seeded, not pushed, not asked through any edge.
+		expect(fake.ops()).not.toContain('seed');
+		expect(fake.ops()).not.toContain('push');
+		expect(fake.ops()).not.toContain('probe');
+		expect(result?.images?.api?.ref).toBe(
+			`${REGISTRY}/compose-app-api:v2-production`,
+		);
+
+		// Started with the stage's runtime env, unlike a push's build.
+		const stack = join(dir, '.gkm', 'compose', 'production');
+		expect(readFileSync(join(stack, 'api.env'), 'utf-8')).toMatch(
+			/^DATABASE_URL=postgres:\/\//m,
+		);
+		// Nothing recorded, and no generated secret kept.
+		expect(existsSync(join(dir, '.gkm', 'deploy-production.json'))).toBe(false);
+		expect(await stageGenerated(dir)).toBe(false);
+	});
+
+	it('pushes only once every image passed, the images it checked', async () => {
+		const fake = fakeDocker();
+
+		await composeCommand(
+			{
+				cwd: dir,
+				stage: 'production',
+				build: true,
+				check: true,
+				push: true,
+				tag: 'v2',
+				allowDevServices: true,
+			},
+			checkDeps(fake),
+		);
+
+		const ops = fake.ops();
+		expect(ops.indexOf('down --volumes')).toBeLessThan(ops.indexOf('push'));
+		expect(
+			fake.calls.filter((call) => call.op === 'push').map((call) => call.args),
+		).toEqual(
+			['api', 'auth', 'web', 'jobs'].map(
+				(app) => `${REGISTRY}/compose-app-${app}:v2-production`,
+			),
+		);
+	});
+
+	it('fails naming each image that did not start, with its last log lines, and pushes nothing', async () => {
+		const fake = fakeDocker({
+			upFails: ['api'],
+			health: { api: undefined },
+			logs: {
+				api: "Error: Cannot find module 'pdfjs-dist/package.json'\nRequire stack:\n- /app/server.mjs",
+			},
+		});
+
+		const error = await composeCommand(
+			{
+				cwd: dir,
+				stage: 'production',
+				build: true,
+				check: true,
+				push: true,
+				tag: 'v2',
+				allowDevServices: true,
+			},
+			checkDeps(fake),
+		).catch((caught: unknown) => caught);
+
+		expect(error).toBeInstanceOf(StartupCheckFailed);
+		expect((error as StartupCheckFailed).apps).toEqual([
+			{
+				app: 'api',
+				last: 'not running',
+				logs: "Error: Cannot find module 'pdfjs-dist/package.json'\nRequire stack:\n- /app/server.mjs",
+			},
+		]);
+		expect((error as Error).message).toContain(
+			"Cannot find module 'pdfjs-dist/package.json'",
+		);
+		expect(fake.calls.find((call) => call.op === 'logs')?.args).toEqual([
+			'api',
+			CHECK_LOG_LINES,
+		]);
+		// Torn down all the same, and nothing pushed.
+		expect(fake.ops()).toContain('down --volumes');
+		expect(fake.ops()).not.toContain('push');
+	});
+
+	it('refuses a protected stage before anything is built or read', async () => {
+		await cleanupDir(dir);
+		dir = realpathSync(await createTempDir('gkm-compose-command-'));
+		writeComposeApp(dir, {
+			registry: 'registry.example.com/acme',
+			deployed: ['production', 'staging'],
+			protected: ['production'],
+			domains: {
+				production: 'shop.example.com',
+				staging: 'staging.shop.example.com',
+			},
+		});
+		const fake = fakeDocker();
+
+		const error = await composeCommand(
+			{ cwd: dir, stage: 'production', build: true, check: true },
+			checkDeps(fake),
+		).catch((caught: unknown) => caught);
+
+		expect(error).toBeInstanceOf(StartupCheckStageProtected);
+		expect((error as StartupCheckStageProtected).checkable).toEqual([
+			'staging',
+		]);
+		expect(fake.ops()).toEqual([]);
+		expect(existsSync(join(dir, '.gkm', 'compose'))).toBe(false);
+	});
+
+	it('refuses the local stage, which has no real secrets', async () => {
+		const fake = fakeDocker();
+
+		await expect(
+			composeCommand(
+				{ cwd: dir, stage: 'development', build: true, check: true },
+				checkDeps(fake),
+			),
+		).rejects.toBeInstanceOf(StartupCheckNeedsDeployedStage);
+		expect(fake.ops()).toEqual([]);
+	});
+
+	it('refuses --check without --build, before anything runs', async () => {
+		await expect(
+			composeCommand({ cwd: '/nowhere', stage: 'production', check: true }),
+		).rejects.toBeInstanceOf(StartupCheckNeedsBuild);
+		await expect(
+			composeCommand({
+				cwd: '/nowhere',
+				stage: 'production',
+				check: true,
+				tag: 'v2',
+			}),
+		).rejects.toBeInstanceOf(StartupCheckNeedsBuild);
 	});
 });
 
