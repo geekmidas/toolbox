@@ -750,7 +750,9 @@ describe('initCommand', () => {
 			expect(config).toContain(
 				"compose: { server: { production: { user: 'deploy' } } },",
 			);
-			expect(workflow).toContain('gkm compose --stage "$STAGE" --build --push');
+			expect(workflow).toContain(
+				'gkm compose --stage "$STAGE" --build "${check[@]}" --push',
+			);
 			expect(workflow).toContain('uses: geekmidas/toolbox/actions/stages@');
 		});
 

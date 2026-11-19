@@ -713,6 +713,10 @@ program
 		'With --build: push every image to deploy.registry and start nothing (for CI)',
 	)
 	.option(
+		'--check',
+		"With --build: start every image here with the stage's secrets and backing services, and fail unless each turns healthy — before --push pushes anything. A deployed stage that is not protected",
+	)
+	.option(
 		'--digests-file <path>',
 		'With --push: write each image as <ref>@sha256:… (JSON). With --tag: run the images at those digests',
 	)

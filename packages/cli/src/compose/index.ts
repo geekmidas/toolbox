@@ -25,6 +25,10 @@ import {
 	type ComposeRun,
 	composeTarget,
 } from '../target/compose/index';
+import {
+	assertCheckable,
+	StartupCheckNeedsBuild,
+} from '../target/compose/startupCheck';
 import { dockerCompose } from './docker';
 import { edgeRef, removeEdgeRoutes } from './edge';
 import { type ImageDigests, parseDigests, pinnedRef } from './images';
@@ -47,6 +51,10 @@ export {
 	gitRevision,
 	NoGitRevision,
 	RedisClientMissing,
+	StartupCheckFailed,
+	StartupCheckNeedsBuild,
+	StartupCheckNeedsDeployedStage,
+	StartupCheckStageProtected,
 } from '../target/compose/index';
 export {
 	isMissingManifest,
@@ -124,6 +132,13 @@ export interface ComposeOptions {
 	 * nothing — no provisioning, no `up`, nothing recorded. What CI runs.
 	 */
 	push?: boolean;
+	/**
+	 * With `--build`: start every image built on this machine, with the
+	 * stage's secrets and the stack's backing services, and fail unless each
+	 * passes its health check — before anything is pushed. The stage must be
+	 * deployed and not protected. See `target/compose/startupCheck.ts`.
+	 */
+	check?: boolean;
 	/**
 	 * With `--push`, where each pushed image's `<ref>@sha256:…` is written,
 	 * as JSON by app. With `--tag`/`--pull`, the file to read them back from:
@@ -228,6 +243,7 @@ export async function composeCommand(
 				['build', '--build'],
 				['pull', '--pull'],
 				['push', '--push'],
+				['check', '--check'],
 				['tag', '--tag'],
 			] as const
 		).find(
@@ -245,6 +261,7 @@ export async function composeCommand(
 	}
 	if (options.build && options.pull) throw new ComposeModeConflict();
 	if (options.push && !options.build) throw new ComposePushNeedsBuild();
+	if (options.check && !options.build) throw new StartupCheckNeedsBuild();
 	const pulls = !options.build && (options.pull || options.tag !== undefined);
 	if (options.digestsFile && !options.push && !pulls) {
 		throw new ComposePinNeedsPull();
@@ -258,6 +275,8 @@ export async function composeCommand(
 	const loaded = await loadWorkspaceConfig(cwd);
 	const { workspace } = loaded;
 	const { stage } = options;
+	// Refused before the stage's secrets are read.
+	if (options.check) assertCheckable(workspace, stage, 'build');
 
 	if (options.down) {
 		const { composeStackRef } = await import('./destroy');
@@ -311,6 +330,7 @@ export async function composeCommand(
 				...deps,
 				...(mode ? { mode } : {}),
 				...(options.push ? { push: true } : {}),
+				...(options.check ? { check: true } : {}),
 				...(pin ? { pin } : {}),
 				report: (done) => {
 					finished = done;
@@ -319,7 +339,8 @@ export async function composeCommand(
 		},
 		...(tag ? { tag } : {}),
 		...(options.dryRun ? { dryRun: true } : {}),
-		...(options.push ? { buildOnly: true } : {}),
+		// A check, too, changes no stage: no lock, nothing provisioned.
+		...(options.push || options.check ? { buildOnly: true } : {}),
 		...(options.allowDevServices ? { allowDevServices: true } : {}),
 		...(options.skipDns ? { skipDns: true } : {}),
 		...(options.rotateKeys ? { rotateKeys: true } : {}),

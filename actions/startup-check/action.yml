@@ -1,0 +1,99 @@
+name: gkm startup check
+description: >-
+  Build every image a gkm stage runs, start each one on the runner with the
+  stage's real secrets and backing services, and fail unless each turns
+  healthy — before anything is pushed.
+author: geekmidas
+
+# Thin on purpose: the rules are in the project's own `gkm compose --build
+# --check`, so they are tested code, and they are the version of gkm the
+# project installed. Check out the project, install its dependencies, and give
+# the job the stage's secrets store (its AWS role, for ssm, secrets-manager or
+# s3) before this step.
+
+inputs:
+  stage:
+    description: >-
+      The deployed stage whose secrets the images start with. Never a
+      protected one: gkm refuses it.
+    required: true
+  push:
+    description: >-
+      'true' to push the images once every one of them passed, as `gkm compose
+      --build --push` does: the digests checked are the digests pushed.
+    required: false
+    default: 'false'
+  tag:
+    description: The tag to build and push at (default the commit, from git).
+    required: false
+    default: ''
+  digests-file:
+    description: With push, where each pushed image's <ref>@sha256:… is written.
+    required: false
+    default: ''
+  working-directory:
+    description: The directory holding gkm.config.ts.
+    required: false
+    default: .
+  package-manager:
+    description: >-
+      pnpm, npm, yarn or bun. Detected from the lockfile in working-directory
+      or the nearest directory above it when not given.
+    required: false
+    default: ''
+
+runs:
+  using: composite
+  steps:
+    - name: Start every image with the stage's secrets
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        STAGE: ${{ inputs.stage }}
+        PUSH: ${{ inputs.push }}
+        TAG: ${{ inputs.tag }}
+        DIGESTS_FILE: ${{ inputs.digests-file }}
+        PACKAGE_MANAGER: ${{ inputs.package-manager }}
+      run: |
+        set -euo pipefail
+
+        # As the CLI's own detectPackageManager: the nearest lockfile wins.
+        pm="$PACKAGE_MANAGER"
+        dir="$PWD"
+        while [ -z "$pm" ]; do
+          if [ -f "$dir/pnpm-lock.yaml" ]; then pm=pnpm
+          elif [ -f "$dir/yarn.lock" ]; then pm=yarn
+          elif [ -f "$dir/bun.lock" ] || [ -f "$dir/bun.lockb" ]; then pm=bun
+          elif [ -f "$dir/package-lock.json" ]; then pm=npm
+          elif [ "$dir" = / ]; then
+            echo "::error title=gkm startup check::No lockfile in $PWD or above it. Install the project's dependencies before this step, or set package-manager."
+            exit 1
+          else dir=$(dirname "$dir")
+          fi
+        done
+
+        case "$pm" in
+          pnpm) gkm=(pnpm exec gkm) ;;
+          npm) gkm=(npx --no-install gkm) ;;
+          yarn) gkm=(yarn gkm) ;;
+          bun) gkm=(bun x gkm) ;;
+          *)
+            echo "::error title=gkm startup check::package-manager is '$pm'; it takes pnpm, npm, yarn or bun."
+            exit 1
+            ;;
+        esac
+
+        args=(compose --stage "$STAGE" --build --check)
+        if [ -n "$TAG" ]; then args+=(--tag "$TAG"); fi
+        case "$PUSH" in
+          true)
+            args+=(--push)
+            if [ -n "$DIGESTS_FILE" ]; then args+=(--digests-file "$DIGESTS_FILE"); fi
+            ;;
+          false) ;;
+          *)
+            echo "::error title=gkm startup check::push is '$PUSH'; it takes 'true' or 'false'."
+            exit 1
+            ;;
+        esac
+        "${gkm[@]}" "${args[@]}"

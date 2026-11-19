@@ -268,6 +268,7 @@ function stagesJob(options: TemplateOptions): string {
       deploy: \${{ steps.stages.outputs.deploy }}
       has-build: \${{ steps.stages.outputs.has-build }}
       has-deploy: \${{ steps.stages.outputs.has-deploy }}
+      protected: \${{ steps.stages.outputs.protected }}
       aws-region: \${{ steps.stages.outputs.aws-region }}
       registry: \${{ steps.stages.outputs.registry }}
     steps:
@@ -383,12 +384,19 @@ ${registryLogin()}
           aws-region: \${{ needs.stages.outputs.aws-region }}
 
       # Builds and pushes every image the stage runs, tagged with the commit
-      # and the stage (<sha>-<stage>), and starts nothing.
-      - name: Build and push
-        run: ${pm.exec} gkm compose --stage "$STAGE" --build --push --tag "$SHA" --digests-file digests.json
+      # and the stage (<sha>-<stage>). A stage that is not protected starts
+      # each image here first, with its secrets and backing services, and
+      # pushes nothing unless every one turns healthy (--check). A protected
+      # stage's secrets are never handed to a check.
+      - name: Build, check and push
+        run: |
+          check=()
+          if [ "$PROTECTED" = false ]; then check=(--check); fi
+          ${pm.exec} gkm compose --stage "$STAGE" --build "\${check[@]}" --push --tag "$SHA" --digests-file digests.json
         env:
           STAGE: \${{ matrix.stage }}
           SHA: \${{ github.sha }}
+          PROTECTED: \${{ contains(fromJSON(needs.stages.outputs.protected), matrix.stage) }}
 
       # What each tag pointed at when it was pushed. A deploy runs these
       # digests, so a tag moved since cannot change what is released.

@@ -46,6 +46,12 @@ export function fakeDocker(
 			command: readonly string[],
 			input?: string,
 		) => ExecResult | undefined;
+		/** Each service's health, by name — `healthy` when absent. */
+		health?: Readonly<Record<string, string | undefined>>;
+		/** What each service logged, by name — nothing when absent. */
+		logs?: Readonly<Record<string, string>>;
+		/** `up` of these services fails, as `--wait` does when one is not healthy. */
+		upFails?: readonly string[];
 		/** What a one-off container exits with — 0 by default. */
 		runOnce?: (run: Parameters<ComposeDocker['runOnce']>[1]) => number;
 	} = {},
@@ -71,6 +77,12 @@ export function fakeDocker(
 				...(stack.project === EDGE_PROJECT ? { edge: true } : {}),
 				...on(stack),
 			});
+			const failing = (options.upFails ?? []).filter(
+				(service) => !services || services.includes(service),
+			);
+			if (failing.length > 0) {
+				throw new Error(`dependency failed to start: ${failing.join(', ')}`);
+			}
 		},
 		async down(stack, options) {
 			calls.push({
@@ -85,7 +97,13 @@ export function fakeDocker(
 		},
 		async health(stack, service) {
 			calls.push({ op: 'health', args: service, ...on(stack) });
-			return 'healthy';
+			return options.health && service in options.health
+				? options.health[service]
+				: 'healthy';
+		},
+		async logs(stack, service, lines) {
+			calls.push({ op: 'logs', args: [service, lines], ...on(stack) });
+			return options.logs?.[service] ?? '';
 		},
 		async push(stack, ref) {
 			calls.push({ op: 'push', args: ref, ...on(stack) });

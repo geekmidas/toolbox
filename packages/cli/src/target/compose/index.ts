@@ -35,6 +35,11 @@
  * readiness check runs, so a stage whose keys the deploy has yet to write
  * still builds.
  *
+ * With `check` (`gkm compose --build --check`), also run with `buildOnly`,
+ * every image built is started on this machine with the stage's secrets and
+ * the stack's backing services, and must turn healthy before any is pushed
+ * — see `startupCheck.ts`.
+ *
  * `gkm compose` is this target with a few more switches (`--build`, `--pull`,
  * `--down`), run through the same `deploy()`.
  */
@@ -75,6 +80,13 @@ export {
 	RedisClientMissing,
 	stackOverrideFile,
 } from './phases';
+export {
+	CHECK_LOG_LINES,
+	StartupCheckFailed,
+	StartupCheckNeedsBuild,
+	StartupCheckNeedsDeployedStage,
+	StartupCheckStageProtected,
+} from './startupCheck';
 
 export interface ComposeTargetOptions
 	extends Partial<ComposeDeps>,
@@ -87,7 +99,7 @@ export interface ComposeTargetOptions
 export function composeTarget(
 	options: ComposeTargetOptions = {},
 ): DeployTarget<undefined, ComposeRun> {
-	const { mode, push, pin, report, ...given } = options;
+	const { mode, push, check, pin, report, ...given } = options;
 	const deps: ComposeDeps = { ...defaultDeps, ...given };
 
 	return defineTarget<undefined, ComposeRun>({
@@ -112,6 +124,7 @@ export function composeTarget(
 			validateCompose(ctx, deps, {
 				...(mode ? { mode } : {}),
 				...(push ? { push } : {}),
+				...(check ? { check } : {}),
 				...(pin ? { pin } : {}),
 			}),
 		ready: (ctx, run) => readyCompose(ctx, run, deps),
