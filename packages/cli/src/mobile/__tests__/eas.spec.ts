@@ -201,13 +201,14 @@ describe('gkm eas:sync', () => {
 			},
 		});
 
-		// The public addresses, the scheme and the public stage secret; no
-		// server key, and no inbox on a deployed stage.
+		// The public addresses, the scheme, the public stage secret and the
+		// stage itself; no server key, and no inbox on a deployed stage.
 		const written = Object.fromEntries(set.map((v) => [v.name, v.value]));
 		expect(written).toEqual({
 			APP_SCHEME: 'compose-app',
 			EXPO_PUBLIC_API_URL: 'https://api.shop.example.com',
 			EXPO_PUBLIC_AUTH_URL: 'https://auth.shop.example.com',
+			EXPO_PUBLIC_STAGE: 'production',
 			EXPO_PUBLIC_STORE_URL: 'https://store.example.com',
 		});
 		expect(

@@ -38,6 +38,7 @@ import {
 	PUBLIC_PREFIX,
 	providedKeyFor,
 	provisionOrder,
+	publicStageKey,
 	publicValues,
 	SECRET_LENGTH,
 	SECRET_SYMBOLS,
@@ -485,6 +486,10 @@ export function siteEnvironment(
 ): Record<string, $util.Input<string>> {
 	const prefix = PUBLIC_PREFIX[declaration.variant];
 	const environment: Record<string, $util.Input<string>> = {};
+
+	// The stage it is built for (`NEXT_PUBLIC_STAGE`), as every other target
+	// inlines it: what a bundle gates production-only code on.
+	if (stack?.stage) environment[publicStageKey(declaration)] = stack.stage;
 
 	// A wildcard site takes its tenant off the host it is reached on, so it
 	// inlines the domain to take the label off against, and the labels no

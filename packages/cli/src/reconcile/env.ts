@@ -25,6 +25,7 @@ import {
 	externalApiUrl,
 	imageOrigins,
 	mobileOrigins,
+	PUBLIC_STAGE_KEYS,
 	providedKeyFor,
 	schemeBase,
 	senderAddress,
@@ -191,12 +192,21 @@ function credentialOf(options: {
  * stored URL naming an old port is the drift resolution replaces. A command
  * whose stage says a value by hand (a deployed stack's) leaves that key out
  * of `resolved`.
+ *
+ * But for a frontend's stage (`PUBLIC_STAGE_KEYS`), which is a name rather
+ * than an address: a stored one is how the stage told its bundle what it is
+ * called, and it wins here as it wins in an image build.
  */
 export function stageEnv(
 	stored: Readonly<Record<string, string>>,
 	resolved: Readonly<Record<string, string>>,
 ): Record<string, string> {
-	return { ...stored, ...resolved };
+	const env = { ...stored, ...resolved };
+	for (const key of PUBLIC_STAGE_KEYS) {
+		const value = stored[key];
+		if (value !== undefined) env[key] = value;
+	}
+	return env;
 }
 
 /**
@@ -514,6 +524,13 @@ function publicEnv(
 				(key) => resolved[key],
 			);
 			if (origins) env[resource.imageOrigins.key] = origins;
+		}
+		// The stage it runs in, as a deployed build inlines it — so a gate on
+		// `NEXT_PUBLIC_STAGE` behaves the same under `gkm dev` and `gkm test`.
+		// Beside its own value, as every key a construct has: a frontend this
+		// stage does not run is handed nothing.
+		if (resource.stageKey && resolved[resource.envKey]) {
+			env[resource.stageKey] = plan.stage;
 		}
 	}
 

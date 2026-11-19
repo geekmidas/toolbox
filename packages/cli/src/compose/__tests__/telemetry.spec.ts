@@ -227,6 +227,7 @@ describe('the local stage', () => {
 			'VITE_WEB_URL',
 			'VITE_API_URL',
 			'VITE_AUTH_URL',
+			'VITE_STAGE',
 		]);
 		expect(JSON.stringify(s.compose.services.web)).not.toContain('OTEL_');
 	});

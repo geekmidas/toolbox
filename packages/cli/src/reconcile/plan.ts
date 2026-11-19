@@ -25,6 +25,7 @@ import {
 	type PostgresVersion,
 	providedKeyFor,
 	publicEnvFor,
+	publicStageKey,
 	type SecretFormat,
 	type SiteHosts,
 	WILDCARD_SUBDOMAIN,
@@ -354,6 +355,11 @@ export interface PlannedResource {
 	 * (`imageOriginSources`).
 	 */
 	imageOrigins?: { key: string; sources: string[] };
+	/**
+	 * A site's or app's key for the stage its bundle is built for
+	 * (`publicStageKey`): `NEXT_PUBLIC_STAGE`, resolved to the plan's stage.
+	 */
+	stageKey?: string;
 	/** For a mobile app: the scheme it gave, when not the project's name. */
 	scheme?: string;
 	/**
@@ -667,6 +673,9 @@ export function planFor(
 				? { publicEnv: publicEnvFor(declaration, manifest) }
 				: {}),
 			...(images ? { imageOrigins: images } : {}),
+			...(isPublicDeclaration(declaration)
+				? { stageKey: publicStageKey(declaration) }
+				: {}),
 			...(declaration.kind === 'mobile-app'
 				? {
 						publicEnv: publicEnvFor(declaration, manifest),

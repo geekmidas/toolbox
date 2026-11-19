@@ -6,6 +6,7 @@ import {
 	imageOriginsFor,
 	providedKeyFor,
 	publicEnvFor,
+	publicStageKey,
 } from '@geekmidas/manifest';
 import { sharedDirectoryTree } from '../build/outputDir.js';
 import {
@@ -603,6 +604,8 @@ export function siteDockerfile(
 					...[imageOriginsFor(declared, options.manifest)?.key].filter(
 						(key) => key !== undefined,
 					),
+					// The stage it is built for (`NEXT_PUBLIC_STAGE`).
+					publicStageKey(declared),
 				]
 			: getPublicUrlArgNames(app));
 

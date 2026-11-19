@@ -128,6 +128,8 @@ describe('envFor', () => {
 			'VITE_AUTH_API_URL',
 			// And the site's own address, the same way.
 			'VITE_CONSOLE_URL',
+			// And the stage it runs in, as a deployed build inlines it.
+			'VITE_STAGE',
 		]);
 	});
 

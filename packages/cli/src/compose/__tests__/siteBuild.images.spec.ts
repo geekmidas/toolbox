@@ -47,6 +47,7 @@ describe("a Next site's build, showing a file server's objects", () => {
 		manifest,
 		(key) => stage[key],
 		{},
+		{ stage: 'prod' },
 	);
 
 	it("is built with the server's address and where the bucket signs links", () => {
@@ -65,5 +66,41 @@ describe("a Next site's build, showing a file server's objects", () => {
 	it('is handed nothing of the bucket that writes', () => {
 		expect(JSON.stringify(args)).not.toContain('SECRET');
 		expect(args).not.toHaveProperty('NEXT_PUBLIC_ASSETS_CONNECTION_STRING');
+	});
+});
+
+describe('the stage a site is built for', () => {
+	const build = (secrets: Record<string, string> = {}) =>
+		publicBuildValues(
+			manifest.Web as SiteDeclaration,
+			manifest,
+			(key) => stage[key],
+			secrets,
+			{ stage: 'prod' },
+		);
+
+	it("is inlined under the variant's prefix, as STAGE is for a process", () => {
+		expect(build().NEXT_PUBLIC_STAGE).toBe('prod');
+	});
+
+	it('is the stage secret of that name where the stage set one', () => {
+		expect(build({ NEXT_PUBLIC_STAGE: 'production' }).NEXT_PUBLIC_STAGE).toBe(
+			'production',
+		);
+	});
+
+	it.for([
+		['static', 'VITE_STAGE'],
+		['tanstack', 'VITE_STAGE'],
+		['expo', 'EXPO_PUBLIC_STAGE'],
+	] as const)("is %s's %s", ([variant, key]) => {
+		const args = publicBuildValues(
+			{ ...(manifest.Web as SiteDeclaration), variant } as SiteDeclaration,
+			manifest,
+			(key) => stage[key],
+			{},
+			{ stage: 'prod' },
+		);
+		expect(args[key]).toBe('prod');
 	});
 });

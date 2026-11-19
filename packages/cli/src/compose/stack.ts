@@ -1596,7 +1596,7 @@ export function composeStack(input: StackInput): ComposeStack {
 				custom,
 				// Built here for a deployed stage, an image that cannot say where
 				// its pages load files from is refused — not shipped without it.
-				!local && app.build ? { requireFileOrigins: { stage } } : {},
+				{ stage, requireFileOrigins: !local && app.build !== undefined },
 			);
 			if (app.prerender && input.prerenderRun) {
 				args[PRERENDER_RUN_ARG] = input.prerenderRun;
@@ -1665,6 +1665,7 @@ export function composeStack(input: StackInput): ComposeStack {
 				manifest,
 				(key) => valueFor(app, key, owners.get(key)) ?? plannedOrigins.get(key),
 				custom,
+				{ stage },
 			),
 		});
 	}

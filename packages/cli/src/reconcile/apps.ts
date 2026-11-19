@@ -28,6 +28,7 @@ import {
 	providedKeyFor,
 	provisionOrder,
 	publicEnvFor,
+	publicStageKey,
 	publicValues,
 	reachesServerHalf,
 	TELEMETRY_KEYS,
@@ -142,6 +143,7 @@ export function sitePublicArgs(
 	appName: string,
 	/** Every key the stage resolves, with surfaces at their public addresses. */
 	env: Readonly<Record<string, string>>,
+	stage: string,
 ): Record<string, string> {
 	const declaration = Object.entries(manifest).find(
 		([id, d]) => d.kind === 'site' && appKey(id) === appName,
@@ -151,7 +153,15 @@ export function sitePublicArgs(
 	// The image build's own rule, so a site built here gets what a stage's
 	// image does. No stage secrets: the local stage's reach a site through
 	// `gkm exec`, which hands it every one.
-	return publicBuildValues(declaration, manifest, (key) => env[key], {});
+	return publicBuildValues(
+		declaration,
+		manifest,
+		(key) => env[key],
+		{},
+		{
+			stage,
+		},
+	);
 }
 
 /**
@@ -318,6 +328,8 @@ export function appEnvKeys(
 		// (`imageRemotePatterns`) — what its image build is given too.
 		const images = imageOriginsFor(declaration, manifest);
 		if (images) keys.add(images.key);
+		// And the stage it is built for (`NEXT_PUBLIC_STAGE`).
+		keys.add(publicStageKey(declaration));
 	}
 
 	return keys;
@@ -689,7 +701,7 @@ export function appServices(
 		// they are build arguments, and it reads nothing at runtime — no server
 		// env, and nothing to wait for but its own server.
 		if (app.type === 'web') {
-			const args = sitePublicArgs(manifest, name, browser);
+			const args = sitePublicArgs(manifest, name, browser, plan.stage);
 			services[key] = {
 				image: `${key}:\${TAG:-latest}`,
 				build: {

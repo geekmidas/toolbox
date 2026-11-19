@@ -246,6 +246,7 @@ describe('appServices', () => {
 				WEB_URL: 'http://localhost:3002',
 				VITE_WEB_URL: 'http://localhost:3002',
 				VITE_API_URL: 'http://localhost:3000',
+				VITE_STAGE: 'dev',
 			});
 		});
 

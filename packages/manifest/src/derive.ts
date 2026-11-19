@@ -182,6 +182,26 @@ export const PUBLIC_PREFIX: Record<PublicDeclaration['variant'], string> = {
 	expo: 'EXPO_PUBLIC_',
 };
 
+/**
+ * The key a frontend's build reads its stage under — `NEXT_PUBLIC_STAGE`,
+ * `VITE_STAGE`, `EXPO_PUBLIC_STAGE`: the build-time counterpart of the
+ * `STAGE` every deployed process is handed.
+ *
+ * Inlined, so it is the stage the bundle was *built* for: an image promoted
+ * to another stage carries it along. A stage secret of the same name wins —
+ * it is how a stage said its name to the bundle before gkm did.
+ */
+export function publicStageKey(
+	declaration: Pick<PublicDeclaration, 'variant'>,
+): string {
+	return `${PUBLIC_PREFIX[declaration.variant]}STAGE`;
+}
+
+/** Every key a frontend's stage can be inlined under, one per prefix. */
+export const PUBLIC_STAGE_KEYS: readonly string[] = [
+	...new Set(Object.values(PUBLIC_PREFIX).map((prefix) => `${prefix}STAGE`)),
+];
+
 /** One public value a frontend's edges reach: whose, which role, its key. */
 export interface PublicValue {
 	id: string;
