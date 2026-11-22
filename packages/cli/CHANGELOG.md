@@ -1,5 +1,47 @@
 # @geekmidas/cli
 
+## 10.0.0-alpha.189
+
+### Minor Changes
+
+- [#546](https://github.com/geekmidas/toolbox/pull/546) [`27a81a2`](https://github.com/geekmidas/toolbox/commit/27a81a2b1d82236a318e514b71a64dcd17cea304) Thanks [@geekmidas](https://github.com/geekmidas)! - :sparkles: Cloudflare is a DNS provider
+
+  `dns: { 'example.com': { provider: 'cloudflare' } }` writes a stage's records
+  through Cloudflare's v4 API. Like GoDaddy, it reads and writes only the A,
+  AAAA, CNAME and MX records of the names a deploy serves. The token is
+  `CLOUDFLARE_API_TOKEN` (an API token with `Zone:Read` and `DNS:Edit` on the
+  zone), or `gkm login --provider cloudflare`, and the generated GitHub workflow
+  passes it to the deploy step.
+
+  A record carries an optional `proxied` flag (`UpsertDnsRecord.proxied`), which
+  puts Cloudflare's CDN in front of the name. gkm doesn't set it yet. An update
+  keeps a record's existing proxy setting, and a new record is created
+  unproxied.
+
+  `DnsProviderNotImplemented` is removed: every provider `dns` names is built.
+
+- ✨ [#543](https://github.com/geekmidas/toolbox/pull/543) [`f083ba9`](https://github.com/geekmidas/toolbox/commit/f083ba953c00bd15240d5e59435a5d5a7c75c077) Thanks [@geekmidas](https://github.com/geekmidas)! - `gkm compose --stage <stage> --build --check` starts every image the build produced before anything is pushed. Each image runs on the building machine with the stage's real secrets and the stack's backing services (migrated, not seeded) and must pass its own health check. An image that does not start fails with `StartupCheckFailed`, which names the container and shows its last log lines, and nothing is pushed. With `--push`, the images are pushed only after every one passes. The stage must be deployed and not protected (`StartupCheckNeedsDeployedStage`, `StartupCheckStageProtected`). The new `geekmidas/toolbox/actions/startup-check` action runs the check from a workflow. The deploy workflow that `gkm init --deploy compose` scaffolds now runs `--check` in its build job for every stage that is not protected.
+
+### Patch Changes
+
+- [#538](https://github.com/geekmidas/toolbox/pull/538) [`e63b5f0`](https://github.com/geekmidas/toolbox/commit/e63b5f0a5c53b67f7f7a36a055ad3f6626ad1d45) Thanks [@geekmidas](https://github.com/geekmidas)! - `gkm compose` no longer announces "Creating databases, roles and grants…" on a
+  stack that already has them. It applies the statements first and reports what
+  it actually did: `Created database …, role …` when something was missing, and
+  `Databases and roles already in place` when nothing was.
+- Updated dependencies [[`27a81a2`](https://github.com/geekmidas/toolbox/commit/27a81a2b1d82236a318e514b71a64dcd17cea304)]:
+  - @geekmidas/edge@10.0.0-alpha.189
+  - @geekmidas/cache@10.0.0-alpha.189
+  - @geekmidas/constructs@10.0.0-alpha.189
+  - @geekmidas/db@10.0.0-alpha.189
+  - @geekmidas/envkit@10.0.0-alpha.189
+  - @geekmidas/errors@10.0.0-alpha.189
+  - @geekmidas/logger@10.0.0-alpha.189
+  - @geekmidas/manifest@10.0.0-alpha.189
+  - @geekmidas/schema@10.0.0-alpha.189
+  - @geekmidas/services@10.0.0-alpha.189
+  - @geekmidas/storage@10.0.0-alpha.189
+  - @geekmidas/telescope@10.0.0-alpha.189
+
 ## 10.0.0-alpha.188
 
 ### Minor Changes
