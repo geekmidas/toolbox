@@ -14,6 +14,7 @@
 
 import type { EmailClient, TemplateRecord } from '@geekmidas/emailkit';
 import {
+	assertSubdomainLabel,
 	type ConstructName,
 	canonicalId,
 	type Declaration,
@@ -44,6 +45,15 @@ export interface EmailOptions<TTemplates extends TemplateRecord> {
 	 * stage is `deploy.email.<stage>.from`, which wins over this.
 	 */
 	from?: string;
+	/**
+	 * The label of the stage's domain mail is sent from — `'mail'` sends as
+	 * `noreply@mail.` the stage's domain (`noreply@mail.localhost` under
+	 * `gkm dev`). Absent, mail is sent from the stage's domain itself.
+	 *
+	 * The deploy verifies that domain as the sender — its DKIM records written
+	 * under it — so a domain whose own mail is set up at its apex keeps it.
+	 */
+	subdomain?: string;
 	/** A reply-to address for every send. */
 	replyTo?: string;
 }
@@ -92,6 +102,9 @@ export class Email<
 		if (options.from !== undefined && !LOCAL_PART.test(options.from)) {
 			throw new EmailFromNotALocalPart(canonical, options.from);
 		}
+		if (options.subdomain !== undefined) {
+			assertSubdomainLabel(canonical, options.subdomain);
+		}
 
 		this.id = canonical as TName;
 		this.keys = {
@@ -115,6 +128,9 @@ export class Email<
 				id: this.id,
 				provides: [this.keys.url, this.keys.from],
 				...(this.options.from ? { from: this.options.from } : {}),
+				...(this.options.subdomain
+					? { subdomain: this.options.subdomain }
+					: {}),
 			},
 		];
 	}

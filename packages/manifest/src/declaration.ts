@@ -239,6 +239,11 @@ export interface EmailDeclaration extends Node {
 	 * `noreply`.
 	 */
 	from?: string;
+	/**
+	 * The label of the stage's domain mail is sent from — `mail` sends as
+	 * `<from>@mail.<domain>`. Absent, mail is sent from the domain itself.
+	 */
+	subdomain?: string;
 }
 
 /**

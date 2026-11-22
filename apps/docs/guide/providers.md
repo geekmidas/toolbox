@@ -231,7 +231,22 @@ deploy: {
   `info@<stage domain>`, and without `from` as `noreply@<stage domain>`; a
   stage with no domain fails with `EmailSenderUnknown`. An address gkm wrote
   is not one you set: it follows the stage's domain and the construct's
-  `from`, so after a change of either mail is sent as the new one.
+  `from` and `subdomain`, so after a change of any of them mail is sent as
+  the new one.
+
+An `Email` can send from a label of the stage's domain instead of the domain
+itself:
+
+```ts
+new Email('Mail', { templates, from: 'info', subdomain: 'mail' });
+// sends as info@mail.<stage domain>; info@mail.localhost under gkm dev
+```
+
+The deploy then verifies `mail.<stage domain>` as the sender, with its DKIM
+records under it. Use it when the domain's own mail (its MX, SPF and DKIM for
+the team's mailboxes) lives at the bare domain and should stay apart from what
+the application sends. `subdomain` is one lowercase label; anything else is
+refused with `InvalidHostLabel`.
 
 ## `email: ses`
 

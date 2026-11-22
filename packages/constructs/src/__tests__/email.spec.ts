@@ -1,5 +1,6 @@
 import type { EmailClient } from '@geekmidas/emailkit';
 import { EnvironmentParser } from '@geekmidas/envkit';
+import { InvalidHostLabel } from '@geekmidas/manifest';
 import { describe, expect, it } from 'vitest';
 import { snifferContext } from '../Construct';
 import { Email, EmailFromNotALocalPart } from '../email';
@@ -51,6 +52,36 @@ describe('Email', () => {
 				from: 'info',
 			},
 		]);
+	});
+
+	it('declares the label of the stage’s domain it sends from', () => {
+		expect(
+			new Email('Mail', {
+				templates,
+				from: 'info',
+				subdomain: 'mail',
+			}).declare(),
+		).toEqual([
+			{
+				kind: 'email',
+				id: 'Mail',
+				provides: ['MAIL_URL', 'MAIL_FROM'],
+				from: 'info',
+				subdomain: 'mail',
+			},
+		]);
+	});
+
+	it.each([
+		'mail.notify',
+		'*',
+		'Mail',
+		'-mail',
+		'',
+	])('refuses subdomain: %j, which is not one label', (subdomain) => {
+		expect(() => new Email('Mail', { templates, subdomain })).toThrow(
+			InvalidHostLabel,
+		);
 	});
 
 	it('refuses a whole address as from, naming the per-stage field', () => {

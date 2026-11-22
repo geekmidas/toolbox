@@ -324,6 +324,58 @@ describe('the ses mail provider', { timeout: 120_000 }, () => {
 		expect(zone.filter((r) => r.type === 'CNAME')).toHaveLength(3);
 	});
 
+	it("sends from the construct's label of the stage's domain: its own identity, DKIM under it", async () => {
+		const zone: DnsRecord[] = [];
+		const dns: DnsProvider = {
+			name: 'memory',
+			async getRecords() {
+				return zone;
+			},
+			async upsertRecords(_domain, records) {
+				for (const r of records) {
+					zone.push({
+						name: r.name,
+						type: r.type,
+						ttl: r.ttl,
+						values: [r.value],
+					});
+				}
+				return records.map((record) => ({
+					record,
+					created: true,
+					unchanged: false,
+				}));
+			},
+			async deleteRecords() {
+				return [];
+			},
+		};
+
+		const reports = await provision({
+			manifest: { Mail: { ...manifest.Mail!, subdomain: 'mail' } as never },
+			workspace: {
+				...workspace,
+				dns: { [DOMAIN]: { provider: 'route53', hostedZoneId: 'ZSEND' } },
+			} as NormalizedWorkspace,
+			dnsProviderFor: async () => dns,
+		});
+
+		expect((await secretsOf()).MAIL_FROM).toBe(`noreply@mail.${DOMAIN}`);
+		const policy = await iam.send(
+			new GetUserPolicyCommand({
+				UserName: userName(),
+				PolicyName: SEND_POLICY_NAME,
+			}),
+		);
+		expect(policy.PolicyDocument).toContain(`identity/mail.${DOMAIN}`);
+		// Its DKIM keys sit under the label; the apex is left as it is.
+		const asked = reports.find((r) => r.kind === 'email')!.dns;
+		expect(asked).toHaveLength(3);
+		expect(
+			asked.filter((key) => key.endsWith(`._domainkey.mail.${DOMAIN}:CNAME`)),
+		).toEqual(asked);
+	});
+
 	it('leaves a URL the stage already held alone, and creates nothing for it', async () => {
 		const own = 'smtp://someone:secret@smtp.example.com:587';
 		await setSecrets({ MAIL_URL: own });

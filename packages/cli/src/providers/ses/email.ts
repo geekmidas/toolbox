@@ -5,7 +5,8 @@
  * `deploy.email.<stage> = { provider: 'ses', region?, from? }` has the deploy
  * create, in the stage's AWS account:
  *
- * - **the sender's domain as an SES identity**, verified through Easy DKIM's
+ * - **the sender's domain as an SES identity** — the stage's, or the label
+ *   of it the construct names (`subdomain: 'mail'`) — verified through Easy DKIM's
  *   CNAMEs written through the stage's DNS — the same identity an inbox on
  *   that domain uses: SES has one per domain, and neither provider deletes it;
  * - for each mail construct, **an IAM user** allowed `ses:SendRawEmail` from
@@ -123,16 +124,17 @@ export function senderEntry(email: string) {
 /**
  * The address `email` sends from: `from`; else one the stage's secrets hold
  * that gkm did not write — set by hand, or imported; else the construct's
- * local part at the stage's domain (`senderAddress`). An address gkm wrote
- * follows both: after a change of `domains.<stage>` or of the construct's
- * `from`, mail is sent as the new one.
+ * local part at the stage's domain, or at the label of it the construct
+ * names (`senderAddress`). An address gkm wrote follows all three: after a
+ * change of `domains.<stage>` or of the construct's `from` or `subdomain`,
+ * mail is sent as the new one.
  *
  * @returns the address, and whether it is gkm's to write and record
  * @throws {EmailSenderUnknown} with none of them
  */
 export function senderOf(
 	ctx: Pick<Ctx, 'config' | 'secrets' | 'workspace' | 'stage' | 'state'>,
-	email: Pick<EmailDeclaration, 'id' | 'from'>,
+	email: Pick<EmailDeclaration, 'id' | 'from' | 'subdomain'>,
 ): { address: string; ours: boolean } {
 	if (ctx.config.from) return { address: ctx.config.from, ours: true };
 	const held = ctx.secrets[providedKeyFor(email.id, 'email', 'from')];

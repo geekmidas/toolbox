@@ -172,6 +172,8 @@ export interface ServiceDeclaration {
 	of?: string;
 	/** Mail's local part — its declaration's `from`. */
 	from?: string;
+	/** Mail's label of the stage's domain — its declaration's `subdomain`. */
+	subdomain?: string;
 	/** The apps that read it, where known. */
 	apps?: readonly string[];
 }
@@ -270,6 +272,9 @@ export function stageServiceDeclarations(
 						: {}),
 					...(declaration.kind === 'email' && declaration.from
 						? { from: declaration.from }
+						: {}),
+					...(declaration.kind === 'email' && declaration.subdomain
+						? { subdomain: declaration.subdomain }
 						: {}),
 					...(apps.length ? { apps } : {}),
 				},

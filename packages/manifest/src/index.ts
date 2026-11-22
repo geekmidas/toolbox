@@ -102,7 +102,7 @@ export {
 	DEFAULT_DERIVED_DAYS,
 	DERIVED_PREFIX,
 } from './derived';
-export { DEFAULT_SENDER, senderAddress } from './email';
+export { DEFAULT_SENDER, senderAddress, senderDomain } from './email';
 export { KMS_SCHEME, kmsUrl } from './encryption';
 export {
 	IllegalDerivation,

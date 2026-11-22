@@ -17,6 +17,7 @@ import {
 	type Declaration,
 	type DeclarationKind,
 	dependentsOf,
+	type EmailDeclaration,
 	hostLabels,
 	imageOriginsFor,
 	isHostedDeclaration,
@@ -246,8 +247,12 @@ export interface PlannedResource {
 		subdomain?: string;
 		topic: string;
 	};
-	/** Mail's local part — its declaration's `from` — joined to the stage's domain. */
-	from?: string;
+	/**
+	 * What mail is sent as: its declaration's `from` (the local part) and
+	 * `subdomain` (the label of the stage's domain), joined by
+	 * `senderAddress`.
+	 */
+	email?: Pick<EmailDeclaration, 'from' | 'subdomain'>;
 	/** The env key it resolves onto anything depending on it. */
 	envKey: string;
 	/** The parent it derives from, for kinds that provision nothing themselves. */
@@ -694,8 +699,16 @@ export function planFor(
 						].sort(),
 					}
 				: {}),
-			...(declaration.kind === 'email' && declaration.from
-				? { from: declaration.from }
+			...(declaration.kind === 'email' &&
+			(declaration.from || declaration.subdomain)
+				? {
+						email: {
+							...(declaration.from ? { from: declaration.from } : {}),
+							...(declaration.subdomain
+								? { subdomain: declaration.subdomain }
+								: {}),
+						},
+					}
 				: {}),
 			...(declaration.kind === 'inbox'
 				? {

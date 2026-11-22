@@ -392,7 +392,7 @@ export function envFor(
 
 		if (resource.kind === 'email' && url) {
 			env[providedKeyFor(resource.id, resource.kind, 'from')] = senderAddress(
-				resource,
+				resource.email ?? {},
 				options.mailDomain ?? LOCAL_HOST,
 			);
 
