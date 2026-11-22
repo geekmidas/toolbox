@@ -76,35 +76,49 @@ describe('gkm stages', () => {
 			await expect(run({ json: true })).rejects.toThrow('`stages` is required');
 		});
 
-		it('prints only the JSON on stdout from the built program', async () => {
-			await writeFile(join(dir, 'gkm.config.ts'), config(DEPLOYED));
+		// Both start the built CLI cold, in a process of its own: seconds
+		// under a full parallel run, past vitest's default 5s.
+		it(
+			'prints only the JSON on stdout from the built program',
+			{
+				timeout: 30_000,
+			},
+			async () => {
+				await writeFile(join(dir, 'gkm.config.ts'), config(DEPLOYED));
 
-			const stdout = execFileSync(
-				process.execPath,
-				[bin, '--cwd', dir, 'stages', '--json'],
-				{ encoding: 'utf-8' },
-			);
+				const stdout = execFileSync(
+					process.execPath,
+					[bin, '--cwd', dir, 'stages', '--json'],
+					{ encoding: 'utf-8' },
+				);
 
-			expect(JSON.parse(stdout)).toEqual({
-				local: 'dev',
-				deployed: ['staging', 'prod'],
-				protected: ['prod'],
-			});
-		});
+				expect(JSON.parse(stdout)).toEqual({
+					local: 'dev',
+					deployed: ['staging', 'prod'],
+					protected: ['prod'],
+				});
+			},
+		);
 
-		it('exits non-zero, naming the error, without stages', async () => {
-			await writeFile(join(dir, 'gkm.config.ts'), config(null));
+		it(
+			'exits non-zero, naming the error, without stages',
+			{
+				timeout: 30_000,
+			},
+			async () => {
+				await writeFile(join(dir, 'gkm.config.ts'), config(null));
 
-			const result = spawnSync(
-				process.execPath,
-				[bin, '--cwd', dir, 'stages', '--json'],
-				{ encoding: 'utf-8' },
-			);
+				const result = spawnSync(
+					process.execPath,
+					[bin, '--cwd', dir, 'stages', '--json'],
+					{ encoding: 'utf-8' },
+				);
 
-			expect(result.status).toBe(1);
-			expect(result.stdout).toBe('');
-			expect(result.stderr).toContain('InvalidStages');
-		});
+				expect(result.status).toBe(1);
+				expect(result.stdout).toBe('');
+				expect(result.stderr).toContain('InvalidStages');
+			},
+		);
 	});
 
 	it('prints a table without --json', async () => {
