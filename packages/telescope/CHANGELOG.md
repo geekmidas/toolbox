@@ -1,5 +1,12 @@
 # @geekmidas/telescope
 
+## 10.0.0-alpha.191
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/logger@10.0.0-alpha.191
+
 ## 10.0.0-alpha.190
 
 ### Patch Changes

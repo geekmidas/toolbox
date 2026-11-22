@@ -1,5 +1,12 @@
 # @geekmidas/events
 
+## 10.0.0-alpha.191
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/schema@10.0.0-alpha.191
+
 ## 10.0.0-alpha.190
 
 ### Patch Changes
