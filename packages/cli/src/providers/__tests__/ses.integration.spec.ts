@@ -130,6 +130,8 @@ beforeAll(async () => {
 		`import { Inbox } from '@geekmidas/constructs/inbox';
 
 export const requests = new Inbox('Requests', { addresses: ['requests'], subdomains: true });
+
+export const inbound = new Inbox('Inbound', { addresses: ['bills'], subdomain: 'in' });
 `,
 	);
 	writeFileSync(
@@ -221,6 +223,21 @@ describe('the ses provider', { timeout: 120_000 }, () => {
 			`*.${DOMAIN} MX 10 inbound-smtp.${REGION}.amazonaws.com`,
 		);
 		expect(lines.join('\n')).toMatch(/_domainkey\.fixwell\.example CNAME /);
+
+		// An inbox on a fixed subdomain: its rule names the label's addresses,
+		// its MX and identity are the label's, and the apex gets no MX — its
+		// mail stays wherever the team's is.
+		const inbound = (await rules()).find(
+			(r) => r.Name === receiptRuleName(name, STAGE, 'Inbound'),
+		);
+		expect(inbound?.Recipients).toEqual([`bills@in.${DOMAIN}`]);
+		const mx = lines.flatMap((line) => {
+			const host = /(\S+) MX /.exec(line)?.[1];
+			return host ? [host] : [];
+		});
+		expect(mx).toEqual(expect.arrayContaining([`in.${DOMAIN}`, `*.${DOMAIN}`]));
+		expect(mx).not.toContain(DOMAIN);
+		expect(lines.join('\n')).toMatch(/_domainkey\.in\.fixwell\.example CNAME /);
 	});
 
 	it('changes nothing on a second run', async () => {
@@ -266,9 +283,7 @@ describe('the ses provider', { timeout: 120_000 }, () => {
 		const ruleName = receiptRuleName(name, STAGE, 'Requests');
 		const without = Object.fromEntries(
 			Object.entries(manifest).filter(
-				([, d]) =>
-					d.kind !== 'inbox' &&
-					!(d.kind === 'topic' && d.id === 'RequestsMail'),
+				([, d]) => d.id !== 'Requests' && d.id !== 'RequestsMail',
 			),
 		) as ConstructManifest;
 		const other = (await rules()).filter((r) => r.Name !== ruleName);

@@ -8,6 +8,10 @@
  *   subdomains: true,        // requests@<tenant>.<stage domain>
  * });
  *
+ * // Or at one fixed label, leaving the apex's mail alone:
+ * new Inbox('Inbound', { addresses: ['bills'], subdomain: 'in' });
+ * // bills+…@in.<stage domain>
+ *
  * export const onRequest = worker
  *   .inbox(requests)
  *   .handle(async ({ messages }) => {
@@ -63,6 +67,40 @@ export interface InboxOptions {
 	 * than at the stage's domain itself.
 	 */
 	subdomains?: boolean;
+	/**
+	 * Receive at `<address>@<subdomain>.<domain>` — one fixed label, `'in'` —
+	 * rather than at the stage's domain itself. For a domain whose apex already
+	 * has mail: the deploy points only `<subdomain>.<domain>`'s MX at the
+	 * provider, and leaves the apex's alone.
+	 */
+	subdomain?: string;
+}
+
+/** `subdomain` and `subdomains: true` together: one fixed label, or any. */
+export class InboxSubdomainConflict extends Error {
+	constructor(readonly inbox: string) {
+		super(
+			`The inbox '${inbox}' sets both subdomain and subdomains: true. ` +
+				`subdomain: 'in' receives at one fixed label; subdomains: true at ` +
+				`any tenant's. Keep the one it means.`,
+		);
+		this.name = 'InboxSubdomainConflict';
+	}
+}
+
+/** A `subdomain` that is not one DNS label: `in.mail`, `-in`, `''`. */
+export class InboxSubdomainInvalid extends Error {
+	constructor(
+		readonly inbox: string,
+		readonly subdomain: string,
+	) {
+		super(
+			`The inbox '${inbox}' sets subdomain: '${subdomain}', which is not one ` +
+				`DNS label. Name a single label — letters, digits and inner hyphens, ` +
+				`like 'in' — the stage's domain follows it.`,
+		);
+		this.name = 'InboxSubdomainInvalid';
+	}
 }
 
 /** An inbox declared with no address receives nothing. */
@@ -185,7 +223,10 @@ export interface ReceiptNotification {
 
 /** What the handler's inbox is: its domain, its raw messages, the decoder. */
 export interface InboxClient {
-	/** The stage's domain it receives on. */
+	/**
+	 * The domain it receives on: the stage's, or `<subdomain>.<stage domain>`
+	 * with a fixed `subdomain`. An address is built on it.
+	 */
 	readonly domain: string;
 	/** A raw message's bytes, by its key in the bucket. */
 	raw(key: string): Promise<Uint8Array>;
@@ -220,6 +261,7 @@ export class Inbox<TName extends string = string>
 	readonly addressing: InboxAddressing;
 	private readonly addresses: readonly string[];
 	private readonly subdomains: boolean;
+	private readonly subdomain: string | undefined;
 	private readonly keys: { url: string; domain: string };
 
 	constructor(name: ConstructName<TName>, options: InboxOptions) {
@@ -232,10 +274,17 @@ export class Inbox<TName extends string = string>
 				throw new InboxAddressInvalid(canonical, address);
 			}
 		}
+		if (options.subdomain !== undefined) {
+			if (options.subdomains) throw new InboxSubdomainConflict(canonical);
+			if (!/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i.test(options.subdomain)) {
+				throw new InboxSubdomainInvalid(canonical, options.subdomain);
+			}
+		}
 
 		this.id = canonical as TName;
 		this.addresses = options.addresses.map((a) => a.toLowerCase());
 		this.subdomains = options.subdomains === true;
+		this.subdomain = options.subdomain?.toLowerCase();
 		this.addressing = {
 			addresses: this.addresses,
 			...(this.subdomains ? { subdomains: true } : {}),
@@ -263,6 +312,7 @@ export class Inbox<TName extends string = string>
 				provides: [this.keys.url, this.keys.domain],
 				addresses: this.addresses,
 				...(this.subdomains ? { subdomains: true } : {}),
+				...(this.subdomain ? { subdomain: this.subdomain } : {}),
 				topic: this.topic.id,
 			},
 		];
@@ -440,7 +490,7 @@ export function unjudgedReceipt(options: {
 export interface ReceivingInbox {
 	id: string;
 	addressing: InboxAddressing;
-	/** The stage's domain it receives on. */
+	/** The domain it receives on — its `<ID>_DOMAIN`. */
 	domain: string;
 	/** Announce a received message on the inbox's topic. */
 	publish(notification: ReceiptNotification): Promise<void>;

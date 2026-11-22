@@ -36,8 +36,8 @@ parser the handler reads messages with.
 - **A construct of its own, not part of `Email`.** Sending owns an SMTP URL
   and a sending identity. Receiving owns addresses, a store of raw messages
   and a channel they are announced on. An app that only sends gets none of it.
-- **The local part is structural; the domain is the stage's.** `addresses`
-  and `subdomains` are fixed in code. The domain is the workspace's `domains`
+- **The local part is structural; the domain is the stage's.** `addresses`,
+  `subdomains` and `subdomain` are fixed in code. The domain is the workspace's `domains`
   for a deployed stage, and `<project>.localhost` locally (`test.<project>.localhost`
   under `gkm test`).
 - **Plus-addressing is part of the address.** `requests` also receives at
@@ -54,6 +54,29 @@ parser the handler reads messages with.
 With `subdomains: true` an inbox receives at exactly one label in front of the
 stage's domain — `requests@acme.fixwell.example` — and never at the bare
 domain, whose mail would belong to no tenant.
+
+### At a fixed subdomain
+
+A production domain usually has mail already: its MX points at the team's own
+provider. An inbox on that domain would take the apex's MX over. Give it one
+fixed label instead, and it receives there alone:
+
+```ts
+export const inbound = new Inbox('Inbound', {
+  addresses: ['pop', 'bills'],
+  subdomain: 'in',
+});
+// pop+…@in.<stage domain>, bills+…@in.<stage domain>
+```
+
+- The deploy verifies `in.<domain>` with SES and points only its MX at SES.
+  The apex's MX is left alone.
+- `inbound.domain` in a handler (the inbox's `<ID>_DOMAIN`) is
+  `in.<domain>`, so an address built from it is right on every stage.
+- Locally it is `in.<project>.localhost` (`in.test.<project>.localhost`
+  under `gkm test`), so addresses look the same everywhere.
+- It is one DNS label, and it cannot be combined with `subdomains: true`
+  (`InboxSubdomainConflict`).
 
 ## What a handler is handed
 
@@ -190,9 +213,10 @@ account — on a compose stage on your own server as much as anywhere:
 - **Its own SNS topic**, which only SES may publish to. SNS pushes each message
   to the worker that runs the inbox's subscribers, at its route on the stage's
   domain, over HTTPS.
-- **The stage's domain as an SES identity**, verified with DKIM, and **MX
-  records** pointing the domain — or every subdomain of it, with
-  `subdomains: true` — at `inbound-smtp.<region>.amazonaws.com`. Both go
+- **The domain it receives on as an SES identity** (the stage's, or
+  `<subdomain>.<domain>` with a fixed `subdomain`), verified with DKIM, and
+  **MX records** pointing that domain (or every subdomain of the stage's,
+  with `subdomains: true`) at `inbound-smtp.<region>.amazonaws.com`. Both go
   through the stage's `dns` config (Route53, GoDaddy or Hostinger); a domain
   with none is printed as the records to create by hand.
 - **A receipt rule** in the region's **active** rule set, for the inbox's

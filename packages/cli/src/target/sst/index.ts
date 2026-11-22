@@ -20,7 +20,7 @@
 
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import type { ConstructManifest } from '@geekmidas/manifest';
+import { type ConstructManifest, providedKeyFor } from '@geekmidas/manifest';
 import { deployedInboxEnv } from '../../compose/stack';
 import {
 	type AwsCredential,
@@ -182,9 +182,14 @@ export async function inboxEnv(
 		domain,
 		secrets: stored?.custom ?? {},
 	});
-	// The URLs carry the provider's access key; the domain is public.
-	for (const value of Object.values(env)) {
-		if (value !== domain) ctx.secrets.mask(value);
+	// The URLs carry the provider's access key; each domain is public.
+	const domains = new Set(
+		Object.values(ctx.manifest)
+			.filter((d) => d.kind === 'inbox')
+			.map((d) => providedKeyFor(d.id, 'inbox', 'domain')),
+	);
+	for (const [key, value] of Object.entries(env)) {
+		if (!domains.has(key)) ctx.secrets.mask(value);
 	}
 	return env;
 }

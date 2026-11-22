@@ -136,6 +136,7 @@ export {
 	INBOX_MESSAGES_PREFIX,
 	type InboxAddressing,
 	type InboxRecipient,
+	inboxDomain,
 	inboxRecipient,
 	receiptRecipients,
 } from './inbox';

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { inboxRecipient, receiptRecipients } from '../inbox';
+import { inboxDomain, inboxRecipient, receiptRecipients } from '../inbox';
 
 const DOMAIN = 'fixwell.example';
 const tenants = { addresses: ['requests'], subdomains: true } as const;
@@ -76,5 +76,35 @@ describe('receiptRecipients', () => {
 			'requests@fixwell.example',
 			'billing@fixwell.example',
 		]);
+	});
+});
+
+describe('inboxDomain', () => {
+	it("is the stage's domain, or a fixed subdomain's label in front of it", () => {
+		expect(inboxDomain({}, DOMAIN)).toBe('fixwell.example');
+		expect(inboxDomain({ subdomain: 'in' }, DOMAIN)).toBe('in.fixwell.example');
+	});
+
+	it('receives on that label only, and the rule names each address there — never the apex', () => {
+		const inbound = { addresses: ['pop', 'bills'], subdomain: 'in' } as const;
+		const domain = inboxDomain(inbound, DOMAIN);
+
+		expect(receiptRecipients(inbound, domain)).toEqual([
+			'pop@in.fixwell.example',
+			'bills@in.fixwell.example',
+		]);
+		expect(
+			inboxRecipient('bills+q3@in.fixwell.example', inbound, domain),
+		).toEqual({
+			address: 'bills+q3@in.fixwell.example',
+			local: 'bills',
+			tag: 'q3',
+		});
+		expect(
+			inboxRecipient('bills@fixwell.example', inbound, domain),
+		).toBeUndefined();
+		expect(
+			inboxRecipient('bills@acme.in.fixwell.example', inbound, domain),
+		).toBeUndefined();
 	});
 });

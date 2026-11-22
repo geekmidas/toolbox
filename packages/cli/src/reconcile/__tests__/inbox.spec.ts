@@ -92,6 +92,30 @@ describe('an inbox, planned locally', () => {
 		expect(env.REQUESTS_DOMAIN).toBe('test.fixwell.localhost');
 	});
 
+	it('receives under a fixed subdomain at that label of the local domain, as deployed', () => {
+		const inbound = {
+			...MANIFEST,
+			Requests: {
+				...MANIFEST.Requests,
+				subdomains: undefined,
+				subdomain: 'in',
+			},
+		} as unknown as ConstructManifest;
+		const planned = (stage: string) =>
+			planFor(inbound, stage, provisionOrder(inbound), {
+				localStage: 'development',
+			});
+		const domain = (stage: string) =>
+			envFor(planned(stage), {
+				ports: PORTS,
+				project: 'fixwell',
+				credentials: TEST_CREDENTIALS,
+			}).REQUESTS_DOMAIN;
+
+		expect(domain('development')).toBe('in.fixwell.localhost');
+		expect(domain('test')).toBe('in.test.fixwell.localhost');
+	});
+
 	it("points Mailpit's webhook at the relay, so a change recreates it", () => {
 		const url = inboxWebhookUrl('http://host.docker.internal:3001', 'tok/en');
 		const compose = composeFor(plan('development'), {

@@ -24,6 +24,7 @@ import {
 	EDGE_TOKEN_KEY,
 	externalApiUrl,
 	imageOrigins,
+	inboxDomain,
 	mobileOrigins,
 	PUBLIC_STAGE_KEYS,
 	providedKeyFor,
@@ -378,13 +379,10 @@ export function envFor(
 				resource.name === base
 					? undefined
 					: resource.name.slice(base.length + 1);
-			env[providedKeyFor(resource.id, resource.kind, 'domain')] = [
-				stage,
-				options.project,
-				LOCAL_HOST,
-			]
-				.filter(Boolean)
-				.join('.');
+			env[providedKeyFor(resource.id, resource.kind, 'domain')] = inboxDomain(
+				resource.inbox ?? {},
+				[stage, options.project, LOCAL_HOST].filter(Boolean).join('.'),
+			);
 			const smtp = options.ports[primaryPortKey('mailpit')];
 			if (smtp !== undefined) {
 				env[providedKeyFor(resource.id, resource.kind, 'smtpUrl')] =
