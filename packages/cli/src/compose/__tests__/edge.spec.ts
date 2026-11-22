@@ -672,6 +672,7 @@ describe('the edge', () => {
 			GODADDY_API_KEY_FILE: '/etc/gkm-edge/certs/acme-dns-GODADDY_API_KEY',
 			GODADDY_API_SECRET_FILE:
 				'/etc/gkm-edge/certs/acme-dns-GODADDY_API_SECRET',
+			CF_DNS_API_TOKEN_FILE: '/etc/gkm-edge/certs/acme-dns-CF_DNS_API_TOKEN',
 		});
 	});
 
@@ -738,6 +739,7 @@ describe('the edge', () => {
 			expect(ACME_DNS_SECRET_KEYS).toEqual([
 				'GODADDY_API_KEY',
 				'GODADDY_API_SECRET',
+				'CF_DNS_API_TOKEN',
 			]);
 			for (const key of ACME_DNS_SECRET_KEYS) {
 				// lego reads `<KEY>_FILE` in place of `<KEY>`.
@@ -749,6 +751,77 @@ describe('the edge', () => {
 					true,
 				);
 			}
+		});
+
+		it('has a resolver through Cloudflare, with an ACME store of its own', () => {
+			expect(resolvers()['letsencrypt-dns-cloudflare']).toEqual({
+				acme: {
+					storage: '/acme/acme-dns-cloudflare.json',
+					dnsChallenge: {
+						provider: 'cloudflare',
+						resolvers: ['1.1.1.1:53', '8.8.8.8:53'],
+					},
+				},
+			});
+		});
+
+		/** A site a CDN answers, beside an API it does not. */
+		const cdnRouters = (
+			tls:
+				| { kind: 'acme' }
+				| { kind: 'files'; certFile: string; keyFile: string },
+		) =>
+			(
+				traefikDynamic(
+					[
+						{
+							name: 'web',
+							host: 'example.com',
+							redirects: {
+								hosts: ['www.example.com'],
+								to: 'https://example.com',
+							},
+							upstreams: [{ service: 'web', port: 3000 }],
+							streaming: true,
+							dnsCertificate: 'cloudflare',
+						},
+						{
+							name: 'api',
+							host: 'api.example.com',
+							upstreams: [{ service: 'api', port: 3001 }],
+							streaming: true,
+						},
+					],
+					{ project: 'shop-prod', tls },
+				) as {
+					http: { routers: Record<string, { rule: string; tls: unknown }> };
+				}
+			).http.routers;
+
+		it('certifies a route a CDN answers over the DNS challenge, its redirects too', () => {
+			const routers = cdnRouters({ kind: 'acme' });
+
+			expect(
+				Object.fromEntries(
+					Object.entries(routers).map(([name, r]) => [name, r.tls]),
+				),
+			).toEqual({
+				'shop-prod-web': { certResolver: 'letsencrypt-dns-cloudflare' },
+				'shop-prod-web-redirect-1': {
+					certResolver: 'letsencrypt-dns-cloudflare',
+				},
+				'shop-prod-api': { certResolver: 'letsencrypt' },
+			});
+		});
+
+		it("leaves a route a CDN answers on the stage's own certificate", () => {
+			const routers = cdnRouters({
+				kind: 'files',
+				certFile: '/c.pem',
+				keyFile: '/k.pem',
+			});
+
+			expect(routers['shop-prod-web']!.tls).toEqual({});
 		});
 
 		/** A wildcard site and the site at its domain, through `provider`. */

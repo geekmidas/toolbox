@@ -1,5 +1,6 @@
 import type { ComposeProxy } from '@geekmidas/edge/routes';
 import type { ConstructManifest } from '@geekmidas/manifest';
+import type { StageCdnConfig } from '../compose/cdnConfig.js';
 import type { DnsRecordsMode } from '../compose/dnsConfig.js';
 import type { AwsRegion, StateConfig } from '../deploy/StateProvider.js';
 import type {
@@ -587,6 +588,18 @@ export interface DeployConfig<S extends string = string> {
 	 * long a backup is kept — see {@link StageBackupsConfig}.
 	 */
 	backups?: StageMap<S, StageBackupsConfig>;
+	/**
+	 * A CDN in front of each deployed compose stage's sites, by stage:
+	 * `{ provider: 'cloudflare' }` proxies every host a site answers on
+	 * through Cloudflare, whose DNS the stage's domain must be on. Every
+	 * other host is served straight from the server, as is a stage the map
+	 * leaves out.
+	 *
+	 * ```ts
+	 * cdn: { prod: { provider: 'cloudflare' } }
+	 * ```
+	 */
+	cdn?: StageMap<S, StageCdnConfig>;
 }
 
 /**

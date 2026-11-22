@@ -1172,11 +1172,71 @@ HostNotPointingAtServer: A host of 'production' does not resolve to its server, 
 Fix: gkm deploy --stage production writes the records for example.com through their provider (--dry-run shows them first).
 ```
 
-A dry run prints the same as a warning. With a CDN or proxy in front of the
-server — the hosts resolve to it, not to the server — or records written
-elsewhere, pass `--skip-dns` to `gkm deploy` or `gkm compose`: the deploy
-neither writes the hosts' records nor checks them. The local stage is never
-checked.
+A dry run prints the same as a warning. If you run a CDN or proxy in front of
+the server yourself (the hosts resolve to it, not to the server), or write the
+records elsewhere, pass `--skip-dns` to `gkm deploy` or `gkm compose`. The
+deploy then neither writes the hosts' records nor checks them. A CDN gkm
+manages (`deploy.cdn`, below) needs no flag. The local stage is never checked.
+
+## A CDN in front of the sites
+
+Without a CDN, every request to a site goes to the stage's one server. A
+visitor far from it pays a TCP and a TLS handshake across that distance
+before the first byte arrives, even for a page that's already cached on the
+server. `deploy.cdn` puts a CDN in front of a stage's sites. The CDN ends both
+handshakes at an edge near the visitor, keeps a warm connection to the
+server, and serves the sites' content-hashed assets from its own cache.
+
+```typescript
+dns: { 'example.com': { provider: 'cloudflare' } },
+deploy: {
+  compose: { proxy: 'traefik' },
+  cdn: {
+    prod: { provider: 'cloudflare' },
+    // staging: not listed, so it's served straight from its server
+  },
+},
+```
+
+**Cloudflare** is the only provider so far. It proxies only names whose DNS it
+serves, so the stage's domain has to be on Cloudflare DNS
+([Cloudflare](./deployment.md#cloudflare)); otherwise the deploy stops with
+`CdnNeedsCloudflareDns`. The registration can stay at another registrar, as
+long as the nameservers are Cloudflare's. Each deploy then:
+
+- **Proxies every host a site answers on:** its own, its aliases, its
+  redirects, and a wildcard site's `*.<domain>`. These records are written
+  proxied (the orange cloud). Every other host stays a plain record to the
+  server: APIs, the auth server, the public telemetry UI. On a Cloudflare
+  domain, gkm sets the proxy flag on every record it writes, so the dashboard
+  can't drift from the config.
+- **Keeps a real certificate on the server**, so Cloudflare reaches it over
+  HTTPS. Set the zone's SSL/TLS mode to **Full (strict)**. *Flexible* sends
+  plain HTTP to a server that redirects to HTTPS, which loops. A host that
+  Cloudflare answers doesn't reliably pass Let's Encrypt's HTTP challenge on
+  to the server, so the shared Traefik edge gets each site's certificate over
+  the DNS challenge, through Cloudflare. That takes `CF_DNS_API_TOKEN` in the
+  stage's secrets, a token with `DNS:Edit` on the zone. Like every DNS
+  challenge key, it's written into the edge alone and never handed to an app:
+
+  ```bash
+  gkm secrets:set CF_DNS_API_TOKEN '<token>' --stage prod
+  ```
+
+  A stage with its own certificate (`deploy.compose.tls.<stage>`, such as a
+  Cloudflare origin certificate) needs neither. Without one, the stack's own
+  Caddy can't answer the DNS challenge, and the deploy stops with
+  `CdnCertificateUnavailable`. Use the shared edge or a certificate of the
+  stage's own.
+- **Checks the proxied hosts against Cloudflare itself.** They resolve to
+  Cloudflare, not to the server, so they're confirmed by reading their records
+  back from Cloudflare and never by the public lookup.
+
+Cloudflare caches what it caches by default: static files by extension
+(scripts, stylesheets, images, fonts), honouring the server's
+`Cache-Control`. HTML still goes to the server on every request, over the
+CDN's warm connection. A site sees Cloudflare's address as the client; the
+visitor's is in `CF-Connecting-IP`, and their country in `CF-IPCountry`.
 
 ## Proxy: Caddy or Traefik
 

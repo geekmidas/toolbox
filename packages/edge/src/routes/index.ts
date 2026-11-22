@@ -140,6 +140,15 @@ export interface EdgeRoute {
 	 * certificate is had. Named hosts always win over it.
 	 */
 	wildcard?: EdgeWildcard;
+	/**
+	 * Get its hosts' certificate over Let's Encrypt's DNS challenge, through
+	 * this DNS provider, instead of the HTTP challenge — for a route a CDN
+	 * answers, whose hosts resolve to the CDN and not to this edge, so
+	 * Let's Encrypt's HTTP request never reliably reaches it. Only where the
+	 * stack's certificates come from ACME; a stage's own certificate covers
+	 * it already. Rendered by Traefik; Caddy is never handed one.
+	 */
+	dnsCertificate?: AcmeDnsProvider;
 }
 
 /**

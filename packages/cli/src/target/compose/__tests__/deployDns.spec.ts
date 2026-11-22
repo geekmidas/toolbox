@@ -184,6 +184,8 @@ async function run(
 		status?: number;
 		/** Deps beyond the recorders — a DNS provider, the edge key's clients. */
 		deps?: Partial<ComposeDeps>;
+		/** The runner's environment beyond the GoDaddy token. */
+		env?: Record<string, string>;
 	} = {},
 ) {
 	const fake = fakeDocker();
@@ -221,7 +223,10 @@ async function run(
 		stage,
 		target: 'compose',
 		credentials: storedCredentials({
-			env: token ? { GODADDY_API_TOKEN: token } : {},
+			env: {
+				...(token ? { GODADDY_API_TOKEN: token } : {}),
+				...options.env,
+			},
 		}),
 		...(options.dryRun ? { dryRun: true } : {}),
 		...(options.skipDns ? { skipDns: true } : {}),
@@ -769,6 +774,28 @@ describe('a wildcard site', { timeout: RUN_TIMEOUT }, () => {
 			]);
 			expect(ops).toEqual([]);
 			expect(PUTS()).toEqual([]);
+		});
+	});
+
+	describe('behind Cloudflare’s CDN, on the shared edge', () => {
+		it('refuses a stage without the edge’s Cloudflare key before anything is started', async () => {
+			workspace({
+				dns: { 'example.com': { provider: 'cloudflare' } },
+				compose: { proxy: 'traefik' },
+				deployCdn: { production: { provider: 'cloudflare' } },
+			});
+			await serveFrom(dir, 'production');
+
+			const { error, ops } = await run('production', {
+				lookup: resolvesHere,
+				env: { CLOUDFLARE_API_TOKEN: 'the-deploy-token' },
+			});
+
+			expect(error).toBeInstanceOf(AcmeDnsSecretsMissing);
+			expect((error as AcmeDnsSecretsMissing).keys).toEqual([
+				'CF_DNS_API_TOKEN',
+			]);
+			expect(ops).toEqual([]);
 		});
 	});
 

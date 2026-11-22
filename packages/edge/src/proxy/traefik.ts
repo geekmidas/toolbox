@@ -107,7 +107,8 @@ export interface AcmeDnsChallenge {
 }
 
 /**
- * Every DNS provider the edge can get a wildcard certificate through, by the
+ * Every DNS provider the edge can get a certificate through over the DNS
+ * challenge — a wildcard's, or a host a CDN answers — by the
  * name a workspace's `dns` entry gives it. Another provider is one entry
  * here — lego's code for it and the variables it reads — and nothing else:
  * its resolver, its ACME storage and its edge environment follow from it.
@@ -128,6 +129,11 @@ export const ACME_DNS_CHALLENGES = {
 	godaddy: {
 		provider: 'godaddy',
 		secrets: ['GODADDY_API_KEY', 'GODADDY_API_SECRET'],
+	},
+	// An API token with DNS:Edit on the zone: lego finds the zone itself.
+	cloudflare: {
+		provider: 'cloudflare',
+		secrets: ['CF_DNS_API_TOKEN'],
 	},
 } as const satisfies Record<string, AcmeDnsChallenge>;
 
@@ -458,9 +464,12 @@ export function traefikDynamic(
 						certResolver: acmeDnsResolver(route.wildcard.tls.provider),
 						domains: [{ main: `*.${route.wildcard.domain}` }],
 					}
-				: tls.kind === 'acme'
-					? { certResolver: ACME_RESOLVER }
-					: {};
+				: tls.kind !== 'acme'
+					? {}
+					: route.dnsCertificate
+						? // Its hosts, from the router's rule, over the DNS challenge.
+							{ certResolver: acmeDnsResolver(route.dnsCertificate) }
+						: { certResolver: ACME_RESOLVER };
 
 		// Each handler: a router of its own on the same host, ahead of the
 		// route's, to a service of its own.

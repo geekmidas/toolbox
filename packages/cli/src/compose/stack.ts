@@ -160,6 +160,11 @@ import type {
 	S3ObjectsConfig,
 } from '../workspace/types.js';
 import { acmeDnsZone } from './acmeDns.js';
+import {
+	CdnCertificateUnavailable,
+	type CdnProvider,
+	stageCdn,
+} from './cdn.js';
 import { isReservedStageKey } from './dnsConfig.js';
 import type { AppImage } from './images.js';
 import {
@@ -585,6 +590,13 @@ export interface ComposeStack {
 		host: string;
 		tls: EdgeWildcard['tls']['kind'];
 	};
+	/**
+	 * A deployed stage's CDN (`deploy.cdn`): which one, the hosts it answers
+	 * — every host a site answers on, a wildcard site's `*.<domain>` among
+	 * them — and whether the shared edge certifies them over the DNS
+	 * challenge, so the deploy gives it its DNS provider's key.
+	 */
+	cdn?: { provider: CdnProvider; hosts: string[]; dnsCertificates: boolean };
 	/** The stack's own Caddy's configuration — with `proxy: 'caddy'`. */
 	caddyfile?: string;
 	/**
@@ -1875,6 +1887,16 @@ export function composeStack(input: StackInput): ComposeStack {
 				hostOf,
 			});
 
+	// The CDN in front of the stage's sites. A host it answers resolves to
+	// the CDN, which Let's Encrypt's HTTP challenge does not reliably pass
+	// through: without a certificate of the stage's own, the shared edge
+	// gets each site's over the DNS challenge, through the same provider.
+	const cdn = local || input.buildOnly ? undefined : stageCdn(workspace, stage);
+	if (cdn && !certificate && proxy !== 'traefik') {
+		throw new CdnCertificateUnavailable(stage);
+	}
+	const cdnCertificate = cdn && !certificate ? cdn.provider : undefined;
+
 	// One route per public host — the data both proxies render.
 	const routes: EdgeRoute[] = [
 		...apps.map(
@@ -1889,6 +1911,9 @@ export function composeStack(input: StackInput): ComposeStack {
 						}
 					: {}),
 				...(wildcard?.site === app.id ? { wildcard: wildcard.edge } : {}),
+				...(cdnCertificate && app.kind === 'site'
+					? { dnsCertificate: cdnCertificate }
+					: {}),
 				upstreams: replicaNames(app).map((service) => ({
 					service,
 					port: app.port,
@@ -2075,6 +2100,21 @@ export function composeStack(input: StackInput): ComposeStack {
 						site: wildcard.site,
 						host: `*.${wildcard.edge.domain}`,
 						tls: wildcard.edge.tls.kind,
+					},
+				}
+			: {}),
+		...(cdn
+			? {
+					cdn: {
+						provider: cdn.provider,
+						hosts: apps
+							.filter((app) => app.kind === 'site')
+							.flatMap((app) => {
+								const route = routes.find((r) => r.name === app.name);
+								return route ? routeHosts(route) : [];
+							})
+							.map((host) => host.toLowerCase()),
+						dnsCertificates: cdnCertificate !== undefined,
 					},
 				}
 			: {}),

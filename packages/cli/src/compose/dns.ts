@@ -195,6 +195,13 @@ export interface PlannedDnsRecord {
 	 */
 	value: string;
 	ttl: number;
+	/**
+	 * Whether the provider's CDN answers it (Cloudflare's proxy) — set on
+	 * every address record under a Cloudflare domain, `true` for a host the
+	 * stage's CDN fronts (`deploy.cdn`) and `false` for every other, so the
+	 * proxy is what the config says. Absent under every other provider.
+	 */
+	proxied?: boolean;
 }
 
 /** One `dns` domain's share of the plan. */
@@ -245,6 +252,8 @@ export interface PlanStackDnsInput {
 	 * and no deploy could write a record for each.
 	 */
 	wildcard?: string;
+	/** The hosts the stage's CDN answers (`deploy.cdn`), proxied by it. */
+	proxied?: readonly string[];
 }
 
 /**
@@ -274,6 +283,7 @@ export function planStackDns(input: PlanStackDnsInput): StackDnsPlan {
 	const dns = input.dns ? normalizeDnsConfig(input.dns) : {};
 	const records = new Map<string, PlannedDnsRecord>();
 	const uncovered: string[] = [];
+	const proxied = new Set((input.proxied ?? []).map((h) => h.toLowerCase()));
 
 	const add = (
 		host: string,
@@ -282,6 +292,8 @@ export function planStackDns(input: PlanStackDnsInput): StackDnsPlan {
 		value: string,
 	) => {
 		const name = extractSubdomain(host, domain);
+		const cdn =
+			dns[domain]!.provider === 'cloudflare' && ADDRESS_TYPES.includes(type);
 		records.set(`${domain} ${name} ${type}`, {
 			host,
 			domain,
@@ -289,6 +301,7 @@ export function planStackDns(input: PlanStackDnsInput): StackDnsPlan {
 			type,
 			value,
 			ttl: recordTtl(dns[domain]!),
+			...(cdn ? { proxied: proxied.has(host) } : {}),
 		});
 	};
 	const pointAt = (host: string, domain: string) => {
@@ -363,6 +376,8 @@ export interface DnsChange {
 	/** What it was, for an update or a delete. */
 	previous?: string;
 	ttl?: number;
+	/** Whether the provider's CDN answers it — see {@link PlannedDnsRecord}. */
+	proxied?: boolean;
 }
 
 export interface ApplyStackDnsOptions {
@@ -563,12 +578,19 @@ export function diffDomainDns(
 			type: record.type,
 			value: record.value,
 			ttl: record.ttl,
+			...(record.proxied !== undefined ? { proxied: record.proxied } : {}),
 		};
+		// A provider that says nothing of a proxy has none to differ.
+		const sameProxy =
+			record.proxied === undefined ||
+			found?.proxied === undefined ||
+			found.proxied === record.proxied;
 		if (!found || found.values.length === 0) {
 			changes.push({ ...base, action: 'create' });
 		} else if (
 			found.values.length === 1 &&
-			same(found.values[0]!, record.value)
+			same(found.values[0]!, record.value) &&
+			sameProxy
 		) {
 			changes.push({ ...base, action: 'unchanged' });
 		} else {
@@ -595,20 +617,21 @@ function printChange(
 	const host = fullName(change.domain, change.name).padEnd(32);
 	const type = change.type.padEnd(5);
 	const would = dryRun ? 'would ' : '';
+	const cdn = change.proxied ? ', proxied by the CDN' : '';
 	switch (change.action) {
 		case 'unchanged':
 			log(
-				`   ✓ ${host} ${type} ${change.value}  (TTL ${change.ttl}) — up to date`,
+				`   ✓ ${host} ${type} ${change.value}  (TTL ${change.ttl}${cdn}) — up to date`,
 			);
 			break;
 		case 'create':
 			log(
-				`   + ${host} ${type} ${change.value}  (TTL ${change.ttl}) — ${would}create`,
+				`   + ${host} ${type} ${change.value}  (TTL ${change.ttl}${cdn}) — ${would}create`,
 			);
 			break;
 		case 'update':
 			log(
-				`   ~ ${host} ${type} ${change.previous} → ${change.value}  (TTL ${change.ttl}) — ${would}update`,
+				`   ~ ${host} ${type} ${change.previous} → ${change.value}  (TTL ${change.ttl}${cdn}) — ${would}update`,
 			);
 			break;
 		case 'write':
@@ -697,6 +720,7 @@ export async function settleStackDns(
 				action: 'write' as const,
 				value: r.value,
 				ttl: r.ttl,
+				...(r.proxied !== undefined ? { proxied: r.proxied } : {}),
 			}));
 		}
 		for (const change of diff) printChange(change, dryRun, log);
@@ -757,6 +781,7 @@ export async function settleStackDns(
 					type: c.type,
 					value: c.value!,
 					ttl: c.ttl!,
+					...(c.proxied !== undefined ? { proxied: c.proxied } : {}),
 				})),
 			);
 		}
@@ -1266,6 +1291,8 @@ export interface StageDnsInput {
 	recorded?: readonly RecordedDnsRecord[];
 	/** The stage's wildcard site's `*.<domain>`, the one wildcard written. */
 	wildcard?: string;
+	/** The hosts the stage's CDN answers (`deploy.cdn`), proxied by it. */
+	proxied?: readonly string[];
 }
 
 export interface StageDnsResult {
@@ -1309,6 +1336,7 @@ export async function stageDns(input: StageDnsInput): Promise<StageDnsResult> {
 		server,
 		dns: input.dns,
 		...(input.wildcard ? { wildcard: input.wildcard } : {}),
+		...(input.proxied ? { proxied: input.proxied } : {}),
 	});
 	const recorded = diffRecordedDns(plan, input.recorded ?? []);
 	// A stale record's domain needs its provider's token too — the stage's

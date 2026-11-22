@@ -634,9 +634,10 @@ export async function validateCompose(
 	// its server: it is the host SSH reaches too, unless config names one.
 	if (!push && !check && !stack.local) {
 		requiredServerAddress(stage, workspace.domains?.[stage], secrets?.custom);
-		// The edge's key for the wildcard's DNS challenge, where the stage
-		// supplies it: refused now, not once the stack is half up.
-		if (stack.proxy === 'traefik' && stack.wildcard?.tls === 'dns') {
+		// The edge's key for the DNS challenge — a wildcard's, or the hosts a
+		// CDN answers — where the stage supplies it: refused now, not once the
+		// stack is half up.
+		if (stack.proxy === 'traefik' && dnsChallenged(stack)) {
 			const zone = acmeDnsZone(workspace, stage);
 			if (zone) acmeDnsSecrets(zone, stage, secrets?.custom);
 		}
@@ -762,6 +763,7 @@ export async function readyCompose(
 		stackHosts(stack).filter((host) => !isLocalHost(host)),
 		run.secrets?.custom,
 		stack.wildcard?.host,
+		stack.cdn?.hosts,
 	);
 	if (prune) run.pruneDns = prune;
 }
@@ -957,6 +959,8 @@ async function stageHostsDns(
 	hosts: readonly string[],
 	custom: Readonly<Record<string, string>> | undefined,
 	wildcard: string | undefined,
+	/** The hosts the stage's CDN answers, written proxied. */
+	proxied: readonly string[] | undefined,
 ): Promise<(() => Promise<PrunedDnsRecord[]>) | undefined> {
 	const { workspace, stage } = ctx;
 	const server = requiredServerAddress(
@@ -995,6 +999,7 @@ async function stageHostsDns(
 				ctx.providerDns,
 			),
 			...(wildcard ? { wildcard } : {}),
+			...(proxied?.length ? { proxied } : {}),
 			credentials: ctx.credentials,
 			log,
 			lookup: deps.lookup ?? systemLookup,
@@ -1210,6 +1215,14 @@ export async function planCompose(
 }
 
 /**
+ * Whether the shared edge gets any of the stack's certificates over the DNS
+ * challenge: a wildcard site's, or the hosts a CDN answers.
+ */
+function dnsChallenged(stack: ComposeStack): boolean {
+	return stack.wildcard?.tls === 'dns' || stack.cdn?.dnsCertificates === true;
+}
+
+/**
  * The shared edge's key for the stage's wildcard certificate, through the
  * DNS provider holding the stage's domain — before the stack's routes ask
  * for the certificate. Route 53's is issued through IAM, allowed the DNS
@@ -1361,7 +1374,7 @@ export async function provisionCompose(
 			id: `${EDGE_PROJECT}/${EDGE_SERVICE}`,
 			via: 'found',
 		});
-		if (stack.wildcard?.tls === 'dns') await edgeAcmeKey(ctx, run, deps);
+		if (dnsChallenged(stack)) await edgeAcmeKey(ctx, run, deps);
 	}
 
 	if (stack.infra.length > 0) {

@@ -37,6 +37,8 @@ export interface ComposeAppOptions {
 	deployEmail?: Record<string, unknown>;
 	/** `deploy.backups`, as it is written in the config. */
 	deployBackups?: Record<string, unknown>;
+	/** `deploy.cdn`, by stage. */
+	deployCdn?: Record<string, unknown>;
 	/** The rest of `deploy.compose` — `proxy`, `tls` — as written. */
 	compose?: Record<string, unknown>;
 	/** The deployed stages, `['production']` when absent. */
@@ -278,6 +280,7 @@ export default defineWorkspace({
     ${options.deployInbox ? `inbox: ${JSON.stringify(options.deployInbox)},` : ''}
     ${options.deployEmail ? `email: ${JSON.stringify(options.deployEmail)},` : ''}
     ${options.deployBackups ? `backups: ${JSON.stringify(options.deployBackups)},` : ''}
+    ${options.deployCdn ? `cdn: ${JSON.stringify(options.deployCdn)},` : ''}
   },
 });
 `,
