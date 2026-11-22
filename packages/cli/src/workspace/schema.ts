@@ -443,7 +443,9 @@ export const GoDaddyDnsProviderSchema = z.object({
 });
 
 /**
- * Cloudflare DNS provider config (placeholder for future).
+ * Cloudflare DNS provider config. The token is `CLOUDFLARE_API_TOKEN` (an
+ * API token with Zone:Read and DNS:Edit on the zone), else `gkm login
+ * --provider cloudflare`.
  */
 export const CloudflareDnsProviderSchema = z.object({
 	provider: z.literal('cloudflare'),
@@ -526,7 +528,7 @@ export type DnsProvider = z.infer<typeof DnsProviderSchema>;
  * - 'hostinger': Use Hostinger DNS API
  * - 'route53': Use AWS Route53
  * - 'godaddy': Use GoDaddy's v1 DNS API
- * - 'cloudflare': Use Cloudflare DNS API (future)
+ * - 'cloudflare': Use Cloudflare's v4 DNS API
  * - 'manual': Don't create records, just print required records
  * - Custom: Provide a DnsProvider implementation
  */

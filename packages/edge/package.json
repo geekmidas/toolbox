@@ -93,6 +93,16 @@
 				"types": "./dist/dns/godaddy/index.d.cts",
 				"default": "./dist/dns/godaddy/index.cjs"
 			}
+		},
+		"./dns/cloudflare": {
+			"import": {
+				"types": "./dist/dns/cloudflare/index.d.mts",
+				"default": "./dist/dns/cloudflare/index.mjs"
+			},
+			"require": {
+				"types": "./dist/dns/cloudflare/index.d.cts",
+				"default": "./dist/dns/cloudflare/index.cjs"
+			}
 		}
 	},
 	"files": [

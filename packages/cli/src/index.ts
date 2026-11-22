@@ -1361,7 +1361,7 @@ program
 	// `services:` backend block, and a Dokploy resource name.
 	.option(
 		'--provider <provider>',
-		'Provider to log in to (dokploy, hostinger, godaddy)',
+		'Provider to log in to (dokploy, hostinger, godaddy, cloudflare)',
 		'dokploy',
 	)
 	// Kept working rather than removed: it is what shipped, and a flag rename is
@@ -1385,15 +1385,21 @@ program
 				// The alias wins when given, because a default is not a choice.
 				const provider = options.service ?? options.provider;
 
-				if (!['dokploy', 'hostinger', 'godaddy'].includes(provider)) {
+				if (
+					!['dokploy', 'hostinger', 'godaddy', 'cloudflare'].includes(provider)
+				) {
 					console.error(
-						`Unknown provider: ${provider}. Supported: dokploy, hostinger, godaddy`,
+						`Unknown provider: ${provider}. Supported: dokploy, hostinger, godaddy, cloudflare`,
 					);
 					process.exit(1);
 				}
 
 				await loginCommand({
-					provider: provider as 'dokploy' | 'hostinger' | 'godaddy',
+					provider: provider as
+						| 'dokploy'
+						| 'hostinger'
+						| 'godaddy'
+						| 'cloudflare',
 					token: options.token,
 					endpoint: options.endpoint,
 				});
@@ -1409,7 +1415,7 @@ program
 	.description('Remove stored credentials')
 	.option(
 		'--provider <provider>',
-		'Whose credentials to remove (dokploy, godaddy, all)',
+		'Whose credentials to remove (dokploy, godaddy, cloudflare, all)',
 		'dokploy',
 	)
 	.option('--service <provider>', '[DEPRECATED] Use --provider instead')
@@ -1424,6 +1430,7 @@ program
 				provider: (options.service ?? options.provider) as
 					| 'dokploy'
 					| 'godaddy'
+					| 'cloudflare'
 					| 'all',
 			});
 		} catch (error) {

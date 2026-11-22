@@ -205,13 +205,13 @@ describe('orchestrateDns', () => {
 	it('reports a provider it cannot construct, for every record', async () => {
 		const result = await orchestrateDns(
 			hosts(['api', 'api.shop.com']),
-			{ 'shop.com': { provider: 'cloudflare' } as never },
+			{ 'shop.com': { provider: 'no-such-dns' } as never },
 			ENDPOINT,
 		);
 
 		expect(result?.success).toBe(false);
 		expect(said()).toContain(
-			'Failed to create DNS provider for shop.com: The cloudflare DNS provider is not implemented yet.',
+			'Failed to create DNS provider for shop.com: Unknown DNS provider:',
 		);
 	});
 

@@ -114,6 +114,7 @@ export async function writeProviderDns(
 				log,
 			},
 			...(tokens.hostinger ? { hostinger: tokens.hostinger } : {}),
+			...(tokens.cloudflare ? { cloudflare: tokens.cloudflare } : {}),
 			...(options.providerFor ? { providerFor: options.providerFor } : {}),
 		},
 	);

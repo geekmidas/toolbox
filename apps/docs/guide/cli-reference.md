@@ -623,7 +623,8 @@ Errors:
                           in its secrets (gkm secrets:set GKM_SERVER_IPV4 '<ip>')
   ServerAddressInvalid    GKM_SERVER_IPV4/IPV6 that is not an address
   DnsCredentialMissing    a dns provider for the stage's domain and no token
-                          (GODADDY_API_TOKEN, HOSTINGER_API_TOKEN) — before
+                          (GODADDY_API_TOKEN, HOSTINGER_API_TOKEN,
+                          CLOUDFLARE_API_TOKEN) — before
                           anything runs
   DnsWildcardRefused      a wildcard public host; records are one per host
   DnsRecordsNotConfirmed  records the deploy wrote that the provider does not
@@ -960,6 +961,7 @@ with point-in-time recovery.
 # Login to deployment service
 gkm login --provider dokploy
 gkm login --provider godaddy   # a Personal Access Token, scoped to domains.dns:update
+gkm login --provider cloudflare  # an API token with Zone:Read and DNS:Edit on the zone
 
 # Show current auth status
 gkm whoami

@@ -213,6 +213,7 @@ describe('generateGithubFiles', () => {
 			// The deploy writes each app's DNS records with the stage's token.
 			GODADDY_API_TOKEN: '${{ secrets.GODADDY_API_TOKEN }}',
 			HOSTINGER_API_TOKEN: '${{ secrets.HOSTINGER_API_TOKEN }}',
+			CLOUDFLARE_API_TOKEN: '${{ secrets.CLOUDFLARE_API_TOKEN }}',
 		});
 		expect(JSON.stringify(job)).not.toContain('configure-aws-credentials');
 	});
@@ -395,6 +396,7 @@ describe('generateGithubFiles', () => {
 				SHA: '${{ steps.commit.outputs.sha }}',
 				GODADDY_API_TOKEN: '${{ secrets.GODADDY_API_TOKEN }}',
 				HOSTINGER_API_TOKEN: '${{ secrets.HOSTINGER_API_TOKEN }}',
+				CLOUDFLARE_API_TOKEN: '${{ secrets.CLOUDFLARE_API_TOKEN }}',
 			});
 			for (const step of steps) {
 				expect(step.run ?? '').not.toMatch(/(^|[\s;&|])ssh /m);
