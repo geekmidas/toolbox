@@ -1296,7 +1296,8 @@ export const readStamp = api
 			}
 			// Nothing was provisioned, started or recorded by the push.
 			expect(pushed).not.toContain('is running');
-			expect(pushed).not.toContain('Creating databases');
+			expect(pushed).not.toContain('Databases and roles');
+			expect(pushed).not.toContain('🗄️  Created');
 			// The registry has each one.
 			const catalog = await fetch(`http://${registry}/v2/_catalog`).then(
 				(r) => r.json() as Promise<{ repositories: string[] }>,

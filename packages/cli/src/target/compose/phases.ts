@@ -1519,8 +1519,19 @@ async function migrateAndSeed(
 		...(stack.backups ? backupsRoleStatements(stack.backups) : []),
 	];
 	if (statements.length > 0) {
-		ctx.logger.info('🗄️  Creating databases, roles and grants…');
-		await applyPostgres(deps.sql(port, login.login), statements);
+		// Said after, from what was applied: every statement checks first, so
+		// on a stack that already has them nothing is created, and saying
+		// "creating" there is wrong. Re-granted grants are not news either.
+		const applied = await applyPostgres(
+			deps.sql(port, login.login),
+			statements,
+		);
+		const created = applied.filter((entry) => entry.created);
+		ctx.logger.info(
+			created.length > 0
+				? `🗄️  Created ${created.map((entry) => entry.describe).join(', ')}`
+				: '🗄️  Databases and roles already in place',
+		);
 	}
 
 	// Migrations run here, with the project's own Kysely, the way `gkm
