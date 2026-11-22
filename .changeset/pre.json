@@ -152,6 +152,7 @@
     "edge-token-client-ip",
     "email-dkim-check",
     "email-from-local-part",
+    "email-subdomain",
     "emailkit-bundles-without",
     "encryption-cipher-drivers",
     "encryption-construct",

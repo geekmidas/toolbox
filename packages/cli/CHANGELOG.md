@@ -1,5 +1,27 @@
 # @geekmidas/cli
 
+## 10.0.0-alpha.192
+
+### Minor Changes
+
+- ✨ [#550](https://github.com/geekmidas/toolbox/pull/550) [`6022ce3`](https://github.com/geekmidas/toolbox/commit/6022ce3c5f6c69c9ef3799344fa43cc71eabd087) Thanks [@geekmidas](https://github.com/geekmidas)! - `Email` takes a `subdomain`: the label of the stage's domain the application sends mail from. `new Email('Mail', { templates, from: 'info', subdomain: 'mail' })` sends as `info@mail.<stage domain>` (`info@mail.localhost` locally). With `deploy.email: { provider: 'ses' }` the deploy verifies `mail.<stage domain>` as the SES identity and writes its DKIM records under it, so the bare domain's own mail setup is left alone. `senderDomain` in `@geekmidas/manifest` is the one place the sending domain is derived.
+
+### Patch Changes
+
+- Updated dependencies [[`6022ce3`](https://github.com/geekmidas/toolbox/commit/6022ce3c5f6c69c9ef3799344fa43cc71eabd087)]:
+  - @geekmidas/constructs@10.0.0-alpha.192
+  - @geekmidas/manifest@10.0.0-alpha.192
+  - @geekmidas/edge@10.0.0-alpha.192
+  - @geekmidas/cache@10.0.0-alpha.192
+  - @geekmidas/db@10.0.0-alpha.192
+  - @geekmidas/envkit@10.0.0-alpha.192
+  - @geekmidas/errors@10.0.0-alpha.192
+  - @geekmidas/logger@10.0.0-alpha.192
+  - @geekmidas/schema@10.0.0-alpha.192
+  - @geekmidas/services@10.0.0-alpha.192
+  - @geekmidas/storage@10.0.0-alpha.192
+  - @geekmidas/telescope@10.0.0-alpha.192
+
 ## 10.0.0-alpha.191
 
 ### Minor Changes
