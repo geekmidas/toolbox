@@ -66,6 +66,7 @@
     "client-at-root",
     "client-coercion-types",
     "client-method-calls",
+    "cloudflare-cdn",
     "cloudflare-dns-provider",
     "compose-app-env-parity",
     "compose-backups",
