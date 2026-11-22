@@ -1210,24 +1210,41 @@ long as the nameservers are Cloudflare's. Each deploy then:
   server: APIs, the auth server, the public telemetry UI. On a Cloudflare
   domain, gkm sets the proxy flag on every record it writes, so the dashboard
   can't drift from the config.
-- **Keeps a real certificate on the server**, so Cloudflare reaches it over
-  HTTPS. Set the zone's SSL/TLS mode to **Full (strict)**. *Flexible* sends
-  plain HTTP to a server that redirects to HTTPS, which loops. A host that
+- **Keeps a certificate on the server**, so Cloudflare reaches it over HTTPS.
+  Set the zone's SSL/TLS mode to **Full (strict)**. *Flexible* sends plain
+  HTTP to a server that redirects to HTTPS, which loops. A host that
   Cloudflare answers doesn't reliably pass Let's Encrypt's HTTP challenge on
-  to the server, so the shared Traefik edge gets each site's certificate over
-  the DNS challenge, through Cloudflare. That takes `CF_DNS_API_TOKEN` in the
-  stage's secrets, a token with `DNS:Edit` on the zone. Like every DNS
-  challenge key, it's written into the edge alone and never handed to an app:
+  to the server, so by default the site hosts get an **origin certificate**
+  from Cloudflare's Origin CA instead:
+
+  - The deploy makes the private key on the machine it runs on, and sends
+    Cloudflare only a signing request for exactly the hosts the CDN answers.
+    The key never leaves that machine except into the stage's secrets.
+  - The certificate is valid for 15 years and trusted by Cloudflare alone, so
+    it's served for those hosts only. Every other host keeps its Let's Encrypt
+    certificate, on either proxy.
+  - Both halves are kept in the stage's secrets as `GKM_SERVER_ORIGIN_CERT`
+    and `GKM_SERVER_ORIGIN_KEY`, which gkm reserves for the server and never
+    hands to an app. Later deploys reuse them, and gkm asks Cloudflare again
+    only when the hosts change, the key no longer matches, or expiry is less
+    than 30 days away.
+  - It's issued with the deploy's own token, `CLOUDFLARE_API_TOKEN`, which
+    then also needs **Zone → SSL and Certificates → Edit**. The server holds
+    no Cloudflare token at all.
+
+  To use Let's Encrypt for those hosts instead, set
+  `cdn: { prod: { provider: 'cloudflare', certificate: 'dns' } }`. The shared
+  Traefik edge then gets each site's certificate over the DNS challenge,
+  through Cloudflare. That takes `CF_DNS_API_TOKEN` in the stage's secrets, a
+  token with `DNS:Edit` on the zone, which is written into the edge alone:
 
   ```bash
   gkm secrets:set CF_DNS_API_TOKEN '<token>' --stage prod
   ```
 
-  A stage with its own certificate (`deploy.compose.tls.<stage>`, such as a
-  Cloudflare origin certificate) needs neither. Without one, the stack's own
-  Caddy can't answer the DNS challenge, and the deploy stops with
-  `CdnCertificateUnavailable`. Use the shared edge or a certificate of the
-  stage's own.
+  The stack's own Caddy can't answer the DNS challenge, so `'dns'` on Caddy
+  stops with `CdnCertificateUnavailable`. A stage with its own certificate
+  (`deploy.compose.tls.<stage>`) needs neither, and serves that one.
 - **Checks the proxied hosts against Cloudflare itself.** They resolve to
   Cloudflare, not to the server, so they're confirmed by reading their records
   back from Cloudflare and never by the public lookup.

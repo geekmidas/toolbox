@@ -13,8 +13,9 @@ export const SERVER_IPV4_KEY = 'GKM_SERVER_IPV4';
 export const SERVER_IPV6_KEY = 'GKM_SERVER_IPV6';
 
 /**
- * Whether a stage secret is gkm's own — the server's address — and so never
- * written into an app's or a worker's environment.
+ * Whether a stage secret is gkm's own — the server's address, the origin
+ * certificate its CDN issued — and so never written into an app's or a
+ * worker's environment.
  */
 export function isReservedStageKey(key: string): boolean {
 	return key.startsWith('GKM_SERVER_');

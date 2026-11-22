@@ -282,6 +282,7 @@ export {
 	type CloudflareApiOptions,
 	type CloudflareCredential,
 	CloudflareCredentialsInvalid,
+	type CloudflareOriginCertificate,
 	CloudflarePermissionMissing,
 	CloudflareRateLimited,
 	type CloudflareRecord,

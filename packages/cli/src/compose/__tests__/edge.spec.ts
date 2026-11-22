@@ -15,7 +15,10 @@ import {
 	issueLocalCertificate,
 	localAuthorityPaths,
 } from '@geekmidas/edge/certificates/local';
-import { edgeCaddyfile } from '@geekmidas/edge/proxy/caddy';
+import {
+	CADDY_ORIGIN_CERTIFICATE,
+	edgeCaddyfile,
+} from '@geekmidas/edge/proxy/caddy';
 import {
 	ACME_DNS_CHALLENGES,
 	ACME_DNS_SECRET_KEYS,
@@ -27,6 +30,7 @@ import {
 	edgeClaims,
 	edgeCompose,
 	edgeDnsSecretPath,
+	edgeOriginCertificatePaths,
 	edgeProject,
 	readEdgeClaims,
 	TRAEFIK_IMAGE,
@@ -34,7 +38,12 @@ import {
 	traefikDynamicFile,
 	traefikStatic,
 } from '@geekmidas/edge/proxy/traefik';
-import { type EdgeRoute, EdgeRouteConflict } from '@geekmidas/edge/routes';
+import {
+	type EdgeRoute,
+	type EdgeRouteCertificate,
+	EdgeRouteConflict,
+	type EdgeTls,
+} from '@geekmidas/edge/routes';
 import type { ConstructManifest } from '@geekmidas/manifest';
 import {
 	afterAll,
@@ -767,45 +776,44 @@ describe('the edge', () => {
 
 		/** A site a CDN answers, beside an API it does not. */
 		const cdnRouters = (
-			tls:
-				| { kind: 'acme' }
-				| { kind: 'files'; certFile: string; keyFile: string },
+			certificate: EdgeRouteCertificate,
+			tls: EdgeTls = { kind: 'acme' },
 		) =>
-			(
-				traefikDynamic(
-					[
-						{
-							name: 'web',
-							host: 'example.com',
-							redirects: {
-								hosts: ['www.example.com'],
-								to: 'https://example.com',
-							},
-							upstreams: [{ service: 'web', port: 3000 }],
-							streaming: true,
-							dnsCertificate: 'cloudflare',
+			traefikDynamic(
+				[
+					{
+						name: 'web',
+						host: 'example.com',
+						redirects: {
+							hosts: ['www.example.com'],
+							to: 'https://example.com',
 						},
-						{
-							name: 'api',
-							host: 'api.example.com',
-							upstreams: [{ service: 'api', port: 3001 }],
-							streaming: true,
-						},
-					],
-					{ project: 'shop-prod', tls },
-				) as {
-					http: { routers: Record<string, { rule: string; tls: unknown }> };
-				}
-			).http.routers;
+						upstreams: [{ service: 'web', port: 3000 }],
+						streaming: true,
+						certificate,
+					},
+					{
+						name: 'api',
+						host: 'api.example.com',
+						upstreams: [{ service: 'api', port: 3001 }],
+						streaming: true,
+					},
+				],
+				{ project: 'shop-prod', tls },
+			) as {
+				http: { routers: Record<string, { rule: string; tls: unknown }> };
+				tls?: { certificates: { certFile: string; keyFile: string }[] };
+			};
+
+		const tlsOf = (routers: Record<string, { tls: unknown }>) =>
+			Object.fromEntries(
+				Object.entries(routers).map(([name, r]) => [name, r.tls]),
+			);
 
 		it('certifies a route a CDN answers over the DNS challenge, its redirects too', () => {
-			const routers = cdnRouters({ kind: 'acme' });
+			const { http } = cdnRouters({ kind: 'dns', provider: 'cloudflare' });
 
-			expect(
-				Object.fromEntries(
-					Object.entries(routers).map(([name, r]) => [name, r.tls]),
-				),
-			).toEqual({
+			expect(tlsOf(http.routers)).toEqual({
 				'shop-prod-web': { certResolver: 'letsencrypt-dns-cloudflare' },
 				'shop-prod-web-redirect-1': {
 					certResolver: 'letsencrypt-dns-cloudflare',
@@ -814,14 +822,70 @@ describe('the edge', () => {
 			});
 		});
 
-		it("leaves a route a CDN answers on the stage's own certificate", () => {
-			const routers = cdnRouters({
+		it("serves a route's own files from the store, and only for its hosts", () => {
+			const dynamic = cdnRouters({
 				kind: 'files',
-				certFile: '/c.pem',
-				keyFile: '/k.pem',
+				...edgeOriginCertificatePaths('shop-prod'),
 			});
 
-			expect(routers['shop-prod-web']!.tls).toEqual({});
+			expect(tlsOf(dynamic.http.routers)).toEqual({
+				'shop-prod-web': {},
+				'shop-prod-web-redirect-1': {},
+				// Every other host keeps Let's Encrypt.
+				'shop-prod-api': { certResolver: 'letsencrypt' },
+			});
+			expect(dynamic.tls?.certificates).toEqual([
+				{
+					certFile: '/etc/gkm-edge/certs/shop-prod-origin.crt',
+					keyFile: '/etc/gkm-edge/certs/shop-prod-origin.key',
+				},
+			]);
+		});
+
+		it("keeps the stage's own certificate beside a route's own files", () => {
+			const dynamic = cdnRouters(
+				{ kind: 'files', certFile: '/o.crt', keyFile: '/o.key' },
+				{ kind: 'files', certFile: '/c.pem', keyFile: '/k.pem' },
+			);
+
+			expect(dynamic.tls?.certificates).toEqual([
+				{ certFile: '/c.pem', keyFile: '/k.pem' },
+				{ certFile: '/o.crt', keyFile: '/o.key' },
+			]);
+		});
+
+		it("serves a route's own files on Caddy, its redirects too", () => {
+			const caddyfile = edgeCaddyfile(
+				[
+					{
+						name: 'web',
+						host: 'example.com',
+						redirects: {
+							hosts: ['www.example.com'],
+							to: 'https://example.com',
+						},
+						upstreams: [{ service: 'web', port: 3000 }],
+						streaming: true,
+						certificate: { kind: 'files', ...CADDY_ORIGIN_CERTIFICATE },
+					},
+					{
+						name: 'api',
+						host: 'api.example.com',
+						upstreams: [{ service: 'api', port: 3001 }],
+						streaming: true,
+					},
+				],
+				{ tls: { kind: 'acme' } },
+			);
+			const line =
+				'tls /etc/caddy/tls/origin-cert.pem /etc/caddy/tls/origin-key.pem';
+
+			// The site's block and its redirect's; never the API's.
+			expect(caddyfile.split(line)).toHaveLength(3);
+			const api = caddyfile.slice(
+				caddyfile.indexOf('https://api.example.com {'),
+			);
+			expect(api.slice(0, api.indexOf('\n}'))).not.toContain('tls ');
 		});
 
 		/** A wildcard site and the site at its domain, through `provider`. */
@@ -955,6 +1019,7 @@ describe('the edge', () => {
 				'shop-production',
 				'http: {}\n',
 				{ cert: 'CERT', key: 'KEY' },
+				{ cert: 'ORIGIN', key: 'ORIGIN-KEY' },
 			);
 
 			expect(files.at(-1)).toBe(routesPath('shop-production'));
@@ -974,8 +1039,14 @@ describe('the edge', () => {
 			expect(written).toEqual([
 				'/etc/gkm-edge/certs/shop-production.crt',
 				'/etc/gkm-edge/certs/shop-production.key',
+				'/etc/gkm-edge/certs/shop-production-origin.crt',
+				'/etc/gkm-edge/certs/shop-production-origin.key',
 				'/etc/gkm-edge/dynamic/shop-production.yml',
 			]);
+			expect(
+				statSync(join(volumes, 'certs', 'shop-production-origin.key')).mode &
+					0o777,
+			).toBe(0o600);
 			expect(
 				readFileSync(join(volumes, 'dynamic', 'shop-production.yml'), 'utf-8'),
 			).toBe('http: {}\n');

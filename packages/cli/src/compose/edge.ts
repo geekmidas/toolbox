@@ -19,14 +19,15 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import {
 	claimsOverlap,
-	EDGE_CERTS_DIR,
 	EDGE_DYNAMIC_DIR,
 	EDGE_NETWORK,
 	EDGE_PROJECT,
 	EDGE_SERVICE,
 	type EdgeClaim,
 	type EdgePorts,
+	edgeCertificatePaths,
 	edgeComposeFile,
+	edgeOriginCertificatePaths,
 	readEdgeClaims,
 	traefikStaticFile,
 } from '@geekmidas/edge/proxy/traefik';
@@ -397,10 +398,14 @@ export async function assertEdgeHostsFree(
 }
 
 function certificatePaths(project: string): [string, string] {
-	return [
-		`${EDGE_CERTS_DIR}/${project}.crt`,
-		`${EDGE_CERTS_DIR}/${project}.key`,
-	];
+	const { certFile, keyFile } = edgeCertificatePaths(project);
+	return [certFile, keyFile];
+}
+
+/** Where its CDN's origin certificate is, in the edge's container. */
+function originCertificatePaths(project: string): [string, string] {
+	const { certFile, keyFile } = edgeOriginCertificatePaths(project);
+	return [certFile, keyFile];
 }
 
 /**
@@ -417,16 +422,23 @@ export async function writeEdgeRoutes(
 	project: string,
 	routes: string,
 	certificate?: { cert: string; key: string },
+	/** The CDN's origin certificate, for the hosts it answers. */
+	origin?: { cert: string; key: string },
 ): Promise<string[]> {
 	await assertEdgeHostsFree(docker, edge, project, routes);
 	const written: string[] = [];
-	const [crt, key] = certificatePaths(project);
-	if (certificate) {
-		await put(docker, edge, crt, certificate.cert);
-		await put(docker, edge, key, certificate.key, '600');
-		written.push(crt, key);
-	} else {
-		await remove(docker, edge, [crt, key]);
+	for (const [paths, pem] of [
+		[certificatePaths(project), certificate],
+		[originCertificatePaths(project), origin],
+	] as const) {
+		const [crt, key] = paths;
+		if (pem) {
+			await put(docker, edge, crt, pem.cert);
+			await put(docker, edge, key, pem.key, '600');
+			written.push(crt, key);
+		} else {
+			await remove(docker, edge, [crt, key]);
+		}
 	}
 	await put(docker, edge, routesPath(project), routes);
 	written.push(routesPath(project));
@@ -451,6 +463,10 @@ export async function removeEdgeRoutes(
 	// Emptied by a rename before it is removed: a watcher that misses the
 	// removal has still seen the stack's routes go.
 	await put(docker, edge, file, UNREGISTERED);
-	await remove(docker, edge, [file, ...certificatePaths(project)]);
+	await remove(docker, edge, [
+		file,
+		...certificatePaths(project),
+		...originCertificatePaths(project),
+	]);
 	return true;
 }

@@ -141,15 +141,23 @@ export interface EdgeRoute {
 	 */
 	wildcard?: EdgeWildcard;
 	/**
-	 * Get its hosts' certificate over Let's Encrypt's DNS challenge, through
-	 * this DNS provider, instead of the HTTP challenge — for a route a CDN
-	 * answers, whose hosts resolve to the CDN and not to this edge, so
-	 * Let's Encrypt's HTTP request never reliably reaches it. Only where the
-	 * stack's certificates come from ACME; a stage's own certificate covers
-	 * it already. Rendered by Traefik; Caddy is never handed one.
+	 * Where its hosts' certificate comes from when it is not the stack's —
+	 * for a route a CDN answers, whose hosts resolve to the CDN and not to
+	 * this edge, so Let's Encrypt's HTTP request never reliably reaches it:
+	 *
+	 * - `files`: a certificate and key as the proxy reads them — one the CDN
+	 *   issued for its origin (Cloudflare's Origin CA), trusted by the CDN
+	 *   alone, so served for this route's hosts and nobody else's;
+	 * - `dns`: Let's Encrypt over the DNS challenge, through this DNS
+	 *   provider. Rendered by Traefik; Caddy is never handed one.
 	 */
-	dnsCertificate?: AcmeDnsProvider;
+	certificate?: EdgeRouteCertificate;
 }
+
+/** A route's own certificate — see {@link EdgeRoute.certificate}. */
+export type EdgeRouteCertificate =
+	| { kind: 'files'; certFile: string; keyFile: string }
+	| { kind: 'dns'; provider: AcmeDnsProvider };
 
 /**
  * Every host a route answers on — its own, its aliases and its redirects —

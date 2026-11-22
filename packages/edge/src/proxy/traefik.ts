@@ -222,6 +222,20 @@ export function edgeCertificatePaths(project: string): {
 	};
 }
 
+/**
+ * A stack's origin certificate — the one its CDN issued, served for the
+ * hosts the CDN answers — as the edge's container reads it.
+ */
+export function edgeOriginCertificatePaths(project: string): {
+	certFile: string;
+	keyFile: string;
+} {
+	return {
+		certFile: `${EDGE_CERTS_DIR}/${project}-origin.crt`,
+		keyFile: `${EDGE_CERTS_DIR}/${project}-origin.key`,
+	};
+}
+
 /** The edge's ports on the host. */
 export interface EdgePorts {
 	https: number;
@@ -383,6 +397,11 @@ export function traefikDynamic(
 	const routers: Record<string, unknown> = {};
 	const services: Record<string, unknown> = {};
 	const middlewares: Record<string, unknown> = {};
+	// The certificates the edge serves from its store, by file: the stack's
+	// own, and any a route brings.
+	const stored = new Map<string, string>(
+		tls.kind === 'files' ? [[tls.certFile, tls.keyFile]] : [],
+	);
 
 	// gkm's own header, which only a service of this stack may send — the
 	// auth server rate-limits by the client address it carries — removed from
@@ -458,17 +477,22 @@ export function traefikDynamic(
 			? ` && Header(\`${route.requireHeader.name}\`, \`${route.requireHeader.value}\`)`
 			: '';
 
+		// A route's own files join the edge's store, which Traefik picks a
+		// certificate from by the name the client asked for: its hosts'.
+		if (route.certificate?.kind === 'files') {
+			stored.set(route.certificate.certFile, route.certificate.keyFile);
+		}
 		const certificate = (): Record<string, unknown> =>
 			route.wildcard?.tls.kind === 'dns'
 				? {
 						certResolver: acmeDnsResolver(route.wildcard.tls.provider),
 						domains: [{ main: `*.${route.wildcard.domain}` }],
 					}
-				: tls.kind !== 'acme'
+				: route.certificate?.kind === 'files' || tls.kind !== 'acme'
 					? {}
-					: route.dnsCertificate
+					: route.certificate?.kind === 'dns'
 						? // Its hosts, from the router's rule, over the DNS challenge.
-							{ certResolver: acmeDnsResolver(route.dnsCertificate) }
+							{ certResolver: acmeDnsResolver(route.certificate.provider) }
 						: { certResolver: ACME_RESOLVER };
 
 		// Each handler: a router of its own on the same host, ahead of the
@@ -584,10 +608,13 @@ export function traefikDynamic(
 			services,
 			...(Object.keys(middlewares).length > 0 ? { middlewares } : {}),
 		},
-		...(tls.kind === 'files'
+		...(stored.size > 0
 			? {
 					tls: {
-						certificates: [{ certFile: tls.certFile, keyFile: tls.keyFile }],
+						certificates: [...stored].map(([certFile, keyFile]) => ({
+							certFile,
+							keyFile,
+						})),
 					},
 				}
 			: {}),

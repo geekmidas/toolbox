@@ -12,11 +12,17 @@
  *   and every host a site answers on — its own, its aliases, its redirects,
  *   a wildcard site's `*.<domain>` — is written proxied. Every other host
  *   (an API, the auth server, the telemetry UI) stays a plain record to the
- *   server. The server still holds a real certificate for each site host,
- *   so Cloudflare reaches it over HTTPS with the zone on Full (strict): the
- *   shared Traefik edge gets it over the DNS challenge through Cloudflare
- *   (`CF_DNS_API_TOKEN` in the stage's secrets), because a host Cloudflare
- *   answers does not reliably pass Let's Encrypt's HTTP challenge on to it.
+ *   server. The server still holds a certificate for each site host, so
+ *   Cloudflare reaches it over HTTPS with the zone on Full (strict). A host
+ *   Cloudflare answers does not reliably pass Let's Encrypt's HTTP challenge
+ *   on to the server, so that certificate is, by `certificate`:
+ *   - `'origin'` (the default): an origin certificate the deploy has
+ *     Cloudflare's Origin CA issue for exactly those hosts — 15 years, kept
+ *     in the stage's secrets, served for them alone by either proxy
+ *     (`originCertificate.ts`);
+ *   - `'dns'`: Let's Encrypt over the DNS challenge, which the shared Traefik
+ *     edge answers through Cloudflare (`CF_DNS_API_TOKEN` in the stage's
+ *     secrets).
  *   A stage with its own certificate (`deploy.compose.tls`) needs neither.
  *
  * Pure.
@@ -25,10 +31,16 @@
 import { findRootDomain, normalizeDnsConfig } from '../dns/index';
 import { GkmError } from '../errors';
 import type { NormalizedWorkspace } from '../workspace/types';
-import { type CdnProvider, checkStageCdn } from './cdnConfig';
+import {
+	type CdnCertificate,
+	type CdnProvider,
+	checkStageCdn,
+} from './cdnConfig';
 
 export {
+	CDN_CERTIFICATES,
 	CDN_PROVIDERS,
+	type CdnCertificate,
 	CdnConfigInvalid,
 	type CdnProvider,
 	checkStageCdn,
@@ -38,6 +50,8 @@ export {
 /** A stage's CDN, resolved against its domain. */
 export interface StageCdn {
 	provider: CdnProvider;
+	/** Where the server's certificate for its hosts comes from. */
+	certificate: CdnCertificate;
 	/** The stage's domain: `example.com`. */
 	domain: string;
 	/** The root domain in `dns` that holds it. */
@@ -76,20 +90,17 @@ export class CdnNeedsCloudflareDns extends GkmError {
 }
 
 /**
- * A CDN answers the site hosts, so their certificate has to come over the
- * DNS challenge — which only the shared Traefik edge answers — or be the
- * stage's own.
+ * `certificate: 'dns'` on the stack's own Caddy, which answers no DNS
+ * challenge.
  */
 export class CdnCertificateUnavailable extends GkmError {
 	constructor(readonly stage: string) {
 		super(
-			`'${stage}''s sites are behind a CDN, so Let's Encrypt's HTTP challenge ` +
-				"no longer reliably reaches the server, and the stack's own Caddy " +
-				'answers no other. Serve the stage from the shared Traefik edge ' +
-				`(deploy.compose.proxy: { ${stage}: 'traefik' }), which gets the ` +
-				'certificate over the DNS challenge, or give it a certificate of its ' +
-				`own (deploy.compose.tls.${stage} — a Cloudflare origin certificate ` +
-				'is one).',
+			`deploy.cdn.${stage} gets its certificates over the DNS challenge ` +
+				"(certificate: 'dns'), which the stack's own Caddy does not answer. " +
+				'Drop `certificate` for an origin certificate from the CDN, which ' +
+				'either proxy serves, or serve the stage from the shared Traefik ' +
+				`edge (deploy.compose.proxy: { ${stage}: 'traefik' }).`,
 		);
 		this.name = 'CdnCertificateUnavailable';
 	}
@@ -125,5 +136,10 @@ export function stageCdn(
 			typeof provider === 'string' ? provider : undefined,
 		);
 	}
-	return { provider: config.provider, domain, zone };
+	return {
+		provider: config.provider,
+		certificate: config.certificate ?? 'origin',
+		domain,
+		zone,
+	};
 }

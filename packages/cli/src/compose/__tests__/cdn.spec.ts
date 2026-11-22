@@ -1,4 +1,6 @@
 import { realpathSync } from 'node:fs';
+import { CADDY_ORIGIN_CERTIFICATE } from '@geekmidas/edge/proxy/caddy';
+import { edgeOriginCertificatePaths } from '@geekmidas/edge/proxy/traefik';
 import type { ConstructManifest } from '@geekmidas/manifest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
@@ -102,6 +104,10 @@ describe('checkStageCdn', () => {
 	it.each([
 		[false, false],
 		[{ provider: 'cloudflare' }, { provider: 'cloudflare' }],
+		[
+			{ provider: 'cloudflare', certificate: 'dns' },
+			{ provider: 'cloudflare', certificate: 'dns' },
+		],
 	])('takes %j', (value, expected) => {
 		expect(checkStageCdn('production', value)).toEqual(expected);
 	});
@@ -109,6 +115,7 @@ describe('checkStageCdn', () => {
 	it.each([
 		[{ provider: 'fastly' }],
 		[{ provider: 'cloudflare', cache: true }],
+		[{ provider: 'cloudflare', certificate: 'acme' }],
 		[true],
 		['cloudflare'],
 	])('refuses %j, by name', (value) => {
@@ -120,6 +127,7 @@ describe('stageCdn', () => {
 	it('is the provider and the zone holding the stage’s domain', () => {
 		expect(stageCdn(withCdn(), 'production')).toEqual({
 			provider: 'cloudflare',
+			certificate: 'origin',
 			domain: 'shop.example.com',
 			zone: 'example.com',
 		});
@@ -153,24 +161,33 @@ describe('stageCdn', () => {
 	});
 });
 
+/** The routers of a Traefik stack, by app, and the certificates it stores. */
+function traefikOf(s: ReturnType<typeof stack>) {
+	const parsed = parse(s.traefik!) as {
+		http: { routers: Record<string, { tls: unknown }> };
+		tls?: { certificates: { certFile: string; keyFile: string }[] };
+	};
+	const tlsOf = (kind: 'site' | 'other') =>
+		s.apps
+			.filter((a) => (a.kind === 'site') === (kind === 'site'))
+			.map((a) => parsed.http.routers[`${s.project}-${a.name}`]!.tls);
+	return { parsed, sites: tlsOf('site'), others: tlsOf('other') };
+}
+
 describe('a stage behind Cloudflare, on the shared Traefik edge', () => {
-	it("certifies every site host over Cloudflare's DNS challenge, and nothing else", () => {
+	it("serves every site host the CDN's origin certificate, and nothing else", () => {
 		const s = stack(withCdn());
-		const routers = parse(s.traefik!).http.routers as Record<
-			string,
-			{ tls: unknown }
-		>;
-		const sites = s.apps.filter((a) => a.kind === 'site');
-		const others = s.apps.filter((a) => a.kind !== 'site');
+		const { parsed, sites, others } = traefikOf(s);
 
 		expect(sites.length).toBeGreaterThan(0);
 		expect(others.length).toBeGreaterThan(0);
-		expect(sites.map((a) => routers[`${s.project}-${a.name}`]!.tls)).toEqual(
-			sites.map(() => ({ certResolver: 'letsencrypt-dns-cloudflare' })),
-		);
-		expect(others.map((a) => routers[`${s.project}-${a.name}`]!.tls)).toEqual(
-			others.map(() => ({ certResolver: 'letsencrypt' })),
-		);
+		// From the edge's store, picked by the name asked for.
+		expect(sites).toEqual(sites.map(() => ({})));
+		expect(parsed.tls?.certificates).toEqual([
+			edgeOriginCertificatePaths(s.project),
+		]);
+		// Every other host keeps Let's Encrypt.
+		expect(others).toEqual(others.map(() => ({ certResolver: 'letsencrypt' })));
 	});
 
 	it('names the hosts the CDN answers: every site host, and only those', () => {
@@ -181,37 +198,54 @@ describe('a stage behind Cloudflare, on the shared Traefik edge', () => {
 
 		expect(s.cdn).toEqual({
 			provider: 'cloudflare',
+			zone: 'example.com',
+			certificate: 'origin',
 			hosts: siteHosts,
-			dnsCertificates: true,
 		});
 		expect(s.cdn!.hosts).not.toContain('api.shop.example.com');
 	});
 
+	it("certifies the site hosts over Cloudflare's DNS challenge when told to", () => {
+		const s = stack(
+			withCdn({ cdn: { provider: 'cloudflare', certificate: 'dns' } }),
+		);
+		const { parsed, sites } = traefikOf(s);
+
+		expect(sites).toEqual(
+			sites.map(() => ({ certResolver: 'letsencrypt-dns-cloudflare' })),
+		);
+		expect(parsed.tls).toBeUndefined();
+		expect(s.cdn?.certificate).toBe('dns');
+	});
+
 	it("keeps the stage's own certificate where it has one", () => {
 		const s = stack(withCdn({ tls: true }));
-		const parsed = parse(s.traefik!);
 
-		expect(JSON.stringify(parsed.http.routers)).not.toContain(
-			'letsencrypt-dns-cloudflare',
-		);
-		expect(s.cdn?.dnsCertificates).toBe(false);
+		expect(s.traefik).not.toContain('origin');
+		expect(s.traefik).not.toContain('letsencrypt-dns-cloudflare');
+		expect(s.cdn?.certificate).toBe('stage');
 	});
 });
 
 describe("a stage behind Cloudflare, on the stack's own Caddy", () => {
-	it('is refused without a certificate of its own', () => {
-		expect(() => stack(withCdn({ proxy: 'caddy' }))).toThrow(
-			CdnCertificateUnavailable,
+	it('serves the origin certificate for the site hosts', () => {
+		const s = stack(withCdn({ proxy: 'caddy' }));
+
+		expect(s.caddyfile).toContain(
+			`tls ${CADDY_ORIGIN_CERTIFICATE.certFile} ${CADDY_ORIGIN_CERTIFICATE.keyFile}`,
 		);
+		expect(s.cdn?.certificate).toBe('origin');
 	});
 
-	it('serves with a certificate of its own', () => {
-		const s = stack(withCdn({ proxy: 'caddy', tls: true }));
-
-		expect(s.cdn).toMatchObject({
-			provider: 'cloudflare',
-			dnsCertificates: false,
-		});
+	it('is refused the DNS challenge, which it does not answer', () => {
+		expect(() =>
+			stack(
+				withCdn({
+					proxy: 'caddy',
+					cdn: { provider: 'cloudflare', certificate: 'dns' },
+				}),
+			),
+		).toThrow(CdnCertificateUnavailable);
 	});
 });
 

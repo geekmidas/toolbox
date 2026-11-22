@@ -38,6 +38,7 @@ import {
 	resolvesHere,
 	SERVER_IPV4,
 	serveFrom,
+	stageCustom,
 	writeComposeApp,
 } from '../../../compose/__tests__/__helpers__/composeApp';
 import {
@@ -45,9 +46,15 @@ import {
 	fakeDocker,
 	fakeServer,
 } from '../../../compose/__tests__/__helpers__/fakeDocker';
+import { originCa } from '../../../compose/__tests__/__helpers__/originCa';
 import { AcmeDnsSecretsMissing, edgeAcmeUser } from '../../../compose/acmeDns';
 import { DnsCredentialMissing } from '../../../compose/dns';
 import { composeCommand } from '../../../compose/index';
+import {
+	ORIGIN_CERT_KEY,
+	ORIGIN_KEY_KEY,
+	ORIGIN_VALIDITY_DAYS,
+} from '../../../compose/originCertificate';
 import { storedCredentials } from '../../../deploy/credentials';
 import { deploy } from '../../../deploy/deploy';
 import {
@@ -638,7 +645,9 @@ function recordingDns() {
 		},
 		async upsertRecords(_domain: string, records: UpsertDnsRecord[]) {
 			for (const r of records) {
-				writes.push(`put ${r.type} ${r.name} ${r.value} ${r.ttl}`);
+				writes.push(
+					`put ${r.type} ${r.name} ${r.value} ${r.ttl}${r.proxied ? ' proxied' : ''}`,
+				);
 				zone.push({
 					name: r.name,
 					type: r.type,
@@ -778,12 +787,70 @@ describe('a wildcard site', { timeout: RUN_TIMEOUT }, () => {
 	});
 
 	describe('behind Cloudflare’s CDN, on the shared edge', () => {
-		it('refuses a stage without the edge’s Cloudflare key before anything is started', async () => {
+		const behindCloudflare = (cdn: Record<string, unknown> = {}) =>
 			workspace({
 				dns: { 'example.com': { provider: 'cloudflare' } },
 				compose: { proxy: 'traefik' },
-				deployCdn: { production: { provider: 'cloudflare' } },
+				deployCdn: { production: { provider: 'cloudflare', ...cdn } },
 			});
+
+		/** What the edge was written, by path, in order. */
+		const edgeWrites = (calls: { op: string; args: unknown }[]) =>
+			calls
+				.filter((call) => call.op === 'exec')
+				.map((call) => (call.args as { command: string[] }).command)
+				.filter((command) => command[0] === 'sh')
+				.map((command) => command[4]!);
+
+		it('serves the site an origin certificate Cloudflare issued, kept in the stage', async () => {
+			behindCloudflare();
+			await serveFrom(dir);
+			const records = recordingDns();
+			const authority = originCa();
+			const options = {
+				lookup: resolvesHere,
+				env: { CLOUDFLARE_API_TOKEN: 'the-deploy-token' },
+				deps: {
+					dnsProviderFor: async () => records,
+					originIssuer: authority.issuer,
+				},
+			};
+
+			const { error, calls } = await run('production', options);
+
+			expect(error).toBeUndefined();
+			// Issued once, for the site's host alone.
+			expect(authority.asked).toEqual([
+				{
+					zone: 'example.com',
+					hostnames: ['shop.example.com'],
+					days: ORIGIN_VALIDITY_DAYS,
+				},
+			]);
+			expect(records.writes).toContain('put A shop 203.0.113.10 300 proxied');
+			expect(records.writes).toContain('put A api.shop 203.0.113.10 300');
+			// Kept in the stage, under the server's reserved keys.
+			const kept = await stageCustom(dir);
+			expect(kept[ORIGIN_CERT_KEY]).toContain('BEGIN CERTIFICATE');
+			expect(kept[ORIGIN_KEY_KEY]).toContain('PRIVATE KEY');
+			// Into the edge, before the routes that serve it.
+			const writes = edgeWrites(calls);
+			const origin = writes.findIndex((path) => path.endsWith('-origin.crt'));
+			expect(origin).toBeGreaterThanOrEqual(0);
+			expect(origin).toBeLessThan(
+				writes.findIndex((path) => path.includes('/dynamic/')),
+			);
+			// No key for the DNS challenge was asked for.
+			expect(writes.some((path) => path.includes('acme-dns-'))).toBe(false);
+
+			// The next deploy serves the one kept.
+			const again = await run('production', options);
+			expect(again.error).toBeUndefined();
+			expect(authority.asked).toHaveLength(1);
+		});
+
+		it('refuses a stage without the edge’s Cloudflare key before anything is started, on the DNS challenge', async () => {
+			behindCloudflare({ certificate: 'dns' });
 			await serveFrom(dir, 'production');
 
 			const { error, ops } = await run('production', {
