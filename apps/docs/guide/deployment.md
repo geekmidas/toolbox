@@ -417,6 +417,7 @@ same. Give it **only what your stages use**:
 |---|---|
 | Route 53 | a zone, record names, record types and actions, through IAM (below) |
 | GoDaddy | an action: create the token with only `domains.dns:update` ([GoDaddy](#godaddy)) |
+| Cloudflare | a zone and its permissions: `Zone:Read` and `DNS:Edit` on that zone alone ([Cloudflare](#cloudflare)) |
 | Hostinger | nothing. A token carries every permission of the user who created it |
 | Manual | nothing to scope: gkm writes no records |
 
@@ -513,6 +514,46 @@ The other failures are named too: `GoDaddyScopeMissing` (the token lacks
 `GoDaddyDomainNotFound` (the domain is not in the token's account), and
 `GoDaddyRateLimited` — GoDaddy allows about 60 requests a minute, and gkm
 waits out a 429's `retryAfterSec` a few times before giving up.
+
+### Cloudflare
+
+```typescript
+dns: {
+  'myapp.com': {
+    provider: 'cloudflare',
+    ttl: 300,                     // Optional — the default; at least 60
+  },
+},
+```
+
+gkm uses Cloudflare's v4 API: it finds the zone by its name
+(`GET /zones?name=`), then reads and writes the records of one name and type at
+a time (`GET /zones/{zone}/dns_records?type=&name.exact=`, then `POST`,
+`PATCH` or `DELETE` on that record). It never changes the zone's settings. A
+record that already has the right value is not written, and a name left
+holding several records of one type ends up with exactly one.
+
+**Credentials:** an API token, from the machine that runs the deploy. In CI
+that's the runner, never the server.
+
+1. At [dash.cloudflare.com/profile/api-tokens](https://dash.cloudflare.com/profile/api-tokens),
+   create a token with **`Zone:Read` and `DNS:Edit`**, and under *Zone
+   Resources* include only the zones your stages' hosts are under.
+2. Set `CLOUDFLARE_API_TOKEN`, or store it with `gkm login --provider cloudflare`.
+
+The domain's nameservers have to be Cloudflare's. The registration can stay
+where it is: at GoDaddy, say, you change only the nameservers.
+
+**Proxied records.** A record Cloudflare proxies (the orange cloud) keeps
+being proxied when gkm updates its value, and a record gkm creates is not
+proxied. A certificate's validation record is one of those, and Cloudflare
+must not answer it.
+
+The failures are named: `CloudflareCredentialsInvalid` (a token that's
+missing, expired or revoked), `CloudflarePermissionMissing` (the token may not
+edit this zone), `CloudflareZoneNotFound` (no zone of that name in the token's
+reach), and `CloudflareRateLimited`. gkm waits out a 429 a few times before
+giving up.
 
 ### Route53
 
@@ -1504,7 +1545,7 @@ gh variable set DOKPLOY_ENDPOINT --env prod --body https://dokploy.example.com
 | the stage's secrets in S3, SSM or Secrets Manager | SST; compose with an AWS `secrets.store` | `gkm secrets:set … --stage <stage>` |
 | secret `GKM_SECRETS_KEY` | Dokploy (`'file'` store) | `gh secret set` |
 | secret `DOKPLOY_API_TOKEN`, variable `DOKPLOY_ENDPOINT` | Dokploy | `gh` |
-| secret `GODADDY_API_TOKEN` or `HOSTINGER_API_TOKEN` | a stage whose domain's `dns` provider is GoDaddy or Hostinger | `gh secret set GODADDY_API_TOKEN --env <stage>` |
+| secret `GODADDY_API_TOKEN`, `HOSTINGER_API_TOKEN` or `CLOUDFLARE_API_TOKEN` | a stage whose domain's `dns` provider is GoDaddy, Hostinger or Cloudflare | `gh secret set GODADDY_API_TOKEN --env <stage>` |
 
 Tests in CI need none of these: `gkm test` with `GKM_AUTO_SETUP=1` generates
 throwaway secrets for the test stage.

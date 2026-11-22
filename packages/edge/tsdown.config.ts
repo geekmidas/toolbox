@@ -14,6 +14,7 @@ export default defineConfig({
 		'src/dns/route53.ts',
 		'src/dns/hostinger/index.ts',
 		'src/dns/godaddy/index.ts',
+		'src/dns/cloudflare/index.ts',
 	],
 	deps: {
 		neverBundle: ['@aws-sdk/client-route-53', '@aws-sdk/credential-providers'],

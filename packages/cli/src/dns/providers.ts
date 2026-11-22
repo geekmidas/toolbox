@@ -7,6 +7,7 @@
  */
 
 import { type DnsProvider, isDnsProvider } from '@geekmidas/edge/dns';
+import type { CloudflareCredential } from '@geekmidas/edge/dns/cloudflare';
 import type {
 	GoDaddyCredential,
 	GoDaddyProviderOptions,
@@ -56,6 +57,16 @@ export interface CreateDnsProviderOptions {
 	godaddy?: GoDaddyOptions;
 	/** The Hostinger token, when the caller already has it. */
 	hostinger?: HostingerCredential;
+	/**
+	 * The Cloudflare token, when the caller already has it; otherwise the one
+	 * in the environment or stored (`cloudflareFrom`), read the first time
+	 * the API is called.
+	 */
+	cloudflare?: CloudflareCredential;
+	/** Where an absent Cloudflare token is looked for. */
+	cloudflareFrom?: { env?: NodeJS.ProcessEnv; home?: string };
+	/** Cloudflare's API base URL, for tests. */
+	cloudflareBaseUrl?: string;
 }
 
 /**
@@ -64,6 +75,7 @@ export interface CreateDnsProviderOptions {
  * - 'hostinger': HostingerProvider
  * - 'route53': Route53Provider
  * - 'godaddy': GoDaddyProvider
+ * - 'cloudflare': CloudflareProvider
  * - 'manual': Returns null (user handles DNS)
  * - Custom: Use provided DnsProvider implementation
  */
@@ -123,22 +135,28 @@ export async function createDnsProvider(
 	}
 
 	if (provider === 'cloudflare') {
-		throw new DnsProviderNotImplemented('cloudflare');
+		const { CloudflareProvider } = await import(
+			'@geekmidas/edge/dns/cloudflare'
+		);
+		const from = options.cloudflareFrom ?? {};
+		return new CloudflareProvider({
+			...(options.cloudflareBaseUrl
+				? { baseUrl: options.cloudflareBaseUrl }
+				: {}),
+			credential: async () => {
+				const found =
+					options.cloudflare ??
+					(await storedCredentials({
+						env: from.env ?? process.env,
+						...(from.home ? { home: from.home } : {}),
+					}).get({ kind: 'cloudflare' }));
+				if (!found) throw new MissingCredential('cloudflare', undefined);
+				return found;
+			},
+		});
 	}
 
 	throw new DnsProviderUnknown(config);
-}
-
-/** A DNS provider gkm names and does not have yet. */
-export class DnsProviderNotImplemented extends Error {
-	constructor(readonly provider: string) {
-		super(
-			`The ${provider} DNS provider is not implemented yet. Use 'route53', ` +
-				"'godaddy', 'hostinger' or 'manual' for this domain in dns, or " +
-				'pass your own DnsProvider object.',
-		);
-		this.name = 'DnsProviderNotImplemented';
-	}
 }
 
 /** A `provider:` that is none of the built-ins, nor a DnsProvider object. */
@@ -146,7 +164,7 @@ export class DnsProviderUnknown extends GkmError {
 	constructor(readonly config: unknown) {
 		super(
 			`Unknown DNS provider: ${JSON.stringify(config)}. dns takes ` +
-				"'route53', 'godaddy', 'hostinger', 'manual', or an object implementing DnsProvider.",
+				"'route53', 'godaddy', 'hostinger', 'cloudflare', 'manual', or an object implementing DnsProvider.",
 		);
 		this.name = 'DnsProviderUnknown';
 	}

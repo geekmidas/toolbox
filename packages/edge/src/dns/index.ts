@@ -2,7 +2,8 @@
  * DNS Provider Interface
  *
  * Abstracts DNS operations for different providers.
- * Built-in providers: HostingerProvider, Route53Provider, GoDaddyProvider
+ * Built-in providers: HostingerProvider, Route53Provider, GoDaddyProvider,
+ * CloudflareProvider
  * Users can also supply custom implementations.
  *
  * Every value is the record's zone-file form, read and written alike: an MX
@@ -38,6 +39,11 @@ export interface DnsRecord {
 	 * `<priority> <host>` (`10 inbound-smtp.eu-west-1.amazonaws.com`).
 	 */
 	values: string[];
+	/**
+	 * Whether the provider's own proxy answers for the name rather than the
+	 * address in it — Cloudflare's CDN. Absent where the provider has none.
+	 */
+	proxied?: boolean;
 }
 
 /** A DNS record to create or update. */
@@ -52,6 +58,13 @@ export interface UpsertDnsRecord {
 	 * MX record's is `<priority> <host>` — see `mxValue`.
 	 */
 	value: string;
+	/**
+	 * Put the provider's own proxy in front of it — Cloudflare's CDN, which
+	 * answers the name and forwards to `value`. Only an A, AAAA or CNAME can
+	 * be. `false` takes it out; absent leaves an existing record as it is
+	 * and creates one unproxied. A provider without a proxy ignores it.
+	 */
+	proxied?: boolean;
 }
 
 /** Result of an upsert operation. */

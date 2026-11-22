@@ -8,10 +8,8 @@ import {
 	type UpsertResult,
 } from '@geekmidas/edge/dns';
 import { describe, expect, it } from 'vitest';
-import {
-	createDnsProvider,
-	DnsProviderNotImplemented,
-} from '../../dns/providers';
+import { MissingCredential } from '../../deploy/credentials';
+import { createDnsProvider } from '../../dns/providers';
 
 describe('isDnsProvider', () => {
 	it('should return true for valid provider', () => {
@@ -113,12 +111,24 @@ describe('createDnsProvider', () => {
 	});
 
 	describe('cloudflare provider', () => {
-		it('should throw for cloudflare provider (not yet implemented)', async () => {
+		it('creates the Cloudflare provider', async () => {
+			const provider = await createDnsProvider({
+				config: { provider: 'cloudflare' },
+				cloudflare: { token: 'cf-token' },
+			});
+
+			expect(provider?.name).toBe('cloudflare');
+		});
+
+		it('says how to supply a token when there is none', async () => {
+			const provider = await createDnsProvider({
+				config: { provider: 'cloudflare' },
+				cloudflareFrom: { env: {}, home: '/nonexistent-gkm-home' },
+			});
+
 			await expect(
-				createDnsProvider({
-					config: { provider: 'cloudflare' },
-				}),
-			).rejects.toBeInstanceOf(DnsProviderNotImplemented);
+				provider!.readRecords!('example.com', [{ name: '@', type: 'A' }]),
+			).rejects.toBeInstanceOf(MissingCredential);
 		});
 	});
 

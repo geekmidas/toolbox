@@ -69,6 +69,19 @@ export interface CredentialKinds {
 		request: Record<never, never>;
 		value: HostingerCredential;
 	};
+	/**
+	 * A Cloudflare API token, for a `dns` domain whose provider is
+	 * `cloudflare`. Read where the records are written.
+	 */
+	cloudflare: {
+		request: Record<never, never>;
+		value: CloudflareCredential;
+	};
+}
+
+/** A Cloudflare API token with Zone:Read and DNS:Edit on the zone. */
+export interface CloudflareCredential {
+	token: string;
 }
 
 /** A Hostinger API token, from hpanel.hostinger.com/profile/api. */
@@ -137,6 +150,8 @@ const HOW_TO_PROVIDE: Partial<Record<CredentialKind, string>> = {
 		'Set GODADDY_API_TOKEN to a Personal Access Token scoped to domains.dns:update (create one in the GoDaddy developer dashboard), or run `gkm login --provider godaddy`.',
 	hostinger:
 		'Set HOSTINGER_API_TOKEN to a token from hpanel.hostinger.com/profile/api, or run `gkm login --provider hostinger`.',
+	cloudflare:
+		'Set CLOUDFLARE_API_TOKEN to an API token with Zone:Read and DNS:Edit on the zone (dash.cloudflare.com/profile/api-tokens), or run `gkm login --provider cloudflare`.',
 	aws: "Set AWS_PROFILE to the stage account's profile, or AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY (and AWS_SESSION_TOKEN) — in CI, the keys aws-actions/configure-aws-credentials exports — or pass them through the deploy's CredentialProvider.",
 };
 
@@ -161,7 +176,9 @@ export class MissingCredential extends GkmError {
 							? `No GoDaddy API token${target ? ` for ${target}` : ''}.`
 							: kind === 'hostinger'
 								? `No Hostinger API token${target ? ` for ${target}` : ''}.`
-								: `No "${String(kind)}" credentials${target ? ` for ${target}` : ''}.`;
+								: kind === 'cloudflare'
+									? `No Cloudflare API token${target ? ` for ${target}` : ''}.`
+									: `No "${String(kind)}" credentials${target ? ` for ${target}` : ''}.`;
 		super(`${what} ${howToProvide}`);
 		this.name = 'MissingCredential';
 	}
@@ -256,6 +273,17 @@ export function storedCredentials(
 								options.home ? { home: options.home } : undefined,
 							)
 						).hostinger?.token;
+					if (!token) return undefined;
+					return { token } as never;
+				}
+				case 'cloudflare': {
+					const token =
+						env.CLOUDFLARE_API_TOKEN ||
+						(
+							await readCredentials(
+								options.home ? { home: options.home } : undefined,
+							)
+						).cloudflare?.token;
 					if (!token) return undefined;
 					return { token } as never;
 				}

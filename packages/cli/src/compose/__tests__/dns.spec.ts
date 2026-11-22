@@ -16,9 +16,11 @@ import type { WorkspaceDnsConfig } from '../../workspace/types';
 import {
 	applyStackDns,
 	checkStackDns,
+	DnsCredentialMissing,
 	DnsWildcardRefused,
 	diffDomainDns,
 	diffRecordedDns,
+	dnsCredentials,
 	HostNotPointingAtServer,
 	planStackDns,
 	pruneStackDns,
@@ -854,5 +856,34 @@ describe('an MX record against what is there', () => {
 		expect(provider.writes).toEqual([
 			'put MX @ 10 inbound-smtp.eu-west-1.amazonaws.com 300',
 		]);
+	});
+});
+
+describe('dnsCredentials', () => {
+	const none = { get: async () => undefined };
+
+	it.each([
+		['godaddy', 'GODADDY_API_TOKEN'],
+		['hostinger', 'HOSTINGER_API_TOKEN'],
+		['cloudflare', 'CLOUDFLARE_API_TOKEN'],
+	] as const)('asks for %s’s token by %s', async (provider, key) => {
+		const error = await dnsCredentials(
+			'production',
+			[{ domain: 'example.com', config: { provider } }],
+			none,
+		).catch((e: unknown) => e);
+
+		expect(error).toBeInstanceOf(DnsCredentialMissing);
+		expect(error).toMatchObject({ provider, key });
+	});
+
+	it('hands the Cloudflare token over under its own name', async () => {
+		const found = await dnsCredentials(
+			'production',
+			[{ domain: 'example.com', config: { provider: 'cloudflare' } }],
+			{ get: async () => ({ token: 'cf-token' }) as never },
+		);
+
+		expect(found).toEqual({ cloudflare: { token: 'cf-token' } });
 	});
 });

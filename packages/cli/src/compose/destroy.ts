@@ -402,6 +402,7 @@ async function plan(
 						log,
 					},
 					...(tokens.hostinger ? { hostinger: tokens.hostinger } : {}),
+					...(tokens.cloudflare ? { cloudflare: tokens.cloudflare } : {}),
 					...(deps.dnsProviderFor ? { providerFor: deps.dnsProviderFor } : {}),
 				});
 			},

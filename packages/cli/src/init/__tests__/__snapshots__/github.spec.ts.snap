@@ -313,6 +313,7 @@ jobs:
           SHA: \${{ steps.commit.outputs.sha }}
           GODADDY_API_TOKEN: \${{ secrets.GODADDY_API_TOKEN }}
           HOSTINGER_API_TOKEN: \${{ secrets.HOSTINGER_API_TOKEN }}
+          CLOUDFLARE_API_TOKEN: \${{ secrets.CLOUDFLARE_API_TOKEN }}
 "
 `;
 
@@ -436,6 +437,7 @@ jobs:
           DOKPLOY_ENDPOINT: \${{ vars.DOKPLOY_ENDPOINT }}
           GODADDY_API_TOKEN: \${{ secrets.GODADDY_API_TOKEN }}
           HOSTINGER_API_TOKEN: \${{ secrets.HOSTINGER_API_TOKEN }}
+          CLOUDFLARE_API_TOKEN: \${{ secrets.CLOUDFLARE_API_TOKEN }}
 "
 `;
 

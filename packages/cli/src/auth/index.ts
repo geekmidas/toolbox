@@ -3,8 +3,10 @@ import {
 	getCredentialsPath,
 	getDokployCredentials,
 	readCredentials,
+	removeCloudflareCredentials,
 	removeDokployCredentials,
 	removeGoDaddyCredentials,
+	storeCloudflareToken,
 	storeDokployCredentials,
 	storeGoDaddyToken,
 	storeHostingerToken,
@@ -14,7 +16,7 @@ const logger = console;
 
 export interface LoginOptions {
 	/** Which provider's credentials to store — the same word `gkm deploy` uses. */
-	provider: 'dokploy' | 'hostinger' | 'godaddy';
+	provider: 'dokploy' | 'hostinger' | 'godaddy' | 'cloudflare';
 	/** API token (if not provided, will prompt) */
 	token?: string;
 	/** Endpoint URL */
@@ -25,7 +27,7 @@ export interface LoginOptions {
 
 export interface LogoutOptions {
 	/** Whose credentials to remove — `all` clears every stored provider. */
-	provider?: 'dokploy' | 'godaddy' | 'all';
+	provider?: 'dokploy' | 'godaddy' | 'cloudflare' | 'all';
 }
 
 /**
@@ -120,6 +122,11 @@ export async function loginCommand(options: LoginOptions): Promise<void> {
 		return;
 	}
 
+	if (provider === 'cloudflare') {
+		await loginCloudflare(options);
+		return;
+	}
+
 	if (provider === 'hostinger') {
 		// The DNS provider has told people to run this since it was written, and
 		// this branch did not exist — so the only way to supply the token was the
@@ -159,6 +166,38 @@ export async function loginCommand(options: LoginOptions): Promise<void> {
 			'\nYou can now use it as a DNS provider without setting HOSTINGER_API_TOKEN.',
 		);
 	}
+}
+
+/**
+ * Store a Cloudflare API token. Not validated: a token scoped to one zone's
+ * DNS may not call the account's verify endpoint, so the first deploy that
+ * writes a record is where a bad token reports itself.
+ */
+async function loginCloudflare(options: LoginOptions): Promise<void> {
+	logger.log('\n🔐 Logging in to Cloudflare...\n');
+
+	let token = options.token;
+	if (!token) {
+		logger.log(
+			'\nCreate an API token at https://dash.cloudflare.com/profile/api-tokens' +
+				'\nwith Zone:Read and DNS:Edit on the zones gkm writes.\n',
+		);
+		token = await ask('API Token: ', { hidden: true, instead: LOGIN_INSTEAD });
+	}
+	if (!token) {
+		logger.error('Token is required');
+		process.exit(1);
+	}
+
+	const where = options.home ? { home: options.home } : undefined;
+	await storeCloudflareToken(token, where);
+
+	logger.log('\n✓ Cloudflare token stored.');
+	logger.log(`  Token: ${maskToken(token)}`);
+	logger.log(`  Credentials stored in: ${getCredentialsPath(where)}`);
+	logger.log(
+		'\nYou can now use it as a DNS provider without setting CLOUDFLARE_API_TOKEN.',
+	);
 }
 
 /**
@@ -211,12 +250,23 @@ export async function logoutCommand(options: LogoutOptions): Promise<void> {
 	if (provider === 'all') {
 		const dokployRemoved = await removeDokployCredentials();
 		const godaddyRemoved = await removeGoDaddyCredentials();
+		const cloudflareRemoved = await removeCloudflareCredentials();
 
-		if (dokployRemoved || godaddyRemoved) {
+		if (dokployRemoved || godaddyRemoved || cloudflareRemoved) {
 			logger.log('\n✓ Logged out from all services');
 		} else {
 			logger.log('\nNo stored credentials found');
 		}
+		return;
+	}
+
+	if (provider === 'cloudflare') {
+		const removed = await removeCloudflareCredentials();
+		logger.log(
+			removed
+				? '\n✓ Logged out from Cloudflare'
+				: '\nNo Cloudflare credentials found',
+		);
 		return;
 	}
 
@@ -257,11 +307,18 @@ export async function whoamiCommand(): Promise<void> {
 		logger.log('  Dokploy: Not logged in');
 	}
 
-	const godaddy = (await readCredentials()).godaddy;
+	const stored = await readCredentials();
+	const godaddy = stored.godaddy;
 	logger.log(
 		godaddy
 			? `  GoDaddy:\n    Token: ${maskToken(godaddy.token)}`
 			: '  GoDaddy: Not logged in',
+	);
+	const cloudflare = stored.cloudflare;
+	logger.log(
+		cloudflare
+			? `  Cloudflare:\n    Token: ${maskToken(cloudflare.token)}`
+			: '  Cloudflare: Not logged in',
 	);
 
 	logger.log(`\n  Credentials file: ${getCredentialsPath()}`);

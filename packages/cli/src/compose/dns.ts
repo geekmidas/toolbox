@@ -40,6 +40,7 @@ import {
 	DnsRecordsUnreadable,
 } from '@geekmidas/edge/dns';
 import type {
+	CloudflareCredential,
 	CredentialProvider,
 	GoDaddyCredential,
 	HostingerCredential,
@@ -371,6 +372,8 @@ export interface ApplyStackDnsOptions {
 	credentials?: GoDaddyOptions;
 	/** The Hostinger token, when the caller already has it. */
 	hostinger?: HostingerCredential;
+	/** The Cloudflare token, when the caller already has it. */
+	cloudflare?: CloudflareCredential;
 	/** The provider for a domain — `createDnsProvider` by default. */
 	providerFor?: (config: DnsProviderConfig) => Promise<DnsProvider | null>;
 	/**
@@ -487,7 +490,7 @@ async function readRecords(
 function providerResolver(
 	options: Pick<
 		ApplyStackDnsOptions,
-		'providerFor' | 'credentials' | 'hostinger'
+		'providerFor' | 'credentials' | 'hostinger' | 'cloudflare'
 	>,
 ): (config: DnsProviderConfig) => Promise<DnsProvider | null> {
 	return (
@@ -497,6 +500,7 @@ function providerResolver(
 				config: config as SchemaDnsConfig,
 				...(options.credentials ? { godaddy: options.credentials } : {}),
 				...(options.hostinger ? { hostinger: options.hostinger } : {}),
+				...(options.cloudflare ? { cloudflare: options.cloudflare } : {}),
 			}))
 	);
 }
@@ -860,7 +864,12 @@ export interface PrunedDnsRecord {
 export interface PruneStackDnsOptions
 	extends Pick<
 		ApplyStackDnsOptions,
-		'dryRun' | 'log' | 'credentials' | 'hostinger' | 'providerFor'
+		| 'dryRun'
+		| 'log'
+		| 'credentials'
+		| 'hostinger'
+		| 'cloudflare'
+		| 'providerFor'
 	> {
 	stage: string;
 	dns: WorkspaceDnsConfig | undefined;
@@ -1142,15 +1151,23 @@ function dnsFix(input: CheckStackDnsInput, bad: readonly MisdirectedHost[]) {
 export const DNS_TOKEN_KEYS = {
 	godaddy: 'GODADDY_API_TOKEN',
 	hostinger: 'HOSTINGER_API_TOKEN',
+	cloudflare: 'CLOUDFLARE_API_TOKEN',
 } as const;
 
 /** A provider whose credential is a token gkm reads. */
 export type TokenDnsProvider = keyof typeof DNS_TOKEN_KEYS;
 
+function isTokenDnsProvider(provider: unknown): provider is TokenDnsProvider {
+	return (
+		typeof provider === 'string' && Object.hasOwn(DNS_TOKEN_KEYS, provider)
+	);
+}
+
 /** The tokens a stage's records are written with. */
 export interface DnsCredentials {
 	godaddy?: GoDaddyCredential;
 	hostinger?: HostingerCredential;
+	cloudflare?: CloudflareCredential;
 }
 
 /**
@@ -1213,7 +1230,7 @@ export async function dnsCredentials(
 	const found: DnsCredentials = {};
 	for (const { domain, config } of domains) {
 		const provider = config.provider;
-		if (provider !== 'godaddy' && provider !== 'hostinger') continue;
+		if (!isTokenDnsProvider(provider)) continue;
 		if (found[provider]) continue;
 		const token = await credentials.get({ kind: provider });
 		if (!token?.token) {
@@ -1318,6 +1335,7 @@ export async function stageDns(input: StageDnsInput): Promise<StageDnsResult> {
 			log,
 		},
 		...(tokens.hostinger ? { hostinger: tokens.hostinger } : {}),
+		...(tokens.cloudflare ? { cloudflare: tokens.cloudflare } : {}),
 		...(input.providerFor ? { providerFor: input.providerFor } : {}),
 	};
 	// No `dns` at all: nothing to write, and every host is the person's to

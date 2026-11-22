@@ -23,6 +23,12 @@ export interface StoredCredentials {
 		/** When the credentials were stored */
 		storedAt: string;
 	};
+	cloudflare?: {
+		/** An API token with Zone:Read and DNS:Edit on the zone */
+		token: string;
+		/** When the credentials were stored */
+		storedAt: string;
+	};
 	godaddy?: {
 		/** A Personal Access Token, scoped to domains.dns:update */
 		token: string;
@@ -346,6 +352,31 @@ export async function removeGoDaddyCredentials(
 	}
 
 	delete credentials.godaddy;
+	await writeCredentials(credentials, options);
+	return true;
+}
+
+// ============================================
+// Cloudflare credentials
+// ============================================
+
+/** Store a Cloudflare API token. */
+export async function storeCloudflareToken(
+	token: string,
+	options?: CredentialOptions,
+): Promise<void> {
+	const credentials = await readCredentials(options);
+	credentials.cloudflare = { token, storedAt: new Date().toISOString() };
+	await writeCredentials(credentials, options);
+}
+
+/** Remove Cloudflare credentials. */
+export async function removeCloudflareCredentials(
+	options?: CredentialOptions,
+): Promise<boolean> {
+	const credentials = await readCredentials(options);
+	if (!credentials.cloudflare) return false;
+	delete credentials.cloudflare;
 	await writeCredentials(credentials, options);
 	return true;
 }

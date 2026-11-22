@@ -552,6 +552,7 @@ ${registryLogin()}
           SHA: \${{ steps.commit.outputs.sha }}
           GODADDY_API_TOKEN: \${{ secrets.GODADDY_API_TOKEN }}
           HOSTINGER_API_TOKEN: \${{ secrets.HOSTINGER_API_TOKEN }}
+          CLOUDFLARE_API_TOKEN: \${{ secrets.CLOUDFLARE_API_TOKEN }}
 `;
 }
 
@@ -611,7 +612,8 @@ function targetDeploy(options: TemplateOptions): string {
           DOKPLOY_API_TOKEN: \${{ secrets.DOKPLOY_API_TOKEN }}
           DOKPLOY_ENDPOINT: \${{ vars.DOKPLOY_ENDPOINT }}
           GODADDY_API_TOKEN: \${{ secrets.GODADDY_API_TOKEN }}
-          HOSTINGER_API_TOKEN: \${{ secrets.HOSTINGER_API_TOKEN }}`;
+          HOSTINGER_API_TOKEN: \${{ secrets.HOSTINGER_API_TOKEN }}
+          CLOUDFLARE_API_TOKEN: \${{ secrets.CLOUDFLARE_API_TOKEN }}`;
 
 	return `${deployHeader(false)}
 jobs:

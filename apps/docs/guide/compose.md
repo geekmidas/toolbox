@@ -1005,7 +1005,7 @@ like the others, and resolved, where no provider confirms it, through
 
 The DNS provider's credentials are read by the machine that runs the deploy —
 see [DNS Providers](./deployment.md#dns-providers) for GoDaddy's token and its
-API access restriction. With a token provider (GoDaddy, Hostinger) configured
+API access restriction. With a token provider (GoDaddy, Hostinger, Cloudflare) configured
 and no token, the deploy fails at its start — before anything is created,
 built or started — with `DnsCredentialMissing`, naming the key.
 
