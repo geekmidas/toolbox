@@ -1248,6 +1248,11 @@ long as the nameservers are Cloudflare's. Each deploy then:
 - **Checks the proxied hosts against Cloudflare itself.** They resolve to
   Cloudflare, not to the server, so they're confirmed by reading their records
   back from Cloudflare and never by the public lookup.
+- **Leaves mail on the same name alone.** An `Email`'s DKIM keys and an
+  `Inbox`'s MX records sit on the stage's domain, the same name a site answers
+  on. They're written DNS-only beside the proxied site record, and a DKIM key
+  someone proxied by hand is taken back out. Mail goes to and from SES, never
+  through the CDN.
 
 Cloudflare caches what it caches by default: static files by extension
 (scripts, stylesheets, images, fonts), honouring the server's
