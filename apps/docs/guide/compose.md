@@ -10,6 +10,7 @@ registered with one shared [Traefik](https://traefik.io) edge (see
 gkm compose --stage development         # the local stage, built from this checkout
 gkm compose --stage production --tag v1.4.0   # the images CI pushed as v1.4.0
 gkm compose --stage production --build --push --tag v1.4.0  # CI: build and push, start nothing
+gkm compose --stage staging --build --check --push --tag v1.4.0  # CI: start each image first, push if all start
 gkm compose --stage production --down    # stop it (volumes are kept)
 gkm compose --stage production --destroy # delete everything it made — asks first
 gkm compose --stage preview --allow-dev-services  # a demo, on dev services
@@ -398,6 +399,50 @@ digest the registry will not give, while its tag answers, is
 `PinnedImageMoved`: the tag names another image now, which is not a login
 problem.
 
+### Check that each image starts before it is pushed
+
+A bundle that builds, typechecks and passes every test can still fail to
+start. A package that finds its own files at runtime, such as
+`createRequire(import.meta.url).resolve('pdfjs-dist/package.json')`, is inlined
+into `server.mjs` and so is missing from the image's `node_modules`. Tests run
+from source, where `node_modules` exists, so they pass, and the server is the
+first place the failure shows up.
+
+`--check` starts every image the build produced, on the machine that built
+it, before anything is pushed:
+
+```bash
+gkm compose --stage staging --build --check                    # on a pull request
+gkm compose --stage staging --build --check --push --tag $SHA  # in the build job
+```
+
+- The images are started with the stage's real secrets, read through its store
+  as the build reads them. gkm never substitutes fakes, because an image that
+  starts against a fake proves nothing about the real configuration.
+- The backing services the stack declares (Postgres, Redis, …) are started
+  beside the images, and the stage's migrations are applied. Seeds are not
+  run.
+- Each app, worker and processor must pass its own container health check.
+  One that does not fails the run with `StartupCheckFailed`. The error names
+  the container and shows its last 50 log lines, and nothing is pushed.
+- With `--push`, the images are pushed only once every one has passed, so the
+  digests checked are the digests deployed.
+- The check runs as its own compose project, `<project>-<stage>-check`, never
+  the stage's own, and is removed with its volumes whether it passes or fails.
+  Like a push, it takes no stage lock and records nothing.
+
+The stage must be a deployed one (`StartupCheckNeedsDeployedStage`) that is
+not protected (`StartupCheckStageProtected`), because a check runs on every
+pull request and a protected stage's secrets are never handed to one. `--check`
+without `--build` is `StartupCheckNeedsBuild`.
+
+A check on a runner cannot see the server's network, its real database, DNS
+or the edge. It proves that each image starts, not that the server can run it.
+
+The [`startup-check` action](https://github.com/geekmidas/toolbox/tree/main/actions/startup-check)
+runs it from a workflow, for example on every pull request in the
+unprotected stage's GitHub environment.
+
 ### A GitHub Actions workflow
 
 `gkm init --deploy compose` writes `.github/workflows/deploy.yml`, which names
@@ -409,7 +454,7 @@ protected ones; a manual run deploys the stage and `ref` you name. Abridged:
 ```yaml
 # .github/workflows/deploy.yml (generated)
 jobs:
-  stages:   # build, deploy, has-build, has-deploy, aws-region
+  stages:   # build, deploy, has-build, has-deploy, protected, aws-region
     steps:
       - uses: actions/checkout@v4
       # … node, the package manager, install
@@ -433,10 +478,15 @@ jobs:
         with:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           aws-region: ${{ needs.stages.outputs.aws-region }}
-      - run: pnpm exec gkm compose --stage "$STAGE" --build --push --tag "$SHA" --digests-file digests.json
+      # --check for a stage that is not protected: each image starts first
+      - run: |
+          check=()
+          if [ "$PROTECTED" = false ]; then check=(--check); fi
+          pnpm exec gkm compose --stage "$STAGE" --build "${check[@]}" --push --tag "$SHA" --digests-file digests.json
         env:
           STAGE: ${{ matrix.stage }}
           SHA: ${{ github.sha }}
+          PROTECTED: ${{ contains(fromJSON(needs.stages.outputs.protected), matrix.stage) }}
       - uses: actions/upload-artifact@v4
         with:
           name: digests-${{ matrix.stage }}

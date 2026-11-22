@@ -133,6 +133,12 @@ export interface ComposeDocker {
 	 */
 	health(stack: StackRef, service: string): Promise<string | undefined>;
 	/**
+	 * A service's last `lines` lines of output, stopped containers included —
+	 * what a container that never turned healthy said before it gave up.
+	 * Empty when it said nothing, or never ran.
+	 */
+	logs(stack: StackRef, service: string, lines: number): Promise<string>;
+	/**
 	 * Push an image built here to its registry, and return the digest the
 	 * registry stored it under (`sha256:…`).
 	 */
@@ -500,6 +506,23 @@ export const dockerCompose: ComposeDocker = {
 		);
 		if (code !== 0) return undefined;
 		return stdout.trim().split('\n')[0] || undefined;
+	},
+
+	async logs(stack, service, lines) {
+		const env = engineEnv(stack);
+		const { stdout, stderr } = await capture(
+			'docker',
+			compose(stack, [
+				'logs',
+				'--no-color',
+				'--no-log-prefix',
+				'--tail',
+				String(lines),
+				service,
+			]),
+			env ? { env } : {},
+		);
+		return `${stdout}${stderr}`.trimEnd();
 	},
 
 	async push(stack, ref) {

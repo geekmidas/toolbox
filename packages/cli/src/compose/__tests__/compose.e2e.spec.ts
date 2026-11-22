@@ -1405,6 +1405,149 @@ const openssl = (args: readonly string[], cwd: string) =>
  * The CLI trusts the CA through NODE_EXTRA_CA_CERTS, as a server would trust
  * an internal CA.
  */
+describe.runIf(RUN)(
+	"gkm compose --build --check, with a deployed stage's secrets",
+	{ timeout: 60_000 },
+	() => {
+		const name = `compose-check-${randomBytes(3).toString('hex')}`;
+		const project = `${name}-production-check`;
+		let dir: string;
+		let home: string;
+		let passed = '';
+		let failed = '';
+
+		const gkm = (args: readonly string[]) =>
+			exec(process.execPath, [CLI, ...args], {
+				cwd: dir,
+				env: childEnv({ GKM_HOME: home }),
+			});
+		const check = () =>
+			gkm([
+				'compose',
+				'--stage',
+				'production',
+				'--build',
+				'--check',
+				// The fixture's mail and uploads, which the stage leaves unset.
+				'--allow-dev-services',
+			]);
+		const git = childEnv({
+			GIT_AUTHOR_NAME: 'gkm',
+			GIT_AUTHOR_EMAIL: 'gkm@example.com',
+			GIT_COMMITTER_NAME: 'gkm',
+			GIT_COMMITTER_EMAIL: 'gkm@example.com',
+		});
+		const commit = async (message: string) => {
+			await exec('git', ['add', '-A'], { cwd: dir, env: git });
+			await exec('git', ['commit', '-q', '-m', message], {
+				cwd: dir,
+				env: git,
+			});
+		};
+		/** Every container the check's project left, running or not. */
+		const leftover = () =>
+			exec('docker', [
+				'ps',
+				'-a',
+				'--quiet',
+				'--filter',
+				`label=com.docker.compose.project=${project}`,
+			]).then((out) => out.trim());
+
+		beforeAll(async () => {
+			if (!existsSync(DIST)) {
+				throw new Error(
+					`The CLI is not built (${DIST}). Run \`npx tsdown --config ./tsdown.config.ts\` from the repo root first.`,
+				);
+			}
+			dir = realpathSync(await createTempDir('gkm-compose-check-'));
+			home = realpathSync(await createTempDir('gkm-compose-check-home-'));
+			writeComposeApp(dir, { name });
+			await dependOnThisCheckout(dir, name);
+			// The deployed stage's own secrets: what the check starts them with.
+			await new FileSecretsStore(
+				dir,
+				keystoreProject(await loadWorkspaceSettings(dir), home),
+			).write('production', {
+				...initStageSecrets('production'),
+				custom: { GKM_SERVER_IPV4: '203.0.113.10' },
+			});
+			await exec('pnpm', ['install', '--lockfile-only'], { cwd: dir });
+			writeFileSync(join(dir, '.gitignore'), '.gkm/\n');
+			await exec('git', ['init', '-q'], { cwd: dir, env: git });
+			await commit('init');
+
+			passed = await check();
+
+			// What took a stage down: a package that finds its own files at
+			// runtime, as pdfjs-dist finds its fonts. Bundled into server.mjs,
+			// it is not in the image's node_modules, and the lookup fails as
+			// the module loads. From source, where node_modules is, it works.
+			writeFileSync(
+				join(dir, 'apps', 'api', 'endpoints', 'own.ts'),
+				`import { createRequire } from 'node:module';
+import { dirname } from 'node:path';
+import { z } from 'zod';
+import { api } from '../../../constructs/api.js';
+
+const zod = dirname(createRequire(import.meta.url).resolve('zod/package.json'));
+
+export const own = api
+  .get('/own')
+  .output(z.object({ dir: z.string() }))
+  .handle(async () => ({ dir: zod }));
+`,
+			);
+			await commit('resolve a bundled package at runtime');
+			failed = await check().then(
+				(output) => `UNEXPECTEDLY PASSED:\n${output}`,
+				(error: Error) => error.message,
+			);
+		}, BUILD_TIMEOUT);
+
+		afterAll(async () => {
+			if (process.env.GKM_E2E_KEEP === '1') {
+				console.log(`Kept ${project} in ${dir}`);
+				return;
+			}
+			const ids = (await leftover().catch(() => ''))
+				.split('\n')
+				.filter(Boolean);
+			if (ids.length > 0) {
+				await exec('docker', ['rm', '-f', '-v', ...ids]).catch(() => {});
+			}
+			const images = await exec('docker', [
+				'images',
+				'--quiet',
+				'--filter',
+				`reference=${name}/*`,
+			]).catch(() => '');
+			const built = [...new Set(images.split('\n').filter(Boolean))];
+			if (built.length > 0) {
+				await exec('docker', ['image', 'rm', '-f', ...built]).catch(() => {});
+			}
+			if (dir) await cleanupDir(dir);
+			if (home) await cleanupDir(home);
+		}, 5 * 60_000);
+
+		it('passes an app that starts, and leaves nothing running', async () => {
+			expect(passed).toContain('passed its health check');
+			expect(passed).not.toContain('Pushing images');
+		});
+
+		it('fails an app that resolves a bundled package at runtime, with its logs, and pushes nothing', () => {
+			expect(failed).toContain('did not start');
+			expect(failed).toMatch(/- api: Docker reports it/);
+			expect(failed).toContain("Cannot find module 'zod/package.json'");
+			expect(failed).not.toContain('Pushing images');
+		});
+
+		it("removes the check's stack, volumes and all, either way", async () => {
+			expect(await leftover()).toBe('');
+		});
+	},
+);
+
 async function testCertificate(
 	dir: string,
 	domains: readonly string[],

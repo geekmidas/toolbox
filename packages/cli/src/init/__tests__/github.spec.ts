@@ -269,13 +269,22 @@ describe('generateGithubFiles', () => {
 				'id-token': 'write',
 			});
 
-			const build = steps.find((s) => s.name === 'Build and push')!;
+			// A stage that is not protected is started with its secrets before
+			// anything is pushed; a protected one is built and pushed alone.
+			const build = steps.find((s) => s.name === 'Build, check and push')!;
 			expect(build.run).toBe(
-				'pnpm exec gkm compose --stage "$STAGE" --build --push --tag "$SHA" --digests-file digests.json',
+				[
+					'check=()',
+					'if [ "$PROTECTED" = false ]; then check=(--check); fi',
+					'pnpm exec gkm compose --stage "$STAGE" --build "${check[@]}" --push --tag "$SHA" --digests-file digests.json',
+					'',
+				].join('\n'),
 			);
 			expect(build.env).toEqual({
 				STAGE: '${{ matrix.stage }}',
 				SHA: '${{ github.sha }}',
+				PROTECTED:
+					'${{ contains(fromJSON(needs.stages.outputs.protected), matrix.stage) }}',
 			});
 
 			const upload = steps.find((s) =>

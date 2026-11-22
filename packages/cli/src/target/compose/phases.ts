@@ -217,6 +217,12 @@ import {
 	isHealthy,
 } from './health';
 import {
+	assertCheckable,
+	CHECK_LOG_LINES,
+	checkProject,
+	StartupCheckFailed,
+} from './startupCheck';
+import {
 	ensureTopicSubscriptions,
 	recordedTopicSubscriptions,
 	type TopicPush,
@@ -301,6 +307,13 @@ export interface ComposeRun {
 	 * provisioning, no container started, nothing recorded.
 	 */
 	push: boolean;
+	/**
+	 * Start every image built here before anything is pushed (`--check`):
+	 * on this machine, with the stage's own secrets and the stack's backing
+	 * services, each answering its own health check — or the run fails,
+	 * naming it, with its last log lines. Torn down either way.
+	 */
+	check: boolean;
 	stack: ComposeStack;
 	/**
 	 * The deployed stage's server, whose Docker engine — over SSH — runs the
@@ -348,6 +361,8 @@ export interface ComposeRunOptions {
 	mode?: 'build' | 'pull';
 	/** Push what was built, and start nothing (`--build --push`). */
 	push?: boolean;
+	/** Start what was built here first, and fail unless it is healthy. */
+	check?: boolean;
 	/** Run each pulled image at the digest a push reported for it. */
 	pin?: { file: string; digests: ImageDigests };
 }
@@ -489,7 +504,9 @@ export async function validateCompose(
 	const root = workspace.root;
 	const mode = options.mode ?? (ctx.tagGiven ? 'pull' : 'build');
 	const push = options.push === true;
+	const check = options.check === true;
 	if (push && mode !== 'build') throw new ComposePushNeedsBuild();
+	if (check) assertCheckable(workspace, stage, mode);
 	if (options.pin && mode !== 'pull') throw new ComposePinNeedsPull();
 
 	// An image pushed or pulled with no registry is a Docker Hub name, which
@@ -521,7 +538,8 @@ export async function validateCompose(
 
 	// What each app ran before this release, and the SNS subscriptions the
 	// stage's providers made: a push changes no stage, so it reads neither.
-	const recorded = push ? undefined : await ctx.state.read(stage);
+	// A check changes no stage either.
+	const recorded = push || check ? undefined : await ctx.state.read(stage);
 
 	// Where and with what the images are built — only asked when they are.
 	const layout = mode === 'build' ? imageLayout(workspace) : undefined;
@@ -547,7 +565,8 @@ export async function validateCompose(
 		allowDevServices: ctx.allowDevServices,
 		ports: edgePorts(deps.env),
 		...(layout ? { layout } : {}),
-		...(push ? { buildOnly: true } : {}),
+		// A checked image is started, so it reads the stage's env files.
+		...(push && !check ? { buildOnly: true } : {}),
 		// A site pre-rendered against the stage fetches its data afresh on
 		// every run: this one's moment is part of its build's cache key.
 		...(mode === 'build' ? { prerenderRun: new Date().toISOString() } : {}),
@@ -557,9 +576,10 @@ export async function validateCompose(
 	// A topic the stage set to SNS by hand is subscribed by this deploy, in
 	// `provision` — so until then the stack is composed to learn where SNS
 	// pushes, and composed again with the ARNs once they are recorded.
-	const planned = push
-		? undefined
-		: composeStack({ ...input, recordingSubscriptions: true });
+	const planned =
+		push || check
+			? undefined
+			: composeStack({ ...input, recordingSubscriptions: true });
 	const pushes = planned ? topicPushes(planned, manifest) : [];
 	const topics =
 		planned &&
@@ -612,7 +632,7 @@ export async function validateCompose(
 	// SSH — never this machine's. A push builds here and runs nothing.
 	// A domain's stage names its address before anything else is said of
 	// its server: it is the host SSH reaches too, unless config names one.
-	if (!push && !stack.local) {
+	if (!push && !check && !stack.local) {
 		requiredServerAddress(stage, workspace.domains?.[stage], secrets?.custom);
 		// The edge's key for the wildcard's DNS challenge, where the stage
 		// supplies it: refused now, not once the stack is half up.
@@ -621,14 +641,15 @@ export async function validateCompose(
 			if (zone) acmeDnsSecrets(zone, stage, secrets?.custom);
 		}
 	}
-	const server = push
-		? undefined
-		: composeServer({
-				stage,
-				local: stack.local,
-				config: workspace.deploy?.compose?.server,
-				custom: secrets?.custom,
-			});
+	const server =
+		push || check
+			? undefined
+			: composeServer({
+					stage,
+					local: stack.local,
+					config: workspace.deploy?.compose?.server,
+					custom: secrets?.custom,
+				});
 
 	const dir = join(root, stackDir(stage));
 	const override = stackOverrideFile(root, stage);
@@ -655,6 +676,7 @@ export async function validateCompose(
 	return {
 		mode,
 		push,
+		check,
 		stack,
 		...(topics
 			? {
@@ -675,7 +697,11 @@ export async function validateCompose(
 		...(server ? { server } : {}),
 		dir,
 		ref: {
-			project: composeProject(identity),
+			// A check's stack is a project of its own: started beside the stage
+			// — a laptop that runs it too — it never touches the stage's.
+			project: check
+				? checkProject(composeProject(identity))
+				: composeProject(identity),
 			file: join(dir, 'docker-compose.yml'),
 			...(overrides.length > 0 ? { overrides } : {}),
 			cwd: root,
@@ -1452,6 +1478,20 @@ async function prepareDatabases(
 	run: ComposeRun,
 	deps: ComposeDeps,
 ): Promise<void> {
+	await reachLoopback(run, deps, (ports) =>
+		migrateAndSeed(ctx, run, deps, ports),
+	);
+}
+
+/**
+ * Every service the stack publishes on its loopback, reached from this
+ * machine for as long as `body` runs — each by its port key.
+ */
+async function reachLoopback(
+	run: ComposeRun,
+	deps: ComposeDeps,
+	body: (ports: Record<string, number>) => Promise<void>,
+): Promise<void> {
 	const tunnels: { port: number; close: () => Promise<void> }[] = [];
 	try {
 		const ports: Record<string, number> = {};
@@ -1461,7 +1501,7 @@ async function prepareDatabases(
 			tunnels.push(tunnel);
 			ports[primaryPortKey(service)] = tunnel.port;
 		}
-		await migrateAndSeed(ctx, run, deps, ports);
+		await body(ports);
 	} finally {
 		await Promise.all(tunnels.map((tunnel) => tunnel.close()));
 	}
@@ -1494,6 +1534,11 @@ async function migrateAndSeed(
 	deps: ComposeDeps,
 	/** Each loopback service's port on this machine, by port key. */
 	ports: Record<string, number>,
+	/**
+	 * Run the stage's seeds after its migrations. A check does not: its
+	 * database is thrown away, and a seed may reach the stage's own services.
+	 */
+	seeds = true,
 ): Promise<void> {
 	const { stack } = run;
 	const workspace: NormalizedWorkspace = ctx.workspace;
@@ -1568,19 +1613,21 @@ async function migrateAndSeed(
 
 	// Seeds after migrations, before any app starts: an app that boots with
 	// its reference data missing fails on the first request that needs it.
-	const seeds = await deps
-		.seed({ ...options, stage: ctx.stage, backends: backendsOf(workspace) })
-		.catch((error: unknown) => {
-			if (error instanceof SeedFailed) {
-				throw new DeploySeedsFailed(
-					ctx.stage,
-					error.construct,
-					error.seed,
-					error,
-				);
-			}
-			throw error;
-		});
+	const seeded = !seeds
+		? []
+		: await deps
+				.seed({ ...options, stage: ctx.stage, backends: backendsOf(workspace) })
+				.catch((error: unknown) => {
+					if (error instanceof SeedFailed) {
+						throw new DeploySeedsFailed(
+							ctx.stage,
+							error.construct,
+							error.seed,
+							error,
+						);
+					}
+					throw error;
+				});
 
 	reportDatabaseRuns(
 		runs.map(({ target, applied }) => ({
@@ -1588,7 +1635,7 @@ async function migrateAndSeed(
 			folder: target.migrations,
 			applied,
 		})),
-		seeds.map(({ target, seeded }) => ({
+		seeded.map(({ target, seeded }) => ({
 			construct: target.id,
 			folder: target.seeds,
 			seeded,
@@ -1617,17 +1664,19 @@ export async function buildCompose(
 	const apps = images.map((image) => image.app);
 
 	// Nothing was provisioned, so nothing has written the files it builds from.
-	if (run.push) {
+	if (buildsOnly(run)) {
 		run.files = await writeStack(ctx.cwd, run.dir, stack);
 		printPlan(ctx, run);
 	}
 
-	// A site built against its stage: pushed, against the one already running,
-	// which has to answer before anything is built; deployed, once `release`
-	// has its APIs up.
+	// A site built against its stage: pushed or checked, against the one
+	// already running, which has to answer before anything is built;
+	// deployed, once `release` has its APIs up.
 	const prerendered = prerenderedHere(run);
-	if (run.push) await stageAnswers(ctx, run, deps, prerendered);
-	const held = new Set(run.push ? [] : prerendered.map(({ app }) => app));
+	if (buildsOnly(run)) await stageAnswers(ctx, run, deps, prerendered);
+	const held = new Set(
+		buildsOnly(run) ? [] : prerendered.map(({ app }) => app),
+	);
 	const now = images.filter((image) => !held.has(image.app));
 
 	if (run.mode === 'build') {
@@ -1641,9 +1690,21 @@ export async function buildCompose(
 		await deps.docker.pull(ref, apps);
 	}
 
+	// Started before anything is pushed: the digest checked is the digest
+	// pushed, and an image that cannot start is never pushed.
+	if (run.check) await startupCheck(ctx, run, deps);
+
 	if (run.push) ctx.logger.info('\n📤 Pushing images…');
 
 	await recordBuilt(ctx, run, deps, now);
+}
+
+/**
+ * Whether the run only builds — to push, or to check — so nothing is
+ * provisioned, released or recorded, and no stage's server is reached.
+ */
+function buildsOnly(run: ComposeRun): boolean {
+	return run.push || run.check;
 }
 
 /**
@@ -1832,12 +1893,37 @@ async function unhealthyAfterUp(
 	/** Services not started, so not asked. */
 	except: ReadonlySet<string> = new Set(),
 ): Promise<{ app: string; url: string; last: string }[]> {
-	const { stack } = run;
-	const services = [
+	const services = imageServices(run.stack).filter(
+		(service) => !except.has(service),
+	);
+	const down = await notHealthy(ctx, run, deps, services);
+	if (down.length === 0) throw error;
+
+	ctx.logger.warn(
+		`\n⚠️  ${down.map(({ app }) => app).join(', ')} did not turn healthy; the rest of the stack is released and routed.`,
+	);
+	return down;
+}
+
+/** Every service of the stack that runs one of its images: apps, workers, processors. */
+function imageServices(stack: ComposeStack): string[] {
+	return [
 		...stack.apps.flatMap(replicaNames),
 		...stack.workers.map((worker) => worker.name),
 		...stack.processors.map((unit) => unit.name),
-	].filter((service) => !except.has(service));
+	];
+}
+
+/**
+ * Each of `services` that is not healthy once its health settles — waited on
+ * while it is still starting, as `--wait` stops at the first that is not.
+ */
+async function notHealthy(
+	ctx: ComposeContext,
+	run: ComposeRun,
+	deps: ComposeDeps,
+	services: readonly string[],
+): Promise<{ app: string; url: string; last: string }[]> {
 	const settled = await Promise.all(
 		services.map(async (service) => {
 			let last: string | undefined;
@@ -1856,15 +1942,80 @@ async function unhealthyAfterUp(
 			return { app: service, url: `docker:${service}`, last };
 		}),
 	);
-	const down = settled
+	return settled
 		.filter(({ last }) => last !== 'healthy')
 		.map(({ app, url, last }) => ({ app, url, last: last ?? 'not running' }));
-	if (down.length === 0) throw error;
+}
 
-	ctx.logger.warn(
-		`\n⚠️  ${down.map(({ app }) => app).join(', ')} did not turn healthy; the rest of the stack is released and routed.`,
+/**
+ * The startup check (`--check`, see `startupCheck.ts`): every image built
+ * here started on this machine, as its own compose project, with the stage's
+ * secrets and the stack's backing services — migrated, not seeded — and
+ * each one healthy by its own check. One that is not fails the run, named,
+ * with its last log lines. The project is removed, volumes and all, however
+ * it ends.
+ */
+async function startupCheck(
+	ctx: ComposeContext,
+	run: ComposeRun,
+	deps: ComposeDeps,
+): Promise<void> {
+	const { stack, ref } = run;
+	const services = imageServices(stack);
+	ctx.logger.info(
+		`\n🩺 Starting ${services.length} image(s) with ${ctx.stage}'s secrets, before anything is pushed…`,
 	);
-	return down;
+	try {
+		// The stack's public services join the shared edge's network, which a
+		// CI runner does not have. Nothing routes to them on it.
+		for (const network of Object.values(stack.compose.networks ?? {})) {
+			if (network.external) {
+				await deps.docker.ensureNetwork(ref, network.name);
+			}
+		}
+		if (stack.infra.length > 0) {
+			ctx.logger.info(`🗄️  Starting ${stack.infra.join(', ')}…`);
+			await deps.docker.up(ref, stack.infra);
+		}
+		if (stack.storage && stack.infra.includes('minio')) {
+			await prepareBuckets(ctx, run, deps);
+		}
+		if (stack.infra.includes('postgres')) {
+			await reachLoopback(run, deps, (ports) =>
+				migrateAndSeed(ctx, run, deps, ports, false),
+			);
+		}
+
+		const down = await deps.docker.up(ref, services).then(
+			() => [],
+			async (error: unknown) => {
+				const found = await notHealthy(ctx, run, deps, services);
+				if (found.length === 0) throw error;
+				return found;
+			},
+		);
+		if (down.length > 0) {
+			const failed = await Promise.all(
+				down.map(async ({ app, last }) => ({
+					app,
+					last,
+					logs: await deps.docker
+						.logs(ref, app, CHECK_LOG_LINES)
+						.catch(() => ''),
+				})),
+			);
+			throw new StartupCheckFailed(ctx.stage, failed);
+		}
+	} finally {
+		await deps.docker.down(ref, { volumes: true }).catch((error: unknown) => {
+			ctx.logger.warn(
+				`⚠️  Could not remove the check's stack (${ref.project}): ${error instanceof Error ? error.message : String(error)}. Remove it with \`docker compose -p ${ref.project} down --volumes\`.`,
+			);
+		});
+	}
+	ctx.logger.info(
+		`✅ Every image started with ${ctx.stage}'s secrets and passed its health check.`,
+	);
 }
 
 /**
@@ -1975,7 +2126,7 @@ async function stageAnswers(
 	const results = await Promise.all(
 		apps.map((app) =>
 			// A wildcard site has no one host: its container says, where it runs.
-			app.id === stack.wildcard?.site && !run.push
+			app.id === stack.wildcard?.site && !buildsOnly(run)
 				? checkContainer(ctx, run, deps, app.name)
 				: checkApp(ctx, app, deps, { ca, edge }),
 		),
@@ -1992,7 +2143,7 @@ async function stageAnswers(
 			throw new SitePrerenderApisDown(
 				site.name,
 				blocking,
-				run.push ? 'push' : 'edge',
+				buildsOnly(run) ? 'push' : 'edge',
 			);
 		}
 	}
