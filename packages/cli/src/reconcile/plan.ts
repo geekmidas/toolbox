@@ -242,6 +242,8 @@ export interface PlannedResource {
 	inbox?: {
 		addresses: readonly string[];
 		subdomains: boolean;
+		/** A fixed label it receives under: `in` — `in.<domain>`. */
+		subdomain?: string;
 		topic: string;
 	};
 	/** Mail's local part — its declaration's `from` — joined to the stage's domain. */
@@ -700,6 +702,9 @@ export function planFor(
 						inbox: {
 							addresses: declaration.addresses,
 							subdomains: declaration.subdomains === true,
+							...(declaration.subdomain
+								? { subdomain: declaration.subdomain }
+								: {}),
 							topic: declaration.topic,
 						},
 					}

@@ -262,6 +262,11 @@ export interface InboxDeclaration extends Node {
 	addresses: readonly string[];
 	/** At `<address>@<label>.<domain>` — one label, a tenant's — rather than `<domain>`. */
 	subdomains?: boolean;
+	/**
+	 * At `<address>@<subdomain>.<domain>` — one fixed label, `in` — rather than
+	 * `<domain>`, whose MX may already be the team's own mail.
+	 */
+	subdomain?: string;
 	/** The topic each received message is announced on, declared by the inbox. */
 	topic: ConstructId;
 }

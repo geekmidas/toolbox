@@ -47,6 +47,7 @@ import {
 import {
 	type ConstructManifest,
 	EDGE_TOKEN_KEY,
+	inboxDomain,
 	isWildcardSite,
 	providedKeyFor,
 	provisionOrder,
@@ -922,7 +923,8 @@ export interface DeployedInboxSources {
 /**
  * One key of a deployed inbox — the one rule every target reads it by.
  *
- * Its domain is the stage's, which mail is addressed to. Everything else (where
+ * Its domain is the one mail is addressed to: the stage's, or a fixed
+ * `subdomain` of it ({@link inboxDomain}). Everything else (where
  * its raw messages are read, its topic's publisher string) is what its
  * provider made and wrote to the stage's secrets; nothing can derive it.
  *
@@ -930,13 +932,13 @@ export interface DeployedInboxSources {
  * @throws {StageSecretMissing} when the provider has not written the key.
  */
 export function deployedInboxValue(
-	inbox: string,
+	inbox: { id: string; subdomain?: string },
 	key: string,
 	sources: DeployedInboxSources,
 ): string {
-	if (key === providedKeyFor(inbox, 'inbox', 'domain')) {
+	if (key === providedKeyFor(inbox.id, 'inbox', 'domain')) {
 		if (!sources.domain) throw new NoDomainForStage(sources.stage);
-		return sources.domain;
+		return inboxDomain(inbox, sources.domain);
 	}
 	const value = sources.secrets[key];
 	if (value === undefined) {
@@ -962,7 +964,7 @@ export function deployedInboxEnv(
 			providedKeyFor(declaration.topic, 'topic', 'publisherConnectionString'),
 		];
 		for (const key of keys) {
-			env[key] = deployedInboxValue(declaration.id, key, sources);
+			env[key] = deployedInboxValue(declaration, key, sources);
 		}
 	}
 	return env;
@@ -1534,7 +1536,7 @@ export function composeStack(input: StackInput): ComposeStack {
 		// the stage's domain, which mail is addressed to.
 		if (owner?.kind === 'inbox') {
 			if (local) return outside[key];
-			return deployedInboxValue(owner.id, key, {
+			return deployedInboxValue({ id: owner.id, ...owner.inbox }, key, {
 				reader: app.name,
 				stage,
 				domain,

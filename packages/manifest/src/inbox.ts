@@ -87,6 +87,21 @@ export function inboxRecipient(
 }
 
 /**
+ * The domain `inbox` receives on, of the stage's `domain`: the domain itself,
+ * or with a fixed `subdomain`, that label in front of it — `in.fixwell.example`.
+ *
+ * The one place an inbox's domain is derived. Every target writes it as the
+ * inbox's `<ID>_DOMAIN`, and everything downstream — the receipt rule, the MX
+ * record, the identity, the decoder, `gkm dev`'s receiver — reads that.
+ */
+export function inboxDomain(
+	inbox: Pick<InboxDeclaration, 'subdomain'>,
+	domain: string,
+): string {
+	return inbox.subdomain ? `${inbox.subdomain}.${domain}` : domain;
+}
+
+/**
  * The recipients a deployed receipt rule names for `inbox` on `domain`.
  *
  * Without `subdomains`, each address on the domain: SES matches an address

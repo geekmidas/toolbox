@@ -13,10 +13,13 @@
  *   only confirm a subscription: the deploy's push subscriptions for a topic
  *   on SNS (`topicPushes`) subscribe each inbox subscriber at its worker's
  *   route, unfiltered, with the deploy's own credentials, as a bucket's are;
- * - **the stage's domain as an SES identity**, verified through Easy DKIM's
- *   CNAMEs, and **MX records** pointing the domain — or every subdomain of it,
- *   with `subdomains: true` — at the region's inbound endpoint, both through
- *   the stage's DNS;
+ * - **the domain it receives on as an SES identity** — the stage's, or
+ *   `<subdomain>.<domain>` with a fixed `subdomain` — verified through Easy
+ *   DKIM's CNAMEs, and **MX records** pointing that domain — or every
+ *   subdomain of the stage's, with `subdomains: true` — at the region's
+ *   inbound endpoint, both through the stage's DNS. An inbox on a fixed
+ *   `subdomain` leaves the apex's MX alone, so a domain whose own mail is
+ *   elsewhere can still receive;
  * - **a receipt rule** in the region's *active* rule set: the inbox's
  *   recipients, stored under `messages/` and announced on its topic. Never a
  *   new set made active over another — only one is active per region, and
@@ -31,6 +34,7 @@ import {
 	type ConstructManifest,
 	INBOX_MESSAGES_PREFIX,
 	type InboxDeclaration,
+	inboxDomain,
 	providedKeyFor,
 	receiptRecipients,
 } from '@geekmidas/manifest';
@@ -188,7 +192,7 @@ function errorName(error: unknown): string {
 	return e?.name ?? e?.Code ?? e?.code ?? '';
 }
 
-/** The stage's domain, which every inbox receives on. */
+/** The stage's domain, which every inbox receives on or under. */
 function stageDomain(ctx: Pick<Ctx, 'workspace' | 'stage'>): string {
 	const domain = ctx.workspace.domains?.[ctx.stage];
 	if (!domain) throw new NoDomainForStage(ctx.stage);
@@ -206,7 +210,12 @@ async function ensureSes(ctx: Ctx): Promise<void> {
 		const ruleSet = await activeRuleSet(ctx, { SES, ses }, inboxes.length > 0);
 		if (inboxes.length > 0) {
 			const domain = stageDomain(ctx);
-			await ensureIdentity(ctx, { SES, ses }, domain);
+			const receiving = [
+				...new Set(inboxes.map((inbox) => inboxDomain(inbox, domain))),
+			].sort();
+			for (const identity of receiving) {
+				await ensureIdentity(ctx, { SES, ses }, identity);
+			}
 			const events = await eventsClients(ctx.credential, region);
 			try {
 				for (const inbox of inboxes) {
@@ -271,8 +280,9 @@ async function activeRuleSet(
 }
 
 /**
- * The stage's domain as an SES identity, verified by Easy DKIM: its three
- * CNAMEs, through the stage's DNS. Receiving requires a verified domain.
+ * A domain an inbox receives on as an SES identity, verified by Easy DKIM:
+ * its three CNAMEs, through the stage's DNS. Receiving requires a verified
+ * domain.
  */
 async function ensureIdentity(
 	ctx: Ctx,
@@ -347,7 +357,7 @@ async function ensureInbox(
 		Enabled: true,
 		TlsPolicy: 'Optional' as const,
 		ScanEnabled: true,
-		Recipients: receiptRecipients(inbox, domain),
+		Recipients: receiptRecipients(inbox, inboxDomain(inbox, domain)),
 		Actions: [
 			{
 				S3Action: {
@@ -450,8 +460,9 @@ function sameRule(
 }
 
 /**
- * MX records for the stage's domain — and, for an inbox on its tenants'
- * subdomains, for every subdomain — at the region's inbound endpoint.
+ * MX records at the region's inbound endpoint for each domain an inbox
+ * receives on: the stage's, a fixed `subdomain` of it — and nothing at the
+ * apex then — or, for an inbox on its tenants' subdomains, every subdomain.
  */
 async function ensureMx(
 	ctx: Ctx,
@@ -461,7 +472,7 @@ async function ensureMx(
 ): Promise<void> {
 	const hosts = new Set<string>();
 	for (const inbox of inboxes) {
-		hosts.add(inbox.subdomains ? `*.${domain}` : domain);
+		hosts.add(inbox.subdomains ? `*.${domain}` : inboxDomain(inbox, domain));
 	}
 	await ctx.writeDns(
 		[...hosts].sort().map((host) => ({
