@@ -250,6 +250,44 @@ describe('CloudflareProvider', () => {
 		]);
 	});
 
+	it("puts mail's MX and DKIM records beside a proxied site on the same name, DNS-only", async () => {
+		seed({
+			type: 'A',
+			name: 'example.com',
+			content: '203.0.113.10',
+			ttl: 1,
+			proxied: true,
+		});
+
+		await cloudflare().upsertRecords(ZONE, [
+			{
+				name: '@',
+				type: 'MX',
+				ttl: 300,
+				value: '10 inbound-smtp.eu-west-1.amazonaws.com',
+				proxied: false,
+			},
+			{
+				name: 'tok1._domainkey',
+				type: 'CNAME',
+				ttl: 300,
+				value: 'tok1.dkim.amazonses.com',
+				proxied: false,
+			},
+		]);
+
+		expect(records.map((r) => [r.name, r.type, r.content, r.proxied])).toEqual([
+			['example.com', 'A', '203.0.113.10', true],
+			['example.com', 'MX', 'inbound-smtp.eu-west-1.amazonaws.com', undefined],
+			[
+				'tok1._domainkey.example.com',
+				'CNAME',
+				'tok1.dkim.amazonses.com',
+				false,
+			],
+		]);
+	});
+
 	it('reads exactly the names asked for, with their proxy', async () => {
 		seed({
 			type: 'A',

@@ -24,6 +24,12 @@ import {
 /** Where Caddy reads a stage's own certificate, inside its container. */
 export const CADDY_TLS_DIR = '/etc/caddy/tls';
 
+/** The origin certificate a CDN issued, as the stack's Caddy reads it. */
+export const CADDY_ORIGIN_CERTIFICATE = {
+	certFile: `${CADDY_TLS_DIR}/origin-cert.pem`,
+	keyFile: `${CADDY_TLS_DIR}/origin-key.pem`,
+} as const;
+
 export interface CaddyfileOptions {
 	tls: EdgeTls;
 	/**
@@ -90,7 +96,11 @@ export function edgeCaddyfile(
 		on_demand
 	}
 `
-				: certificate,
+				: route.certificate?.kind === 'files'
+					? `
+	tls ${route.certificate.certFile} ${route.certificate.keyFile}
+`
+					: certificate,
 		),
 	);
 

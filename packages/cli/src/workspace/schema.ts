@@ -1,5 +1,6 @@
 import { z } from 'zod/v4';
 import { checkStageBackups } from '../backups/schedule.js';
+import { checkStageCdn } from '../compose/cdnConfig.js';
 import { checkDnsRecordsMode } from '../compose/dnsConfig.js';
 import { checkComposeStages } from '../compose/proxy.js';
 import { checkStageProvider } from '../providers/config.js';
@@ -617,6 +618,27 @@ const BackupsConfigSchema = z
 		}
 	});
 
+/**
+ * `deploy.cdn` — a CDN in front of each deployed compose stage's sites. The
+ * rule is `checkStageCdn`'s, so the schema and a deploy refuse the same
+ * entries with the same words.
+ */
+const CdnConfigSchema = z
+	.record(z.string(), z.unknown())
+	.superRefine((entries, ctx) => {
+		for (const [stage, value] of Object.entries(entries)) {
+			try {
+				checkStageCdn(stage, value);
+			} catch (error) {
+				ctx.addIssue({
+					code: 'custom',
+					message: error instanceof Error ? error.message : String(error),
+					path: [stage],
+				});
+			}
+		}
+	});
+
 /** `deploy.compose` — what the compose target runs beside the apps. */
 const ComposeWorkspaceConfigSchema = z
 	.object({
@@ -795,6 +817,7 @@ const DeployConfigSchema = z.object({
 	inbox: InboxConfigSchema.optional(),
 	email: EmailConfigSchema.optional(),
 	backups: BackupsConfigSchema.optional(),
+	cdn: CdnConfigSchema.optional(),
 });
 
 /**
@@ -1220,6 +1243,7 @@ export const WorkspaceConfigSchema = z
 			['deploy.email', ['deploy', 'email'], data.deploy?.email],
 			['deploy.backups', ['deploy', 'backups'], data.deploy?.backups],
 			['deploy.telemetry', ['deploy', 'telemetry'], data.deploy?.telemetry],
+			['deploy.cdn', ['deploy', 'cdn'], data.deploy?.cdn],
 			...Object.entries(data.dns ?? {}).map(
 				([domain, entry]): [string, (string | number)[], unknown] => {
 					const records = (entry as { records?: unknown }).records;

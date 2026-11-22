@@ -26,13 +26,17 @@ class Zone implements DnsProvider {
 			const existing = this.records.find(
 				(z) => z.name === r.name && z.type === r.type,
 			);
-			if (existing) existing.values = [r.value];
-			else
+			const proxy = r.proxied ?? existing?.proxied;
+			if (existing) {
+				existing.values = [r.value];
+				if (proxy !== undefined) existing.proxied = proxy;
+			} else
 				this.records.push({
 					name: r.name,
 					type: r.type,
 					ttl: r.ttl,
 					values: [r.value],
+					...(proxy !== undefined ? { proxied: proxy } : {}),
 				});
 		}
 		return records.map((record) => ({
@@ -247,5 +251,74 @@ describe("a provider's DNS records", () => {
 			},
 		);
 		expect(zone.writes).toEqual([]);
+	});
+
+	it("writes the mail constructs' records DNS-only beside the CDN's proxied site, on the same name", async () => {
+		const zone = new Zone();
+		// The stage's domain is a site's host, proxied by the CDN — and a DKIM
+		// key someone proxied by hand.
+		zone.records.push(
+			{
+				name: '@',
+				type: 'A',
+				ttl: 1,
+				values: ['203.0.113.10'],
+				proxied: true,
+			},
+			{
+				name: 'tok1._domainkey',
+				type: 'CNAME',
+				ttl: 1,
+				values: ['tok1.dkim.amazonses.com'],
+				proxied: true,
+			},
+		);
+		const lines: string[] = [];
+
+		await writeProviderDns(
+			[
+				// Inbox: mail to the domain itself, and to its tenants' subdomains.
+				{
+					host: 'shop.example.com',
+					type: 'MX',
+					value: 'inbound-smtp.eu-west-1.amazonaws.com',
+					priority: 10,
+				},
+				{
+					host: '*.shop.example.com',
+					type: 'MX',
+					value: 'inbound-smtp.eu-west-1.amazonaws.com',
+					priority: 10,
+				},
+				// Email: SES's DKIM keys for the same domain.
+				...['tok1', 'tok2'].map((token) => ({
+					host: `${token}._domainkey.shop.example.com`,
+					type: 'CNAME' as const,
+					value: `${token}.dkim.amazonses.com`,
+				})),
+			],
+			{
+				workspace: {
+					dns: { 'shop.example.com': { provider: 'cloudflare' } } as never,
+				},
+				stage: 'prod',
+				dryRun: false,
+				credentials: { get: async () => ({ token: 'cf-token' }) } as never,
+				providerFor: async () => zone,
+				log: (line) => lines.push(line),
+			},
+		);
+
+		expect(
+			zone.records
+				.map((r) => [r.name, r.type, r.values.join(), r.proxied ?? false])
+				.sort(),
+		).toEqual([
+			['*', 'MX', '10 inbound-smtp.eu-west-1.amazonaws.com', false],
+			['@', 'A', '203.0.113.10', true],
+			['@', 'MX', '10 inbound-smtp.eu-west-1.amazonaws.com', false],
+			['tok1._domainkey', 'CNAME', 'tok1.dkim.amazonses.com', false],
+			['tok2._domainkey', 'CNAME', 'tok2.dkim.amazonses.com', false],
+		]);
 	});
 });

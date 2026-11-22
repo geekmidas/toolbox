@@ -107,6 +107,11 @@ import {
 	type StackLogs,
 } from '../../compose/logs';
 import { LOGS_PORT } from '../../compose/logsConfig';
+import {
+	ensureOriginCertificate,
+	type OriginCertificate,
+	type OriginCertificateIssuer,
+} from '../../compose/originCertificate';
 import { ComposeTlsFileMissing } from '../../compose/proxy';
 import { REDIS_SERVICE } from '../../compose/redis';
 import { deployedStackSecrets } from '../../compose/secrets';
@@ -289,6 +294,11 @@ export interface ComposeDeps {
 	 * chain, with its `profile` and `region`, by default.
 	 */
 	acmeClients?: (config: Route53DnsConfig) => Promise<AcmeDnsClients>;
+	/**
+	 * What a CDN's origin certificate is issued through — Cloudflare's
+	 * Origin CA, with the deploy's token, by default.
+	 */
+	originIssuer?: (token: string) => Promise<OriginCertificateIssuer>;
 }
 
 /** One app's image, as the stage runs it. */
@@ -325,6 +335,12 @@ export interface ComposeRun {
 	ref: StackRef;
 	/** The stage's secrets, with whatever a deployed stage generates once. */
 	secrets: StageSecrets | null;
+	/**
+	 * The origin certificate the stage's CDN issued for the hosts it answers
+	 * (`deploy.cdn`, `certificate: 'origin'`) — kept in the stage's secrets,
+	 * served for those hosts alone. Set by `ready`.
+	 */
+	originCertificate?: OriginCertificate;
 	/** The names of what was generated, written back in `provision`. */
 	generated: string[];
 	/** Each app's image as the stage's state last recorded it. */
@@ -634,9 +650,10 @@ export async function validateCompose(
 	// its server: it is the host SSH reaches too, unless config names one.
 	if (!push && !check && !stack.local) {
 		requiredServerAddress(stage, workspace.domains?.[stage], secrets?.custom);
-		// The edge's key for the wildcard's DNS challenge, where the stage
-		// supplies it: refused now, not once the stack is half up.
-		if (stack.proxy === 'traefik' && stack.wildcard?.tls === 'dns') {
+		// The edge's key for the DNS challenge — a wildcard's, or the hosts a
+		// CDN answers — where the stage supplies it: refused now, not once the
+		// stack is half up.
+		if (stack.proxy === 'traefik' && dnsChallenged(stack)) {
 			const zone = acmeDnsZone(workspace, stage);
 			if (zone) acmeDnsSecrets(zone, stage, secrets?.custom);
 		}
@@ -745,6 +762,27 @@ export async function readyCompose(
 		}
 	}
 
+	// The CDN's origin certificate for the hosts it answers: the one the
+	// stage keeps, or a new one from the CDN — before anything is written,
+	// since the stack's files carry it.
+	if (stack.cdn?.certificate === 'origin' && !buildsOnly(run)) {
+		const issued = await ensureOriginCertificate({
+			stage: ctx.stage,
+			zone: stack.cdn.zone,
+			hosts: stack.cdn.hosts,
+			custom: run.secrets?.custom,
+			credentials: ctx.credentials,
+			keep: (values) => keepStageSecrets(ctx, run, values),
+			...(ctx.dryRun ? { dryRun: true } : {}),
+			log: (line) => ctx.logger.info(line),
+			...(deps.originIssuer ? { issuer: deps.originIssuer } : {}),
+		});
+		if (issued) {
+			ctx.secrets.mask(issued.key);
+			run.originCertificate = issued;
+		}
+	}
+
 	if (stack.local) {
 		await edgeHostsFree(ctx, run, deps);
 		return;
@@ -762,6 +800,7 @@ export async function readyCompose(
 		stackHosts(stack).filter((host) => !isLocalHost(host)),
 		run.secrets?.custom,
 		stack.wildcard?.host,
+		stack.cdn?.hosts,
 	);
 	if (prune) run.pruneDns = prune;
 }
@@ -957,6 +996,8 @@ async function stageHostsDns(
 	hosts: readonly string[],
 	custom: Readonly<Record<string, string>> | undefined,
 	wildcard: string | undefined,
+	/** The hosts the stage's CDN answers, written proxied. */
+	proxied: readonly string[] | undefined,
 ): Promise<(() => Promise<PrunedDnsRecord[]>) | undefined> {
 	const { workspace, stage } = ctx;
 	const server = requiredServerAddress(
@@ -995,6 +1036,7 @@ async function stageHostsDns(
 				ctx.providerDns,
 			),
 			...(wildcard ? { wildcard } : {}),
+			...(proxied?.length ? { proxied } : {}),
 			credentials: ctx.credentials,
 			log,
 			lookup: deps.lookup ?? systemLookup,
@@ -1134,7 +1176,12 @@ export async function planCompose(
 			`🔑 "${ctx.stage}" has no ${run.generated.join(', ')} yet; this dry run used values it did not keep.`,
 		);
 	}
-	run.files = await writeStack(ctx.cwd, run.dir, run.stack);
+	run.files = await writeStack(
+		ctx.cwd,
+		run.dir,
+		run.stack,
+		run.originCertificate,
+	);
 	printPlan(ctx, run);
 
 	// A push migrates and seeds nothing; a release runs every seed, every
@@ -1207,6 +1254,51 @@ export async function planCompose(
 			action: 'ensure',
 		});
 	}
+}
+
+/**
+ * Keys written into the stage's secrets now, on top of what the store holds
+ * — not at the end of the run, so a value the CDN hands over once is kept
+ * the moment it exists — and into the run's copy, so a later write of it
+ * keeps them too.
+ */
+async function keepStageSecrets(
+	ctx: ComposeContext,
+	run: ComposeRun,
+	values: Record<string, string>,
+): Promise<void> {
+	const stored = (await ctx.secrets.read()) ?? run.secrets;
+	if (!stored) throw new StageSecretsMissingForKeep(ctx.stage);
+	await ctx.secrets.write({
+		...stored,
+		updatedAt: new Date().toISOString(),
+		custom: { ...stored.custom, ...values },
+	});
+	if (run.secrets) {
+		run.secrets = {
+			...run.secrets,
+			custom: { ...run.secrets.custom, ...values },
+		};
+	}
+}
+
+/** A deployed stage with no secrets to keep a value in. */
+export class StageSecretsMissingForKeep extends GkmError {
+	constructor(readonly stage: string) {
+		super(
+			`'${stage}' has no secrets yet to keep its CDN's origin certificate in. ` +
+				`Set them up first: gkm secrets:init --stage ${stage}.`,
+		);
+		this.name = 'StageSecretsMissingForKeep';
+	}
+}
+
+/**
+ * Whether the shared edge gets any of the stack's certificates over the DNS
+ * challenge: a wildcard site's, or the hosts a CDN answers.
+ */
+function dnsChallenged(stack: ComposeStack): boolean {
+	return stack.wildcard?.tls === 'dns' || stack.cdn?.certificate === 'dns';
 }
 
 /**
@@ -1323,7 +1415,7 @@ export async function provisionCompose(
 	}
 
 	const { stack } = run;
-	run.files = await writeStack(ctx.cwd, run.dir, stack);
+	run.files = await writeStack(ctx.cwd, run.dir, stack, run.originCertificate);
 	printPlan(ctx, run);
 
 	// The shared edge, and the network the stack's public services join —
@@ -1361,7 +1453,7 @@ export async function provisionCompose(
 			id: `${EDGE_PROJECT}/${EDGE_SERVICE}`,
 			via: 'found',
 		});
-		if (stack.wildcard?.tls === 'dns') await edgeAcmeKey(ctx, run, deps);
+		if (dnsChallenged(stack)) await edgeAcmeKey(ctx, run, deps);
 	}
 
 	if (stack.infra.length > 0) {
@@ -1665,7 +1757,12 @@ export async function buildCompose(
 
 	// Nothing was provisioned, so nothing has written the files it builds from.
 	if (buildsOnly(run)) {
-		run.files = await writeStack(ctx.cwd, run.dir, stack);
+		run.files = await writeStack(
+			ctx.cwd,
+			run.dir,
+			stack,
+			run.originCertificate,
+		);
 		printPlan(ctx, run);
 	}
 
@@ -1782,6 +1879,7 @@ export async function releaseCompose(
 			stack.project,
 			stack.traefik,
 			await edgeCertificate(run.dir, stack),
+			run.originCertificate,
 		);
 		ctx.logger.info(
 			`🌐 Registered ${stack.routes.length} route(s) with ${EDGE_PROJECT}: ${written.at(-1)}`,
@@ -2678,6 +2776,8 @@ async function writeStack(
 	root: string,
 	dir: string,
 	stack: ComposeStack,
+	/** The CDN's origin certificate, which the stack's Caddy serves inline. */
+	origin?: OriginCertificate,
 ): Promise<string[]> {
 	await mkdir(dir, { recursive: true, mode: 0o700 });
 	await chmod(dir, 0o700);
@@ -2698,17 +2798,19 @@ async function writeStack(
 	// issued here, kept beside the stack between runs.
 	const issued = await edgeCertificate(dir, stack);
 	const tls = stack.proxy === 'caddy' ? issued : undefined;
+	const originTls = stack.proxy === 'caddy' ? origin : undefined;
 	const compose =
 		stack.caddyfile !== undefined
 			? withCaddyConfigs(stack.compose, {
 					caddyfile: stack.caddyfile,
 					...(tls ? { tls } : {}),
+					...(originTls ? { origin: originTls } : {}),
 				})
 			: stack.compose;
 	await write(
 		join(dir, 'docker-compose.yml'),
 		composeYaml(stack, compose),
-		tls ? 0o600 : 0o644,
+		tls || originTls ? 0o600 : 0o644,
 	);
 	// For reading: the proxy's configuration — the stack's own Caddy's, or a
 	// copy of what the stack registers with the shared edge. The other is

@@ -9,6 +9,10 @@
  * is replaced and printed, and what is written is read back. A host under no
  * domain in `dns`, or under a `manual` one, is printed for the person to
  * create and reported back, so the provider can say what it is waiting on.
+ *
+ * On a Cloudflare domain each is written DNS-only, beside whatever the
+ * stage's CDN proxies at the same name: the mail constructs' MX and DKIM
+ * records sit on the stage's domain, which is also a site's host.
  */
 
 import { type DnsProvider, mxValue } from '@geekmidas/edge/dns';
@@ -86,6 +90,10 @@ export async function writeProviderDns(
 			type: record.type,
 			value,
 			ttl: recordTtl(config),
+			// Never behind Cloudflare's proxy: a DKIM key, a validation record
+			// and a CDN's name are answered as written, or they do not work —
+			// and one proxied by hand is taken back out.
+			...(plan.provider === 'cloudflare' ? { proxied: false } : {}),
 		};
 		plan.records.push(planned);
 		domains.set(domain, plan);

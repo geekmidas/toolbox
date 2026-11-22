@@ -21,18 +21,24 @@ import {
 	type LocalAuthorityPaths,
 	localAuthorityPaths,
 } from '@geekmidas/edge/certificates/local';
-import { CADDY_TLS_DIR, edgeCaddyfile } from '@geekmidas/edge/proxy/caddy';
+import {
+	CADDY_ORIGIN_CERTIFICATE,
+	CADDY_TLS_DIR,
+	edgeCaddyfile,
+} from '@geekmidas/edge/proxy/caddy';
 import {
 	ACME_DNS_CHALLENGES,
 	EDGE_NETWORK,
 	edgeAlias,
 	edgeCertificatePaths,
+	edgeOriginCertificatePaths,
 	traefikDynamicFile,
 } from '@geekmidas/edge/proxy/traefik';
 import {
 	type ComposeProxy,
 	EDGE_LIMITS,
 	type EdgeRoute,
+	type EdgeRouteCertificate,
 	type EdgeTls,
 	type EdgeWildcard,
 	NOFILE,
@@ -160,6 +166,12 @@ import type {
 	S3ObjectsConfig,
 } from '../workspace/types.js';
 import { acmeDnsZone } from './acmeDns.js';
+import {
+	type CdnCertificate,
+	CdnCertificateUnavailable,
+	type CdnProvider,
+	stageCdn,
+} from './cdn.js';
 import { isReservedStageKey } from './dnsConfig.js';
 import type { AppImage } from './images.js';
 import {
@@ -496,7 +508,12 @@ export interface StackFile {
  */
 export function withCaddyConfigs(
 	compose: StackFile,
-	files: { caddyfile: string; tls?: { cert: string; key: string } },
+	files: {
+		caddyfile: string;
+		tls?: { cert: string; key: string };
+		/** The CDN's origin certificate, for the hosts it answers. */
+		origin?: { cert: string; key: string };
+	},
 ): StackFile {
 	const caddy = compose.services.caddy;
 	if (!caddy) return compose;
@@ -506,6 +523,12 @@ export function withCaddyConfigs(
 			? {
 					'tls-cert': { content: files.tls.cert },
 					'tls-key': { content: files.tls.key },
+				}
+			: {}),
+		...(files.origin
+			? {
+					'tls-origin-cert': { content: files.origin.cert },
+					'tls-origin-key': { content: files.origin.key },
 				}
 			: {}),
 	};
@@ -527,6 +550,19 @@ export function withCaddyConfigs(
 								{
 									source: 'tls-key',
 									target: `${CADDY_TLS_DIR}/key.pem`,
+									mode: 0o400,
+								},
+							]
+						: []),
+					...(files.origin
+						? [
+								{
+									source: 'tls-origin-cert',
+									target: CADDY_ORIGIN_CERTIFICATE.certFile,
+								},
+								{
+									source: 'tls-origin-key',
+									target: CADDY_ORIGIN_CERTIFICATE.keyFile,
 									mode: 0o400,
 								},
 							]
@@ -584,6 +620,20 @@ export interface ComposeStack {
 		site: string;
 		host: string;
 		tls: EdgeWildcard['tls']['kind'];
+	};
+	/**
+	 * A deployed stage's CDN (`deploy.cdn`): which one, the zone it is in,
+	 * the hosts it answers — every host a site answers on, a wildcard site's
+	 * `*.<domain>` among them — and where the server's certificate for them
+	 * comes from: an `origin` certificate the deploy has the CDN issue, the
+	 * `dns` challenge (the deploy gives the shared edge its DNS provider's
+	 * key), or the `stage`'s own (`deploy.compose.tls`).
+	 */
+	cdn?: {
+		provider: CdnProvider;
+		zone: string;
+		hosts: string[];
+		certificate: CdnCertificate | 'stage';
 	};
 	/** The stack's own Caddy's configuration — with `proxy: 'caddy'`. */
 	caddyfile?: string;
@@ -1875,6 +1925,29 @@ export function composeStack(input: StackInput): ComposeStack {
 				hostOf,
 			});
 
+	// The CDN in front of the stage's sites. A host it answers resolves to
+	// the CDN, which Let's Encrypt's HTTP challenge does not reliably pass
+	// through: without a certificate of the stage's own, the shared edge
+	// gets each site's over the DNS challenge, through the same provider.
+	const cdn = local || input.buildOnly ? undefined : stageCdn(workspace, stage);
+	if (cdn?.certificate === 'dns' && !certificate && proxy !== 'traefik') {
+		throw new CdnCertificateUnavailable(stage);
+	}
+	// What a site route is certified with behind it, where it is not the
+	// stage's own certificate: the origin certificate, as the proxy reads
+	// it, or the DNS challenge through the CDN's DNS.
+	const cdnCertificate: EdgeRouteCertificate | undefined =
+		!cdn || certificate
+			? undefined
+			: cdn.certificate === 'dns'
+				? { kind: 'dns', provider: cdn.provider }
+				: {
+						kind: 'files',
+						...(proxy === 'caddy'
+							? CADDY_ORIGIN_CERTIFICATE
+							: edgeOriginCertificatePaths(project)),
+					};
+
 	// One route per public host — the data both proxies render.
 	const routes: EdgeRoute[] = [
 		...apps.map(
@@ -1889,6 +1962,9 @@ export function composeStack(input: StackInput): ComposeStack {
 						}
 					: {}),
 				...(wildcard?.site === app.id ? { wildcard: wildcard.edge } : {}),
+				...(cdnCertificate && app.kind === 'site'
+					? { certificate: cdnCertificate }
+					: {}),
 				upstreams: replicaNames(app).map((service) => ({
 					service,
 					port: app.port,
@@ -2075,6 +2151,22 @@ export function composeStack(input: StackInput): ComposeStack {
 						site: wildcard.site,
 						host: `*.${wildcard.edge.domain}`,
 						tls: wildcard.edge.tls.kind,
+					},
+				}
+			: {}),
+		...(cdn
+			? {
+					cdn: {
+						provider: cdn.provider,
+						zone: cdn.zone,
+						certificate: certificate ? 'stage' : cdn.certificate,
+						hosts: apps
+							.filter((app) => app.kind === 'site')
+							.flatMap((app) => {
+								const route = routes.find((r) => r.name === app.name);
+								return route ? routeHosts(route) : [];
+							})
+							.map((host) => host.toLowerCase()),
 					},
 				}
 			: {}),

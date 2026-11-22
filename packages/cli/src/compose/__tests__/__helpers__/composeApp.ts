@@ -37,6 +37,8 @@ export interface ComposeAppOptions {
 	deployEmail?: Record<string, unknown>;
 	/** `deploy.backups`, as it is written in the config. */
 	deployBackups?: Record<string, unknown>;
+	/** `deploy.cdn`, by stage. */
+	deployCdn?: Record<string, unknown>;
 	/** The rest of `deploy.compose` — `proxy`, `tls` — as written. */
 	compose?: Record<string, unknown>;
 	/** The deployed stages, `['production']` when absent. */
@@ -278,6 +280,7 @@ export default defineWorkspace({
     ${options.deployInbox ? `inbox: ${JSON.stringify(options.deployInbox)},` : ''}
     ${options.deployEmail ? `email: ${JSON.stringify(options.deployEmail)},` : ''}
     ${options.deployBackups ? `backups: ${JSON.stringify(options.deployBackups)},` : ''}
+    ${options.deployCdn ? `cdn: ${JSON.stringify(options.deployCdn)},` : ''}
   },
 });
 `,
@@ -512,6 +515,18 @@ export async function serveFrom(
 
 /** A resolver that answers every host with the fixture's server. */
 export const resolvesHere = async (): Promise<string[]> => [SERVER_IPV4];
+
+/** The stage's own secrets, as its store holds them. */
+export async function stageCustom(
+	dir: string,
+	stage = 'production',
+): Promise<Record<string, string>> {
+	const { loadWorkspaceSettings } = await import('../../../config');
+	const { secretsStoreFor } = await import('../../../secrets/store');
+	const workspace = await loadWorkspaceSettings(dir);
+	const stored = await (await secretsStoreFor(workspace, stage)).read(stage);
+	return stored?.custom ?? {};
+}
 
 /** Whether the stage's secrets hold more than the server's address. */
 export async function stageGenerated(

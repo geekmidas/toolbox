@@ -90,8 +90,9 @@ export class AcmeDnsSecretsMissing extends GkmError {
 		readonly keys: readonly string[],
 	) {
 		super(
-			`'${stage}' has a wildcard site on ${domain}, whose certificate the ` +
-				`shared edge gets over the DNS challenge through ${provider}, and ` +
+			`'${stage}' has hosts on ${domain} — a wildcard site's, or sites behind ` +
+				`a CDN — whose certificates the shared edge gets over the DNS ` +
+				`challenge through ${provider}, and ` +
 				`its secrets lack ${keys.join(' and ')}. Set ${keys.length > 1 ? 'them' : 'it'}:\n` +
 				keys
 					.map((key) => `  gkm secrets:set ${key} '<value>' --stage ${stage}`)

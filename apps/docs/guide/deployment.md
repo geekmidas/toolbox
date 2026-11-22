@@ -540,6 +540,9 @@ that's the runner, never the server.
    create a token with **`Zone:Read` and `DNS:Edit`**, and under *Zone
    Resources* include only the zones your stages' hosts are under.
 2. Set `CLOUDFLARE_API_TOKEN`, or store it with `gkm login --provider cloudflare`.
+3. With Cloudflare's CDN in front of a stage ([`deploy.cdn`](./compose.md#a-cdn-in-front-of-the-sites)),
+   also give it **`SSL and Certificates:Edit`**. The deploy uses it to have
+   Cloudflare issue the origin certificate for the stage's site hosts.
 
 The domain's nameservers have to be Cloudflare's. The registration can stay
 where it is: at GoDaddy, say, you change only the nameservers.

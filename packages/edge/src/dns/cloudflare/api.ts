@@ -63,6 +63,17 @@ export interface CloudflareRecordInput {
 	priority?: number;
 }
 
+/** An origin certificate as the Origin CA returns it. */
+export interface CloudflareOriginCertificate {
+	/** Its serial number. */
+	id: string;
+	/** PEM. */
+	certificate: string;
+	hostnames: string[];
+	/** `2041-11-22 10:00:00 +0000 UTC` */
+	expires_on: string;
+}
+
 /** The v4 envelope. */
 interface Envelope<T> {
 	success: boolean;
@@ -89,10 +100,12 @@ export class CloudflarePermissionMissing extends EdgeError {
 	constructor(
 		readonly domain: string,
 		readonly detail?: string,
+		/** What the token needs for it: `Zone:Read and DNS:Edit`. */
+		readonly permission: string = DNS_PERMISSIONS,
 	) {
 		super(
-			`The Cloudflare token may not change ${domain}'s DNS` +
-				`${detail ? ` (${detail})` : ''}. Give it Zone:Read and DNS:Edit on ` +
+			`The Cloudflare token was refused on ${domain}` +
+				`${detail ? ` (${detail})` : ''}. Give it ${permission} on ` +
 				`${domain} (dash.cloudflare.com/profile/api-tokens → the token → Edit).`,
 		);
 		this.name = 'CloudflarePermissionMissing';
@@ -157,6 +170,12 @@ export class CloudflareRecordNotAllowed extends EdgeError {
 	}
 }
 
+/** What reading and writing a zone's records needs. */
+const DNS_PERMISSIONS = 'Zone:Read and DNS:Edit';
+
+/** What an origin certificate needs, beside finding the zone. */
+const ORIGIN_CA_PERMISSIONS = 'Zone:Read and SSL and Certificates:Edit';
+
 /** Cloudflare's authentication error codes: a bad or unusable token. */
 const AUTH_CODES = new Set([6003, 6111, 9106, 9109, 10000]);
 
@@ -188,6 +207,7 @@ export class CloudflareApi {
 		method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
 		path: string,
 		body?: unknown,
+		permission: string = DNS_PERMISSIONS,
 	): Promise<Envelope<T>> {
 		for (let attempt = 1; ; attempt++) {
 			const response = await fetch(`${this.baseUrl}${path}`, {
@@ -224,7 +244,7 @@ export class CloudflareApi {
 				throw new CloudflareCredentialsInvalid(detail);
 			}
 			if (response.status === 403) {
-				throw new CloudflarePermissionMissing(domain, detail);
+				throw new CloudflarePermissionMissing(domain, detail, permission);
 			}
 			throw new CloudflareRequestFailed(method, path, response.status, errors);
 		}
@@ -297,6 +317,38 @@ export class CloudflareApi {
 			'PATCH',
 			`/zones/${zone}/dns_records/${id}`,
 			record,
+		);
+		return result;
+	}
+
+	/**
+	 * An origin certificate from Cloudflare's Origin CA, for a CSR made where
+	 * the key is: trusted by Cloudflare's proxy alone, for `hostnames`, valid
+	 * `days` (one of 7, 30, 90, 365, 730, 1095, 5475). The token needs
+	 * `Zone → SSL and Certificates → Edit` on the zone.
+	 *
+	 * @param domain - the zone, for what an error says
+	 */
+	async createOriginCertificate(
+		domain: string,
+		request: {
+			csr: string;
+			hostnames: readonly string[];
+			days: number;
+			type: 'origin-rsa' | 'origin-ecc';
+		},
+	): Promise<CloudflareOriginCertificate> {
+		const { result } = await this.request<CloudflareOriginCertificate>(
+			domain,
+			'POST',
+			'/certificates',
+			{
+				csr: request.csr,
+				hostnames: [...request.hostnames],
+				requested_validity: request.days,
+				request_type: request.type,
+			},
+			ORIGIN_CA_PERMISSIONS,
 		);
 		return result;
 	}
