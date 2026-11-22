@@ -254,6 +254,33 @@ describe('envFor', () => {
 		expect(resolve('shop.example.com').MAIL_FROM).toBe('info@shop.example.com');
 	});
 
+	it('sends at the label of the stage’s domain the construct names', () => {
+		const named = {
+			...manifest,
+			Mail: { ...manifest.Mail, from: 'info', subdomain: 'mail' },
+		} as typeof manifest;
+		const resolve = (mailDomain?: string) =>
+			envFor(
+				planFor(named, 'development', provisionOrder(named), {
+					localStage: 'development',
+				}),
+				{
+					credentials: TEST_CREDENTIALS,
+					ports: portsFor('development'),
+					addresses: {
+						AuthApi: 'http://localhost:3000',
+						Console: 'http://localhost:5173',
+					},
+					...(mailDomain ? { mailDomain } : {}),
+				},
+			);
+
+		expect(resolve().MAIL_FROM).toBe('info@mail.localhost');
+		expect(resolve('shop.example.com').MAIL_FROM).toBe(
+			'info@mail.shop.example.com',
+		);
+	});
+
 	it('resolves the same keys whatever the stage', () => {
 		// Only the value differs; the key an app reads is fixed, which is what
 		// lets one construct serve both stages.
