@@ -1292,16 +1292,20 @@ program
 program
 	.command('deploy:github')
 	.description(
-		"Let GitHub Actions deploy a stage: OIDC role in the stage's AWS account, and the GitHub environment the deploy workflow uses",
+		"Let GitHub Actions deploy a stage: an OIDC role in the stage's AWS account, Workload Identity in its Google Cloud project when it uses Google, and the GitHub environment the deploy workflow uses",
 	)
 	.requiredOption('--stage <stage>', 'A deployed stage from gkm.config.ts')
 	.addOption(profileOption())
+	.option(
+		'--project <project>',
+		"The stage's Google Cloud project (default: the one its Google providers use)",
+	)
 	.option('--repo <owner/name>', 'GitHub repository (default: this one)')
 	.option(
 		'--policy-arn <arn>',
 		'Policy for the deploy role (default: AdministratorAccess)',
 	)
-	.option('--dry-run', 'Show the plan without changing AWS or GitHub')
+	.option('--dry-run', 'Show the plan without changing AWS, Google or GitHub')
 	.action(async (options) => {
 		try {
 			const globalOptions = program.opts();

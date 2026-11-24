@@ -100,3 +100,25 @@ export async function holdGoogleProject(
 	await state.pending(entry);
 	await state.ready(entry, input.project);
 }
+
+/**
+ * A deploy from CI found no project to work in. CI never creates one: its
+ * identity is granted roles in a project that already exists, by
+ * `gkm deploy:github`.
+ */
+export class GoogleProjectNotCreated extends GkmError {
+	constructor(
+		readonly stage: string,
+		readonly kind: ProviderKind,
+		readonly project: string,
+	) {
+		super(
+			`'${stage}' keeps its ${kind} in the Google Cloud project '${project}', ` +
+				"and it does not exist, or this deploy's account cannot see it. A " +
+				`deploy from CI never creates a project: run gkm deploy --stage ${stage} ` +
+				'once from a terminal, signed in as someone who can create one, then ' +
+				`gkm deploy:github --stage ${stage}.`,
+		);
+		this.name = 'GoogleProjectNotCreated';
+	}
+}

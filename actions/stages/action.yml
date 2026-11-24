@@ -63,6 +63,12 @@ outputs:
       The region of the workspace's AWS secrets store (ssm or
       secrets-manager), or '' when the stages keep their secrets elsewhere.
     value: ${{ steps.stages.outputs.aws-region }}
+  google:
+    description: >-
+      The deployed stages whose deploy signs in to Google Cloud — a Maps key or
+      a MobileApp on Google Play made by the deploy — as a JSON array. A job
+      runs google-github-actions/auth when its stage is in it.
+    value: ${{ steps.stages.outputs.google }}
   registry:
     description: >-
       The host to log in to for deploy.registry: ghcr.io, another registry's

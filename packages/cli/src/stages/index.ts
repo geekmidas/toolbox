@@ -16,6 +16,7 @@
 import { appendFile } from 'node:fs/promises';
 import { loadWorkspaceSettings } from '../config.js';
 import { GkmError } from '../errors';
+import { stageClouds } from '../providers/clouds.js';
 import { s3SecretsLocation } from '../secrets/providers.js';
 import type { NormalizedWorkspace, StagesConfig } from '../workspace/types.js';
 import { planStages } from './plan.js';
@@ -110,6 +111,11 @@ export function githubOutputs(
 		'has-build': String(plan.build.length > 0),
 		'has-deploy': String(plan.deploy.length > 0),
 		'aws-region': awsSecretsRegion(workspace),
+		// The stages whose deploy signs in to Google: a job runs
+		// google-github-actions/auth when its stage is among them.
+		google: JSON.stringify(
+			stages.deployed.filter((stage) => stageClouds(workspace, stage).google),
+		),
 		registry: registryHost(workspace),
 	};
 }

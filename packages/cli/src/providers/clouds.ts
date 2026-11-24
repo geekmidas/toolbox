@@ -16,7 +16,11 @@ import { awsSecretsRegion } from '../stages/index.js';
 import type { NormalizedWorkspace } from '../workspace/types.js';
 import { stageProvider } from './config.js';
 import { builtinProvider } from './registry.js';
-import { PROVIDER_KINDS, type ProviderCloud } from './types.js';
+import {
+	type GoogleCiGrant,
+	PROVIDER_KINDS,
+	type ProviderCloud,
+} from './types.js';
 
 export type StageClouds = Record<ProviderCloud, boolean>;
 
@@ -44,4 +48,33 @@ export function stageClouds(
 		clouds.aws = true;
 	}
 	return clouds;
+}
+
+/**
+ * Every role the stage's CI identity holds in Google Cloud: what each of the
+ * stage's Google providers says its deploy from CI needs. `gkm deploy:github`
+ * grants exactly these, so a provider that is removed takes its roles with it.
+ */
+export function stageGoogleGrants(
+	workspace: NormalizedWorkspace,
+	stage: string,
+	project?: string,
+): GoogleCiGrant[] {
+	if (stage === workspace.stages.local) return [];
+	const grants: GoogleCiGrant[] = [];
+	for (const kind of PROVIDER_KINDS) {
+		const choice = stageProvider(workspace as never, kind, stage);
+		if (choice.mode !== 'provider') continue;
+		const provider = builtinProvider(kind, choice.name);
+		if (provider?.cloud !== 'google' || !provider.ciGrants) continue;
+		grants.push(
+			...provider.ciGrants({
+				workspace,
+				stage,
+				config: choice.config,
+				...(project ? { project } : {}),
+			}),
+		);
+	}
+	return grants;
 }

@@ -47,6 +47,7 @@ jobs:
       has-deploy: \${{ steps.stages.outputs.has-deploy }}
       protected: \${{ steps.stages.outputs.protected }}
       aws-region: \${{ steps.stages.outputs.aws-region }}
+      google: \${{ steps.stages.outputs.google }}
       registry: \${{ steps.stages.outputs.registry }}
     steps:
       - uses: actions/checkout@v4
@@ -240,6 +241,17 @@ jobs:
           role-to-assume: \${{ vars.AWS_ROLE_ARN }}
           aws-region: \${{ needs.stages.outputs.aws-region }}
 
+      # A stage whose deploy works in Google Cloud signs in as its deploy
+      # account, through the Workload Identity provider gkm deploy:github set
+      # up (GCP_WORKLOAD_IDENTITY_PROVIDER and GCP_SERVICE_ACCOUNT on the
+      # environment). The credentials file it writes is what gkm reads.
+      - name: Sign in to Google Cloud
+        if: contains(fromJSON(needs.stages.outputs.google), matrix.stage)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: \${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: \${{ vars.GCP_SERVICE_ACCOUNT }}
+
       # The push run of this workflow that built the commit for this stage:
       # this run on a push, the newest one with the stage's digests otherwise.
       - name: Find the commit's push build
@@ -367,6 +379,7 @@ jobs:
       has-deploy: \${{ steps.stages.outputs.has-deploy }}
       protected: \${{ steps.stages.outputs.protected }}
       aws-region: \${{ steps.stages.outputs.aws-region }}
+      google: \${{ steps.stages.outputs.google }}
       registry: \${{ steps.stages.outputs.registry }}
     steps:
       - uses: actions/checkout@v4
@@ -406,6 +419,7 @@ jobs:
       cancel-in-progress: false
     permissions:
       contents: read
+      id-token: write
     steps:
       # The event's own commit — a release's tag, the push — or the ref a
       # manual run names.
@@ -437,6 +451,17 @@ jobs:
         env:
           KEY: \${{ secrets.GKM_SECRETS_KEY }}
           STAGE: \${{ matrix.stage }}
+
+      # A stage whose deploy works in Google Cloud signs in as its deploy
+      # account, through the Workload Identity provider gkm deploy:github set
+      # up (GCP_WORKLOAD_IDENTITY_PROVIDER and GCP_SERVICE_ACCOUNT on the
+      # environment). The credentials file it writes is what gkm reads.
+      - name: Sign in to Google Cloud
+        if: contains(fromJSON(needs.stages.outputs.google), matrix.stage)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: \${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: \${{ vars.GCP_SERVICE_ACCOUNT }}
 
       # Builds, releases and health-checks the stage through deploy.default
       # in gkm.config.ts, and fails the job if any of it fails.
@@ -493,6 +518,7 @@ jobs:
       has-deploy: \${{ steps.stages.outputs.has-deploy }}
       protected: \${{ steps.stages.outputs.protected }}
       aws-region: \${{ steps.stages.outputs.aws-region }}
+      google: \${{ steps.stages.outputs.google }}
       registry: \${{ steps.stages.outputs.registry }}
     steps:
       - uses: actions/checkout@v4
@@ -555,6 +581,17 @@ jobs:
         with:
           role-to-assume: \${{ vars.AWS_ROLE_ARN }}
           aws-region: af-south-1
+
+      # A stage whose deploy works in Google Cloud signs in as its deploy
+      # account, through the Workload Identity provider gkm deploy:github set
+      # up (GCP_WORKLOAD_IDENTITY_PROVIDER and GCP_SERVICE_ACCOUNT on the
+      # environment). The credentials file it writes is what gkm reads.
+      - name: Sign in to Google Cloud
+        if: contains(fromJSON(needs.stages.outputs.google), matrix.stage)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: \${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: \${{ vars.GCP_SERVICE_ACCOUNT }}
 
       # Builds, releases and health-checks the stage through deploy.default
       # in gkm.config.ts, and fails the job if any of it fails.

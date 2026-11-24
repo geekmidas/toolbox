@@ -18,7 +18,7 @@ import type {
 	StateEntry,
 } from '../../../types';
 import { GoogleApiError } from '../../client';
-import { GoogleProjectChanged } from '../../project';
+import { GoogleProjectChanged, GoogleProjectNotCreated } from '../../project';
 import type { GoogleCredential } from '../../provisioning';
 import {
 	checkGoogleMapsConfig,
@@ -241,6 +241,8 @@ function stage(options: {
 	rotateKeys?: boolean;
 	retireOldKeys?: boolean;
 	dryRun?: boolean;
+	/** Where the credential comes from: `file` is CI's. */
+	source?: 'file' | 'gcloud';
 }): Run {
 	const secrets = { ...(options.secrets ?? {}) };
 	const records = options.records ?? new Map<string, ResourceRecord>();
@@ -262,7 +264,7 @@ function stage(options: {
 		config: { provider: 'google', ...options.config },
 		credential: {
 			signIn: { token: async () => 'token' },
-			source: 'gcloud',
+			source: options.source ?? 'gcloud',
 			interactive: false,
 			...(options.flag ? { project: options.flag } : {}),
 		},
@@ -410,6 +412,16 @@ describe('the google provider for maps', () => {
 		await provider.ensure(run.ctx);
 
 		expect(google.projects.has(PROJECT)).toBe(true);
+	});
+
+	it('never creates the project from CI, and says what does', async () => {
+		google.projects = new Set();
+		const run = stage({ source: 'file' });
+
+		await expect(provider.ensure(run.ctx)).rejects.toThrow(
+			GoogleProjectNotCreated,
+		);
+		expect(google.projects.has(PROJECT)).toBe(false);
 	});
 
 	it('works in the project --project names', async () => {

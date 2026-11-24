@@ -179,6 +179,7 @@ release should also need approval:
 | Environment setting | Target | Value |
 |---|---|---|
 | variable `AWS_ROLE_ARN` | SST; compose with an AWS `secrets.store` | an IAM role that trusts GitHub's OIDC provider for this repo (`gkm deploy:github`) |
+| variables `GCP_WORKLOAD_IDENTITY_PROVIDER`, `GCP_SERVICE_ACCOUNT` | a stage whose deploy works in Google Cloud | Workload Identity that trusts this repo's environment (`gkm deploy:github`) |
 | the stage's secrets | SST | read from SSM in the stage's account by the deploy, with the role; written there by `gkm secrets:set … --stage <stage>` |
 | secret `DEPLOY_SSH_KEY`; variable `DEPLOY_KNOWN_HOSTS` | compose | the deploy user's key and the server's pinned host key: the deploy job drives the server's Docker over SSH (the user and host are `deploy.compose.server` and `GKM_SERVER_IPV4`) |
 | secret `GKM_SECRETS_KEY` | Dokploy | the stage's key, from `~/.gkm/keys/<namespace>/<project>/<stage>.key` — the encrypted file itself is under the gitignored `.gkm/`, so set `secrets.store` to a store CI can reach |

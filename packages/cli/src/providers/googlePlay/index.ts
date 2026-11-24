@@ -563,6 +563,26 @@ export function createGooglePlayProvider(
 		async verify(ctx: VerifyContext<GooglePlayConfig>) {
 			storeIdentities(ctx.manifest, ctx.stage);
 		},
+
+		// CI only checks: it lists the publishing account's keys, in the
+		// project it sends as the quota project. Granting in Play Console and
+		// making a key are a person's, from a terminal — never CI's.
+		ciGrants({ workspace, stage, config, project }) {
+			const where = googleProject({
+				flag: project,
+				configured: config.project ?? playId(workspace.name),
+				workspace: workspace.name,
+				stage,
+			});
+			return [
+				{ project: where, role: 'roles/serviceusage.serviceUsageConsumer' },
+				{
+					project: where,
+					role: 'roles/iam.serviceAccountViewer',
+					serviceAccount: serviceAccountEmail(where, playId(workspace.name)),
+				},
+			];
+		},
 	};
 }
 

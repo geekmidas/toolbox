@@ -1527,6 +1527,44 @@ Re-running on a compose stage puts the scoped policy and detaches
 keeps what is attached, and the output gives the `aws iam detach-role-policy`
 command to remove it.
 
+#### Google Cloud
+
+A stage whose deploy works in Google Cloud — a [`Maps`](./maps.md) on
+`google`, a [`MobileApp`](./mobile.md#google-play-set-up-by-the-deploy) on
+`google-play` — deploys from GitHub with no key stored anywhere, too.
+`gkm deploy:github` sees that from the stage's providers, with no flag, and
+sets up Workload Identity Federation in the stage's project (`--project`, else
+the one its Google providers use):
+
+| What | |
+|---|---|
+| APIs | IAM, IAM Credentials and STS, turned on |
+| pool `github` | one per project, shared by every repository that deploys into it |
+| provider `gh-<repo>-<hash>` | GitHub's issuer; the token's `sub` is the Google subject, and the attribute condition `assertion.repository == '<owner>/<name>'` admits this repository's tokens only |
+| service account `gkm-github-<stage>` | `roles/iam.workloadIdentityUser` for exactly the subject the AWS role trusts — the stage's environment, in the repository's format |
+| its roles | only what the stage's Google providers say a deploy from CI needs, below. A role it holds in the project that no provider needs any more is taken off |
+
+| The stage has | The account gets |
+|---|---|
+| `Maps` on `google` | `roles/serviceusage.serviceUsageAdmin` (turn on the declared APIs), `roles/serviceusage.apiKeysAdmin` (make, restrict and read its keys), `roles/browser` (read whether billing is linked) on the project |
+| a `MobileApp` on `google-play` | `roles/serviceusage.serviceUsageConsumer` on the project, and `roles/iam.serviceAccountViewer` on the publishing account alone — CI only checks that EAS's key is still live; granting in Play Console and making a key stay with a person, from a terminal |
+
+CI never creates a project: the first deploy runs from a terminal, signed in
+as someone who can create one, and `gkm deploy:github` after it. A deploy from
+CI that finds no project stops with `GoogleProjectNotCreated`.
+
+On GitHub it sets `GCP_WORKLOAD_IDENTITY_PROVIDER` and `GCP_SERVICE_ACCOUNT`
+on the stage's environment. The generated workflow's deploy job signs in with
+`google-github-actions/auth` when the stages job lists the stage under
+`google`, and the deploy reads the credentials file it writes. A stage that
+needs nothing of AWS and uses Google gets no AWS role, and no AWS credentials
+are asked for.
+
+```bash
+gkm deploy:github --stage prod --project acme-prod
+#   ✓ Google: gkm-github-prod@acme-prod.iam.gserviceaccount.com, through projects/…/providers/gh-acme-shop-3f9a1c
+```
+
 For **Dokploy**, set the environment's values with `gh`. The workflow writes
 `GKM_SECRETS_KEY` to the runner, but the encrypted file it decrypts is under
 the gitignored `.gkm/` — set `secrets.store` to a store CI can reach (SSM, Secrets
@@ -1543,6 +1581,7 @@ gh variable set DOKPLOY_ENDPOINT --env prod --body https://dokploy.example.com
 | Setting | Target | Set by |
 |---|---|---|
 | variable `AWS_ROLE_ARN` | SST; compose with an AWS `secrets.store` | `gkm deploy:github` |
+| variables `GCP_WORKLOAD_IDENTITY_PROVIDER`, `GCP_SERVICE_ACCOUNT` | a stage whose deploy works in Google Cloud (`Maps`, a `MobileApp` on Google Play) | `gkm deploy:github` |
 | secret `DEPLOY_SSH_KEY` | compose | the private key of the user `deploy.compose.server.<stage>` names, which the server accepts |
 | variable `DEPLOY_KNOWN_HOSTS` | compose | `ssh-keyscan <host>`, checked by hand — the host key is pinned, never accepted on first sight |
 | variable `REGISTRY_USERNAME`, secret `REGISTRY_PASSWORD` | compose, registry other than ghcr.io | your registry (ghcr.io uses the workflow's own token) |

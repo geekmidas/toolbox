@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { stageClouds } from '../clouds';
+import { stageClouds, stageGoogleGrants } from '../clouds';
 
 const workspace = (extra: Record<string, unknown> = {}) =>
 	({
+		name: 'shop',
 		stages: { local: 'development', deployed: ['prod'] },
 		deploy: {},
 		...extra,
@@ -65,5 +66,52 @@ describe('the clouds a stage needs credentials for', () => {
 				'development',
 			),
 		).toEqual({ aws: false, google: false });
+	});
+});
+
+describe("the roles a stage's CI identity holds in Google", () => {
+	it("is what each of the stage's Google providers needs, and no more", () => {
+		expect(
+			stageGoogleGrants(
+				workspace({
+					deploy: {
+						maps: { prod: { provider: 'google', project: 'shop-maps' } },
+						mobile: {
+							prod: { provider: 'google-play', developer: '5551234567' },
+						},
+					},
+				}),
+				'prod',
+			),
+		).toEqual([
+			{ project: 'shop-play', role: 'roles/serviceusage.serviceUsageConsumer' },
+			{
+				project: 'shop-play',
+				role: 'roles/iam.serviceAccountViewer',
+				serviceAccount: 'shop-play@shop-play.iam.gserviceaccount.com',
+			},
+			{ project: 'shop-maps', role: 'roles/serviceusage.serviceUsageAdmin' },
+			{ project: 'shop-maps', role: 'roles/serviceusage.apiKeysAdmin' },
+			{ project: 'shop-maps', role: 'roles/browser' },
+		]);
+	});
+
+	it('works in the project --project names', () => {
+		const projects = stageGoogleGrants(
+			workspace({ deploy: { maps: { prod: { provider: 'google' } } } }),
+			'prod',
+			'acme-maps',
+		).map((grant) => grant.project);
+
+		expect(new Set(projects)).toEqual(new Set(['acme-maps']));
+	});
+
+	it('is none for a stage that keeps nothing in Google', () => {
+		expect(
+			stageGoogleGrants(
+				workspace({ deploy: { objects: { prod: { provider: 's3' } } } }),
+				'prod',
+			),
+		).toEqual([]);
 	});
 });
