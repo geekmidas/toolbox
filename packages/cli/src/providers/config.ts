@@ -8,12 +8,13 @@
 
 import { GkmError } from '../errors';
 import {
-	checkGooglePlayConfig,
-	GOOGLE_PLAY_PROVISIONING,
-} from './googlePlay/config.js';
 	checkGoogleMapsConfig,
 	GOOGLE_MAPS_PROVISIONING,
 } from './google/maps/config.js';
+import {
+	checkGooglePlayConfig,
+	GOOGLE_PLAY_PROVISIONING,
+} from './googlePlay/config.js';
 import { checkS3Config, S3_PROVISIONING } from './s3/config.js';
 import {
 	checkSesConfig,

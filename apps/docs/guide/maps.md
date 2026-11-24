@@ -35,7 +35,11 @@ export const geocode = router
 
 // a site and a phone
 new Site('Web', { path: 'apps/web' }).dependsOn([api, maps]);
-new MobileApp('App', { path: 'apps/app' }).dependsOn([api, maps]);
+new MobileApp('App', {
+  path: 'apps/app',
+  android: { package: 'com.acme.shop' },
+  ios: { bundleIdentifier: 'com.acme.shop' },
+}).dependsOn([api, maps]);
 ```
 
 Nobody writes down who holds a key: it is read off the edges. Each caller is
@@ -102,12 +106,12 @@ The `google` provider, on every deploy:
    allowed — the key stays the same.
 
 **Android** keys are restricted by package *and* signing certificate. The
-package is the app's `android.package`, read from its Expo config; the
+package is the `MobileApp`'s `android.package`; the
 certificates are `android.sha1`: Play's app signing key from Play Console's
 *App integrity* page, and EAS's upload key. Without `sha1` the Android key is
 restricted to its APIs alone, and the deploy says so. **iOS** keys are
-restricted to `ios.bundleIdentifier`. A platform the Expo config does not name
-gets no key.
+restricted to the `MobileApp`'s `ios.bundleIdentifier`. A platform the
+`MobileApp` does not declare gets no key.
 
 **A browser key** needs a host to be restricted to: a site on a stage with no
 domain stops the deploy with `MapsSiteHasNoHost`, since a browser key

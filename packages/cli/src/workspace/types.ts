@@ -3,8 +3,8 @@ import type { ConstructManifest } from '@geekmidas/manifest';
 import type { StageCdnConfig } from '../compose/cdnConfig.js';
 import type { DnsRecordsMode } from '../compose/dnsConfig.js';
 import type { AwsRegion, StateConfig } from '../deploy/StateProvider.js';
-import type { GooglePlayConfig } from '../providers/googlePlay/config.js';
 import type { GoogleMapsConfig } from '../providers/google/maps/config.js';
+import type { GooglePlayConfig } from '../providers/googlePlay/config.js';
 import type {
 	SesEmailConfig,
 	SesInboxConfig,

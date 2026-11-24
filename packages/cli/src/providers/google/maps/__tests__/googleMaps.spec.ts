@@ -199,6 +199,8 @@ const everyCaller = {
 		id: 'App',
 		variant: 'expo',
 		app: { path: 'apps/app' },
+		android: { package: 'com.shop.app' },
+		ios: { bundleIdentifier: 'com.shop.app' },
 		dependencies: [edge],
 	},
 } as unknown as ConstructManifest;
@@ -288,10 +290,6 @@ function stage(options: {
 
 let clock = 1_800_000_000_000;
 const provider = createGoogleMapsProvider({
-	expoConfig: async () => ({
-		android: { package: 'com.shop.app' },
-		ios: { bundleIdentifier: 'com.shop.app' },
-	}),
 	now: () => clock++,
 	intervalMs: 0,
 });

@@ -28,16 +28,19 @@ describe('the clouds a stage needs credentials for', () => {
 	it.for([
 		[
 			'its mobile apps are set up on Google Play',
-			{ mobile: { prod: { provider: 'google-play', developer: '5551234567' } } },
+			{
+				mobile: { prod: { provider: 'google-play', developer: '5551234567' } },
+			},
 		],
-		["the stage's maps are made there", { maps: { prod: { provider: 'google' } } }],
+		[
+			"the stage's maps are made there",
+			{ maps: { prod: { provider: 'google' } } },
+		],
 	] as const)('is Google when %s', ([, deploy]) => {
-		expect(
-			stageClouds(
-				workspace({ deploy }),
-				'prod',
-			),
-		).toEqual({ aws: false, google: true });
+		expect(stageClouds(workspace({ deploy }), 'prod')).toEqual({
+			aws: false,
+			google: true,
+		});
 	});
 
 	it('is AWS when the secrets or the deploy state are kept there', () => {

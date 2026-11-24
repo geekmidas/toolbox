@@ -929,6 +929,7 @@ export function isWildcardSite(
  * It ships through its own toolchain (EAS, the stores), so the targets derive
  * for it and never run it. What the deploy does make is its store side — a
  * stage's `deploy.mobile` provider, from `android` and `eas` below.
+ * A `Maps` it calls restricts its keys to `android` and `ios`.
  */
 export interface MobileAppDeclaration extends PublicDeclaration {
 	kind: 'mobile-app';
@@ -953,6 +954,11 @@ export interface MobileAppDeclaration extends PublicDeclaration {
 	 * stage's `deploy.mobile` provider sets it up on Google Play by.
 	 */
 	android?: { package: string };
+	/**
+	 * How the App Store knows it: its bundle identifier — `com.acme.shop`.
+	 * What a `Maps` it calls restricts its iOS key to.
+	 */
+	ios?: { bundleIdentifier: string };
 	/**
 	 * Its EAS project — what `eas init` linked it to. Where the store
 	 * credentials EAS Submit uses are kept.

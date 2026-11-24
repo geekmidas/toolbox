@@ -4,8 +4,8 @@
  * one more entry here once there is a loading story for it.
  */
 
-import { googlePlayProvider } from './googlePlay/index.js';
 import { googleMapsProvider } from './google/maps/index.js';
+import { googlePlayProvider } from './googlePlay/index.js';
 import { s3Provider } from './s3/index.js';
 import { sesEmailProvider } from './ses/email.js';
 import { sesProvider } from './ses/index.js';

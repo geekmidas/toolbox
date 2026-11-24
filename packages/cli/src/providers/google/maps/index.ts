@@ -26,7 +26,6 @@
  * one, or at once with `--retire-old-keys` — as every other provider's keys.
  */
 
-import { join } from 'node:path';
 import {
 	type ConstructManifest,
 	kebabCase,
@@ -344,19 +343,7 @@ async function deleteKey(client: GoogleClient, name: string): Promise<void> {
 // The provider
 // ---------------------------------------------------------------------------
 
-/** What a mobile app's Expo config says of its identity on each platform. */
-export interface MobileIdentity {
-	android?: { package?: string };
-	ios?: { bundleIdentifier?: string };
-}
-
 export interface GoogleMapsDeps {
-	/** A mobile app's Expo config, evaluated with the stage's values. */
-	expoConfig(
-		dir: string,
-		root: string,
-		env: Readonly<Record<string, string>>,
-	): Promise<MobileIdentity>;
 	/** A key's id must be new each time it is made: a deleted id is held for 30 days. */
 	now(): number;
 	/** Between two looks at an operation. */
@@ -401,36 +388,27 @@ function referrers(ctx: Ctx, maps: string, sites: readonly string[]): string[] {
 	return [...allowed].sort();
 }
 
-/** Each calling mobile app's identity, from its Expo config. */
-async function mobileIdentities(
+/** Each calling mobile app's identity, as its `MobileApp` declares it. */
+function mobileIdentities(
 	ctx: Ctx,
-	deps: GoogleMapsDeps,
 	apps: readonly string[],
-): Promise<{ packages: string[]; bundleIds: string[] }> {
+): { packages: string[]; bundleIds: string[] } {
 	const packages = new Set<string>();
 	const bundleIds = new Set<string>();
 	for (const id of apps) {
 		const declaration = ctx.manifest[id];
 		if (declaration?.kind !== 'mobile-app') continue;
-		const config = await deps.expoConfig(
-			join(ctx.workspace.root, declaration.app.path),
-			ctx.workspace.root,
-			ctx.secrets,
-		);
-		if (config.android?.package) packages.add(config.android.package);
-		if (config.ios?.bundleIdentifier) {
-			bundleIds.add(config.ios.bundleIdentifier);
-		}
+		if (declaration.android) packages.add(declaration.android.package);
+		if (declaration.ios) bundleIds.add(declaration.ios.bundleIdentifier);
 	}
 	return { packages: [...packages].sort(), bundleIds: [...bundleIds].sort() };
 }
 
 /** What each key the construct needs is restricted to. Absent: no key. */
-async function restrictionsFor(
+function restrictionsFor(
 	ctx: Ctx,
-	deps: GoogleMapsDeps,
 	maps: MapsDeclaration,
-): Promise<Partial<Record<MapsRole, KeyRestrictions>>> {
+): Partial<Record<MapsRole, KeyRestrictions>> {
 	const callers = mapsCallers(ctx.manifest, maps.id);
 	const wanted: Partial<Record<MapsRole, KeyRestrictions>> = {};
 	const targets = (role: MapsRole) =>
@@ -454,7 +432,7 @@ async function restrictionsFor(
 		...new Set([...(callers.androidKey ?? []), ...(callers.iosKey ?? [])]),
 	];
 	if (mobile.length > 0) {
-		const { packages, bundleIds } = await mobileIdentities(ctx, deps, mobile);
+		const { packages, bundleIds } = mobileIdentities(ctx, mobile);
 		if (packages.length > 0) {
 			const sha1 = ctx.config.android?.sha1 ?? [];
 			if (sha1.length === 0) {
@@ -479,7 +457,7 @@ async function restrictionsFor(
 			};
 		} else {
 			ctx.log(
-				`   ${maps.id}: ${mobile.join(', ')} ${mobile.length === 1 ? 'has' : 'have'} no android.package in ${mobile.length === 1 ? 'its' : 'their'} Expo config — no Android key is made`,
+				`   ${maps.id}: ${mobile.join(', ')} ${mobile.length === 1 ? 'has' : 'have'} no android.package on ${mobile.length === 1 ? 'its' : 'their'} MobileApp — no Android key is made`,
 			);
 		}
 		if (bundleIds.length > 0) {
@@ -489,7 +467,7 @@ async function restrictionsFor(
 			};
 		} else {
 			ctx.log(
-				`   ${maps.id}: ${mobile.join(', ')} ${mobile.length === 1 ? 'has' : 'have'} no ios.bundleIdentifier in ${mobile.length === 1 ? 'its' : 'their'} Expo config — no iOS key is made`,
+				`   ${maps.id}: ${mobile.join(', ')} ${mobile.length === 1 ? 'has' : 'have'} no ios.bundleIdentifier on ${mobile.length === 1 ? 'its' : 'their'} MobileApp — no iOS key is made`,
 			);
 		}
 	}
@@ -754,7 +732,7 @@ export function createGoogleMapsProvider(
 			Partial<Record<MapsRole, KeyRestrictions>>
 		>();
 		for (const maps of constructs) {
-			wanted.set(maps.id, await restrictionsFor(ctx, deps, maps));
+			wanted.set(maps.id, restrictionsFor(ctx, maps));
 		}
 		const services = [
 			...new Set([
@@ -819,8 +797,8 @@ export function createGoogleMapsProvider(
 
 	async function verify(ctx: VerifyContext<GoogleMapsConfig>): Promise<void> {
 		for (const maps of mapsConstructs(ctx.manifest)) {
-			// A phone's key is made only for a platform the app's Expo config
-			// names, so one the state does not record is not missing.
+			// A phone's key is made only for a platform its MobileApp declares,
+			// so one the state does not record is not missing.
 			const made = (role: MapsRole) =>
 				(role !== 'androidKey' && role !== 'iosKey') ||
 				ctx.resources === undefined ||
@@ -856,9 +834,5 @@ export function createGoogleMapsProvider(
 }
 
 export const googleMapsProvider = createGoogleMapsProvider({
-	async expoConfig(dir, root, env) {
-		const { expoConfig } = await import('../../../mobile/googlePlay/index.js');
-		return (await expoConfig(dir, root, env)) as MobileIdentity;
-	},
 	now: () => Date.now(),
 });

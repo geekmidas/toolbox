@@ -47,6 +47,7 @@ export const DECLARATION_KINDS: {
 	inbox: 'inbox',
 	email: 'email',
 	mobile: 'mobile-app',
+	maps: 'maps',
 };
 
 /** The clouds a provider can provision in. */
