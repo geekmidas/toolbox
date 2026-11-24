@@ -83,7 +83,7 @@ export function stageProviderNotes(
 	stage: string,
 ): StageProviderNotes {
 	const notes: StageProviderNotes = {};
-	for (const kind of ['objects', 'email'] as const) {
+	for (const kind of ['objects', 'email', 'maps'] as const) {
 		if (stageProvider(workspace as never, kind, stage).mode === 'external') {
 			continue;
 		}

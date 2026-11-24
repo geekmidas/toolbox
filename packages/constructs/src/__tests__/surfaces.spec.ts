@@ -231,6 +231,25 @@ describe('MobileApp', () => {
 		).toMatchObject({ scheme: 'fit' });
 	});
 
+	it('declares how its stages ship, and its identity in the stores and EAS', () => {
+		expect(
+			new MobileApp('App', {
+				path: 'apps/app',
+				stages: {
+					beta: { environment: 'preview', android: { track: 'alpha' } },
+				},
+				android: { package: 'com.shop.app' },
+				ios: { bundleIdentifier: 'com.shop.app' },
+				eas: { projectId: 'b5c3c8f4-0000-4000-8000-000000000000' },
+			}).declare()[0],
+		).toMatchObject({
+			stages: { beta: { environment: 'preview', android: { track: 'alpha' } } },
+			android: { package: 'com.shop.app' },
+			ios: { bundleIdentifier: 'com.shop.app' },
+			eas: { projectId: 'b5c3c8f4-0000-4000-8000-000000000000' },
+		});
+	});
+
 	it('is a caller of what it depends on, like a site', () => {
 		const manifest = Object.fromEntries(
 			[...api.declare(), ...app.dependsOn([api]).declare()].map((d) => [

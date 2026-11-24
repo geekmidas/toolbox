@@ -128,6 +128,9 @@ const CONTAINERLESS: Partial<Record<DeclarationKind, true>> = {
 	// container — gkm serves it — and an image's container is added per API,
 	// since no kind-wide table can name it.
 	'external-api': true,
+	// Maps is called with keys a Google project issues, set by hand locally:
+	// there is nothing to run and nothing to derive.
+	maps: true,
 	// Telemetry is collected by OpenObserve, which runs only where a process
 	// uses the node — see `planFor`.
 	telemetry: true,

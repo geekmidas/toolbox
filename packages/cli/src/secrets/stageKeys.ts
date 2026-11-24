@@ -9,9 +9,15 @@
  * `workerEnvKeys`) and which of the keys the stage has set.
  */
 
-import { type ConstructManifest, providedKeyFor } from '@geekmidas/manifest';
+import {
+	type ConstructManifest,
+	MAPS_ROLES,
+	type MapsRole,
+	providedKeyFor,
+} from '@geekmidas/manifest';
 import {
 	type CredentialDeclaration,
+	type MapsKeyDeclaration,
 	requiredStageKeys,
 	type StageKey,
 	type StageProviderNotes,
@@ -19,6 +25,14 @@ import {
 } from '../deploy/devServices';
 import { appEnvKeys, workerEnvKeys } from '../reconcile/apps';
 import { appKey } from '../workspace/derive';
+
+/** Whose a Maps key is, for the line that names it. */
+const HOLDER: Record<MapsRole, string> = {
+	apiKey: 'server',
+	browserKey: 'browser',
+	androidKey: 'Android',
+	iosKey: 'iOS',
+};
 
 /** A stage key, and whether the stage's secrets hold it. */
 export interface WorkspaceStageKey extends StageKey {
@@ -82,6 +96,20 @@ export function workspaceStageKeys(
 		const apps = readers(id, kind);
 		if (apps.length > 0) credentials.push({ id, kind, apps });
 	}
+	// Each Maps key some process holds: which ones is the graph's
+	// (`mapsRolesFor`), already in each process's keys.
+	const maps: MapsKeyDeclaration[] = [];
+	for (const [id, declaration] of Object.entries(manifest)) {
+		if (declaration.kind !== 'maps') continue;
+		for (const role of MAPS_ROLES) {
+			const key = providedKeyFor(id, 'maps', role);
+			const apps = [...reads]
+				.filter(([, env]) => env.has(key))
+				.map(([app]) => app)
+				.sort();
+			if (apps.length > 0) maps.push({ id, key, holder: HOLDER[role], apps });
+		}
+	}
 	// Mail and storage: the list a deploy's readiness check refuses by.
 	const services = stageServiceDeclarations({
 		manifest,
@@ -91,6 +119,7 @@ export function workspaceStageKeys(
 		local: input.local,
 		services,
 		credentials,
+		maps,
 		...(input.domain ? { domain: input.domain } : {}),
 		...(input.providers ? { providers: input.providers } : {}),
 		...(input.server ? { server: true } : {}),

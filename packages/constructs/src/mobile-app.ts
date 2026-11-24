@@ -26,12 +26,15 @@
  * ship it, so the targets derive *for* it and never run it — but the deploy
  * sets up its store side: with `deploy.mobile.<stage>` on `google-play`,
  * `gkm deploy` makes what EAS Submit needs to publish it to Google Play, from
- * its `android.package`, its `eas.projectId` and each stage's track.
+ * its `android.package`, its `eas.projectId` and each stage's track. A
+ * `Maps` it calls restricts its keys to `android.package` and
+ * `ios.bundleIdentifier`.
  *
  * ```ts
  * export const app = new MobileApp('App', {
  *   path: 'apps/app',
  *   android: { package: 'com.acme.shop' },
+ *   ios: { bundleIdentifier: 'com.acme.shop' },
  *   eas: { projectId: '4f1c…' },
  * }).dependsOn([api, auth]);
  * ```
@@ -97,6 +100,12 @@ export interface MobileAppConfig {
 	 */
 	android?: { package: string };
 	/**
+	 * How the App Store knows it: its bundle identifier, `com.acme.shop` —
+	 * the same one its `app.config.ts` builds with. What a `Maps` it calls
+	 * restricts its iOS key to.
+	 */
+	ios?: { bundleIdentifier: string };
+	/**
 	 * Its EAS project, as `eas init` linked it (`extra.eas.projectId`):
 	 * where the key EAS Submit publishes with is kept.
 	 */
@@ -153,6 +162,7 @@ export class MobileApp<TName extends string = string>
 				...(this.config.scheme ? { scheme: this.config.scheme } : {}),
 				...(this.config.stages ? { stages: this.config.stages } : {}),
 				...(this.config.android ? { android: this.config.android } : {}),
+				...(this.config.ios ? { ios: this.config.ios } : {}),
 				...(this.config.eas ? { eas: this.config.eas } : {}),
 				dependencies: this.dependencies,
 				provides: [this.keys.scheme],

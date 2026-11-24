@@ -893,6 +893,10 @@ function urlFor(
 	// its fake (`envFor`).
 	if (resource.kind === 'credential') return undefined;
 
+	// Nor a Maps key: it is issued by Google, for one project, and comes from
+	// the stage's secrets like a credential.
+	if (resource.kind === 'maps') return undefined;
+
 	// An external API is the provider, at its URL for this stage — unless the
 	// plan was made with fakes (`gkm test`, `gkm dev --fake`), and then it is
 	// its fake, on the port its key was assigned.

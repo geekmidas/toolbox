@@ -8,6 +8,10 @@
 
 import { GkmError } from '../errors';
 import {
+	checkGoogleMapsConfig,
+	GOOGLE_MAPS_PROVISIONING,
+} from './google/maps/config.js';
+import {
 	checkGooglePlayConfig,
 	GOOGLE_PLAY_PROVISIONING,
 } from './googlePlay/config.js';
@@ -34,6 +38,7 @@ const CHECKS: {
 	inbox: { ses: checkSesConfig },
 	email: { ses: checkSesEmailConfig },
 	mobile: { 'google-play': checkGooglePlayConfig },
+	maps: { google: checkGoogleMapsConfig },
 };
 
 /** How each provider's provisioning credentials are supplied, by kind and name. */
@@ -46,6 +51,7 @@ const PROVISIONING: {
 	inbox: { ses: SES_PROVISIONING },
 	email: { ses: SES_PROVISIONING },
 	mobile: { 'google-play': GOOGLE_PLAY_PROVISIONING },
+	maps: { google: GOOGLE_MAPS_PROVISIONING },
 };
 
 /** How `name`'s provisioning credentials are supplied, for messages. */

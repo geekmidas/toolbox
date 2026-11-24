@@ -41,6 +41,8 @@ export type {
 	IdsOf,
 	IdsOfKind,
 	InboxDeclaration,
+	MapsApi,
+	MapsDeclaration,
 	MobileAppDeclaration,
 	MobileAppStage,
 	Node,
@@ -88,6 +90,7 @@ export {
 	imageOrigins,
 	imageOriginsFor,
 	isDerived,
+	mapsCallers,
 	PUBLIC_PREFIX,
 	PUBLIC_STAGE_KEYS,
 	type PublicValue,
@@ -140,6 +143,12 @@ export {
 	inboxRecipient,
 	receiptRecipients,
 } from './inbox';
+export {
+	MAPS_ROLES,
+	type MapsRole,
+	mapsKeysFor,
+	mapsRolesFor,
+} from './maps';
 export {
 	DATABASE_FOLDERS,
 	databaseFolder,

@@ -277,6 +277,33 @@ export interface InboxDeclaration extends Node {
 }
 
 /**
+ * The Maps APIs a `Maps` construct calls: `maps` is the map itself, in a page
+ * or a phone; the others are its web services.
+ */
+export type MapsApi =
+	| 'maps'
+	| 'static-maps'
+	| 'places'
+	| 'geocoding'
+	| 'routes';
+
+/**
+ * Maps — tiles, places, geocoding, routes — called with API keys.
+ *
+ * The APIs are structural: which ones the app calls is a fact about its code.
+ * Who holds a key is read off the graph, never written down: each kind of
+ * caller gets its own key, restricted to these APIs and to what it is — a
+ * server process a server key, the stage's sites one restricted to their
+ * hosts, a mobile app one per platform restricted to its package and bundle
+ * id (`mapsRolesFor`). A key a browser holds is never one a phone or a server
+ * holds.
+ */
+export interface MapsDeclaration extends Node {
+	kind: 'maps';
+	apis: readonly MapsApi[];
+}
+
+/**
  * A logical database, its schema, and the roles that reach it.
  *
  * Provides one key — the *runtime* role's URL. The owner URL exists but is
@@ -902,6 +929,7 @@ export function isWildcardSite(
  * It ships through its own toolchain (EAS, the stores), so the targets derive
  * for it and never run it. What the deploy does make is its store side — a
  * stage's `deploy.mobile` provider, from `android` and `eas` below.
+ * A `Maps` it calls restricts its keys to `android` and `ios`.
  */
 export interface MobileAppDeclaration extends PublicDeclaration {
 	kind: 'mobile-app';
@@ -926,6 +954,11 @@ export interface MobileAppDeclaration extends PublicDeclaration {
 	 * stage's `deploy.mobile` provider sets it up on Google Play by.
 	 */
 	android?: { package: string };
+	/**
+	 * How the App Store knows it: its bundle identifier — `com.acme.shop`.
+	 * What a `Maps` it calls restricts its iOS key to.
+	 */
+	ios?: { bundleIdentifier: string };
 	/**
 	 * Its EAS project — what `eas init` linked it to. Where the store
 	 * credentials EAS Submit uses are kept.
@@ -1144,7 +1177,8 @@ export type Declaration =
 	| TopicDeclaration
 	| FunctionDeclaration
 	| CronDeclaration
-	| TelemetryDeclaration;
+	| TelemetryDeclaration
+	| MapsDeclaration;
 
 /** A declaration that provisions nothing of its own and names a parent. */
 /**
@@ -1368,6 +1402,18 @@ export interface ProvidesByKind {
 		trustedOrigins: string;
 		publisherConnectionString: string;
 	};
+	/**
+	 * One key per kind of caller, each restricted to it: a server process's
+	 * (`apiKey`), the stage's sites' (`browserKey`, by referrer), a mobile
+	 * app's on Android and on iOS. Only the roles its callers need are
+	 * created, and each caller is handed only its own (`mapsRolesFor`).
+	 */
+	maps: {
+		apiKey: string;
+		browserKey: string;
+		androidKey: string;
+		iosKey: string;
+	};
 	/** The value itself. A secret has no address to hand out instead. */
 	secret: { value: string };
 	/**
@@ -1459,6 +1505,10 @@ export const PUBLIC: {
 	// Carries its token, and a cache a browser can write is a cache it can
 	// poison.
 	cache: [],
+	// A key a page or a phone calls Maps with is in its bundle by design, and
+	// restricted to the sites' hosts or the app's package instead. The
+	// server's key is not: nothing but its APIs restricts it.
+	maps: ['browserKey', 'androidKey', 'iosKey'],
 	// The whole point of one.
 	secret: [],
 	// A credential a browser can read is a credential anyone can read. A

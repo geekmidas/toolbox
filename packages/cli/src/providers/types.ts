@@ -29,7 +29,13 @@ import type { BoundSubscriber } from '../reconcile/discover.js';
 import type { NormalizedWorkspace } from '../workspace/types.js';
 
 /** The manifest kinds a stage can name a provider for. */
-export const PROVIDER_KINDS = ['objects', 'inbox', 'email', 'mobile'] as const;
+export const PROVIDER_KINDS = [
+	'objects',
+	'inbox',
+	'email',
+	'mobile',
+	'maps',
+] as const;
 
 export type ProviderKind = (typeof PROVIDER_KINDS)[number];
 
@@ -41,6 +47,7 @@ export const DECLARATION_KINDS: {
 	inbox: 'inbox',
 	email: 'email',
 	mobile: 'mobile-app',
+	maps: 'maps',
 };
 
 /** The clouds a provider can provision in. */
