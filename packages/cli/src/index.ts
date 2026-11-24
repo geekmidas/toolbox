@@ -1166,6 +1166,58 @@ program
 		},
 	);
 
+// Provision — a stage's providers, without a deploy. `deploy` runs the same
+// step first.
+program
+	.command('provision')
+	.description(
+		"Create what a stage's providers back — buckets, mail, store access, Maps keys — and write their keys into its secrets, without building or releasing. The local stage provisions only what has no local stand-in",
+	)
+	.requiredOption('--stage <stage>', 'A deployed stage, or the local one')
+	.option(
+		'--json',
+		'Write events as JSON lines instead of progress; never prompts',
+	)
+	.option('--dry-run', 'Show what would be created or changed; change nothing')
+	.option(
+		'--rotate-keys',
+		'Each provider issues its runtime keys a successor (the old one is deleted by the next run)',
+	)
+	.option(
+		'--retire-old-keys',
+		'Delete a rotated-out key now instead of on the next run',
+	)
+	.addOption(profileOption())
+	.option(
+		'--project <project>',
+		"Google Cloud project for the stage's Google providers (default: deploy.<kind>.<stage>.project, else <workspace>-<stage>)",
+	)
+	.action(
+		async (options: {
+			stage: string;
+			json?: boolean;
+			dryRun?: boolean;
+			rotateKeys?: boolean;
+			retireOldKeys?: boolean;
+			profile?: string;
+			project?: string;
+		}) => {
+			const { provisionCli } = await import('./deploy/provisionCli');
+			const globalOptions = program.opts();
+			const code = await provisionCli({
+				cwd: resolve(globalOptions.cwd ?? process.cwd()),
+				stage: options.stage,
+				...(options.json ? { json: true } : {}),
+				...(options.dryRun ? { dryRun: true } : {}),
+				...(options.rotateKeys ? { rotateKeys: true } : {}),
+				...(options.retireOldKeys ? { retireOldKeys: true } : {}),
+				...(options.profile ? { profile: options.profile } : {}),
+				...(options.project ? { project: options.project } : {}),
+			});
+			if (code !== 0) process.exit(code);
+		},
+	);
+
 // Rollback — a stage's apps back on the release before the one they run.
 program
 	.command('deploy:rollback')

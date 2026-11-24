@@ -53,8 +53,10 @@ the same `deploy.<kind>.<stage>` shape when its provider arrives.
 | `false` | The stage has no object storage. A deploy of a workspace that declares a bucket is refused with `StageProviderDisabled`. |
 
 Anything else — `'minio'` included — fails to load with `UnknownStageProvider`,
-which lists what is accepted. The local stage ignores `deploy.objects`: `gkm
-dev` and `gkm compose` on it always run MinIO.
+which lists what is accepted. The local stage takes no `deploy.objects`:
+`gkm dev` and `gkm compose` on it always run MinIO, and naming a provider for
+it fails to load with `ProviderNotForLocalStage` (see
+[The local stage](#the-local-stage)).
 
 - `region` — where the buckets are created. Defaults to the secrets store's
   region (`secrets.store.region`), then `AWS_REGION`.
@@ -478,7 +480,33 @@ the provider accounts for it.
 
 A deployed stage's resources are created by its deploy, every run, so a stage
 is never one step behind its code: a new bucket or a new app's host exists by
-the time the release that needs it starts. `gkm setup` is a one-time local
-step — the local stage's secrets and containers on this machine — and
-`gkm setup --stage <deployed>` fails with `SetupIsLocal`, pointing at
-`gkm deploy --stage <stage>`.
+the time the release that needs it starts.
+
+`gkm provision --stage <stage>` is that first step on its own: every
+provider's `ensure()`, the records they ask for and the keys they write, then
+their `verify()` — nothing built, pushed or released. `gkm deploy` runs the
+same step before it builds, so the two never drift. Use it before a stage's
+first deploy, after a change to a provider's config, or to rotate keys
+(`--rotate-keys`) without shipping code. It takes the stage's lock as a deploy
+does; `--dry-run` takes none and writes nothing.
+
+**`provision` and `deploy` create resources; `gkm setup` never does.** Setup
+is a one-time local step — the local stage's secrets and containers on this
+machine — and `gkm setup --stage <deployed>` fails with `SetupIsLocal`,
+pointing at `gkm deploy --stage <stage>`.
+
+## The local stage
+
+Each provider kind says, in one place (`LOCAL_PROVIDER_RULES`), what it is on
+the local stage:
+
+| Kind | Locally | `deploy.<kind>.<local>` |
+|---|---|---|
+| `objects` | MinIO, from the construct plan | refused: `ProviderNotForLocalStage` |
+| `email`, `inbox` | Mailpit, from the construct plan | refused: `ProviderNotForLocalStage` |
+| `mobile` | nothing: a store listing belongs to a deployed stage | refused: `ProviderNotForLocalStage` |
+| `maps` | no emulator | allowed: `gkm provision --stage <local>` creates its keys |
+
+A provider that runs for the local stage reads the local stage's facts: a
+site's host is its name on the local edge (`*.localhost`), the same answer
+`gkm dev` gives it, and the stage's state is this machine's.

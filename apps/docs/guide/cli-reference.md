@@ -401,7 +401,7 @@ win. The flag takes no value (`AllowDevServicesTakesNoValue`); on `sst` it
 fails with `DevServicesNeedServerTarget`.
 
 A deployed stage's **resources** are created by the deploy, every run, before
-its checks: each provider's buckets and keys ([Providers](./providers.md)),
+its checks — the step `gkm provision` runs on its own: each provider's buckets and keys ([Providers](./providers.md)),
 and, on compose with a `dns` provider for the stage's domain, one record per
 public host, read back from the provider ([Compose: DNS](./compose.md#dns)).
 `--dry-run` prints both plans and writes nothing.
@@ -410,6 +410,35 @@ See [Deploy targets](./deploy-targets.md) for targets and `deploy.targets`,
 [Deploying from a program](./deploy-api.md) for `deploy()` and the events
 `--json` writes, and [Deprecated deploy APIs](./deploy-deprecations.md) for
 when `--provider` and the ignored flags go.
+
+### `gkm provision`
+
+Create what a stage's providers back — buckets, mail identities, store access,
+Maps keys — and write their keys into the stage's secrets, without building or
+releasing anything. The first step of every `gkm deploy`, on its own.
+
+```bash
+gkm provision --stage <stage> [options]
+
+Options:
+  --stage <name>         A deployed stage, or the local one (required)
+  --json                 Write events as JSON lines on stdout; never prompts
+  --dry-run              Show what would be created or changed; change nothing
+  --rotate-keys          Each provider issues its keys a successor; the next
+                         run deletes the old key
+  --retire-old-keys      Delete a rotated-out key now
+  --profile <profile>    AWS profile for the stage's account
+  --project <project>    The Google Cloud project for the stage's Google
+                         providers (default: deploy.<kind>.<stage>.project,
+                         else <workspace>-<stage>)
+```
+
+It runs each provider's `ensure()`, then its `verify()`, holding the stage's
+lock as a deploy does (a dry run takes none). The local stage provisions only
+the kinds with no local stand-in — today `maps`; MinIO and Mailpit serve the
+rest, and `deploy.<kind>.<local>` for them is refused when the config loads.
+See [Providers](./providers.md#the-local-stage). Exit code 0 when the run
+finished, 1 when anything stopped it.
 
 ### `gkm deploy:rollback`
 

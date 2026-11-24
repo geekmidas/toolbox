@@ -35,13 +35,9 @@ import {
 	mapsCallers,
 	providedKeyFor,
 } from '@geekmidas/manifest';
+import { appHostOn } from '../../../compose/stack.js';
 import { GkmError } from '../../../errors';
-import {
-	isMainFrontendApp,
-	NoDomainForStage,
-	resolveHost,
-} from '../../../target/dokploy/domain.js';
-import { appKey } from '../../../workspace/derive.js';
+import { NoDomainForStage } from '../../../target/dokploy/domain.js';
 import type {
 	EnsureContext,
 	ResourceProvider,
@@ -361,26 +357,18 @@ export function keyEntryKey(maps: string, role: MapsRole): string {
 	return `maps-key:${maps}:${ROLE_LABEL[role]}`;
 }
 
-/** The referrers a browser key allows: each calling site's host, on the stage. */
+/**
+ * The referrers a browser key allows: each calling site's host on the stage,
+ * as the stack answers it (`appHostOn`) — the local edge's name locally.
+ */
 function referrers(ctx: Ctx, maps: string, sites: readonly string[]): string[] {
 	const allowed = new Set<string>();
 	const unresolved: string[] = [];
 	for (const id of sites) {
-		const name = appKey(id);
-		const app = ctx.workspace.apps[name];
-		if (!app) {
-			unresolved.push(id);
-			continue;
-		}
 		try {
-			const host = resolveHost(
-				name,
-				app,
-				ctx.stage,
-				ctx.workspace.domains,
-				isMainFrontendApp(name, app, ctx.workspace.apps),
-			);
-			allowed.add(`https://${host}/*`);
+			const host = appHostOn(ctx.workspace, ctx.manifest, ctx.stage, id);
+			if (host) allowed.add(`https://${host}/*`);
+			else unresolved.push(id);
 		} catch (error) {
 			if (!(error instanceof NoDomainForStage)) throw error;
 			unresolved.push(id);

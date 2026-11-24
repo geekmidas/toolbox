@@ -2620,6 +2620,32 @@ function stackWorkers(
 }
 
 /**
+ * Where the construct `id`'s app answers on `stage` — the host its
+ * `<ID>_URL` is built on, the stack's own answer: the local edge's
+ * `*.localhost` name for the local stage, the stage's domain for any other.
+ * What a provider asks when it restricts something to an app's host.
+ *
+ * @throws {NoDomainForStage} for a deployed stage with no domain for it
+ */
+export function appHostOn(
+	workspace: NormalizedWorkspace,
+	manifest: ConstructManifest,
+	stage: string,
+	id: string,
+): string | undefined {
+	const name = appKey(id);
+	const app = workspace.apps[name];
+	const resource = stackPlan(workspace, manifest, stage).resources.find(
+		(r) => r.id === id,
+	);
+	if (!app || !resource) return undefined;
+	return appHosts(name, app, workspace, resource, {
+		local: stage === workspace.stages.local,
+		stage,
+	}).host;
+}
+
+/**
  * The hosts an app answers on for a stage: the `gkm dev` edge's
  * `*.localhost` names for the local stage (`hostsFor`), and the stage's
  * domain — by the same rule a deploy follows — for any other. Its aliases

@@ -50,6 +50,36 @@ export const DECLARATION_KINDS: {
 	maps: 'maps',
 };
 
+/**
+ * What a kind is on the local stage — the one place that says it.
+ *
+ * - `stand-in`: the construct plan runs a container for it locally (MinIO
+ *   for buckets, Mailpit for mail), so there is nothing to provision and
+ *   naming a provider for the local stage is a config error.
+ * - `none`: it means nothing off a deployed stage (a store listing), so
+ *   naming one for the local stage is a config error too.
+ * - `provisioned`: there is no local stand-in, so the local stage may name a
+ *   provider and `gkm provision --stage <local>` creates what it backs.
+ */
+export type LocalProviderRule =
+	| { mode: 'stand-in'; by: string }
+	| { mode: 'none'; why: string }
+	| { mode: 'provisioned' };
+
+/** Each kind's {@link LocalProviderRule}. */
+export const LOCAL_PROVIDER_RULES: {
+	readonly [K in ProviderKind]: LocalProviderRule;
+} = {
+	objects: { mode: 'stand-in', by: 'MinIO' },
+	inbox: { mode: 'stand-in', by: 'Mailpit' },
+	email: { mode: 'stand-in', by: 'Mailpit' },
+	mobile: {
+		mode: 'none',
+		why: 'a store listing belongs to a deployed stage',
+	},
+	maps: { mode: 'provisioned' },
+};
+
 /** The clouds a provider can provision in. */
 export type ProviderCloud = 'aws' | 'google';
 
