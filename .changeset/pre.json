@@ -214,6 +214,7 @@
     "logger-otel-bridge",
     "logger-url-credentials",
     "maps-construct",
+    "maps-key-per-caller",
     "memory-adapter-conformance",
     "minio-image",
     "minio-object-events",
