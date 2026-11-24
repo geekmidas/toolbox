@@ -8,7 +8,13 @@ import {
 import { delimiter, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanupDir, createTempDir } from '../../../__tests__/test-helpers';
-import { GoogleSignInRequired, gcloudConfig, gcloudSignIn } from '../google';
+import {
+	ANDROID_PUBLISHER_SCOPE,
+	CLOUD_PLATFORM_SCOPE,
+	GoogleSignInRequired,
+	gcloudConfig,
+	gcloudSignIn,
+} from '../gcloud';
 
 /**
  * Signing in through gcloud: a stand-in `gcloud` on PATH that records how it
@@ -45,18 +51,52 @@ afterEach(async () => {
 	await cleanupDir(dir);
 });
 
+function runs(): string[] {
+	return readFileSync(log, 'utf8').trim().split('\n');
+}
+
 describe("gcloud's sign-in, in gkm's own config", () => {
-	it('signs in with both scopes when asked, then answers the token', async () => {
+	it('signs in with the scopes asked for, then answers the token', async () => {
 		const config = gcloudConfig();
 
 		const token = await gcloudSignIn(config).token({ interactive: true });
 
 		expect(token).toBe('ya29.person');
 		expect(config).toBe(join(dir, '.gkm', 'gcloud'));
-		const runs = readFileSync(log, 'utf8').trim().split('\n');
-		expect(runs).toEqual([
+		expect(runs()).toEqual([
 			`${config} auth application-default print-access-token`,
-			`${config} auth application-default login --scopes=https://www.googleapis.com/auth/cloud-platform,https://www.googleapis.com/auth/androidpublisher`,
+			`${config} auth application-default login --scopes=${CLOUD_PLATFORM_SCOPE}`,
+			`${config} auth application-default print-access-token`,
+		]);
+	});
+
+	it('signs in again, for every scope so far, when one is missing', async () => {
+		const config = gcloudConfig();
+		const signIn = gcloudSignIn(config);
+		await signIn.token({ interactive: true });
+
+		await signIn.token({
+			interactive: true,
+			scopes: [CLOUD_PLATFORM_SCOPE, ANDROID_PUBLISHER_SCOPE],
+		});
+
+		expect(runs().slice(3)).toEqual([
+			`${config} auth application-default login --scopes=${CLOUD_PLATFORM_SCOPE},${ANDROID_PUBLISHER_SCOPE}`,
+			`${config} auth application-default print-access-token`,
+		]);
+	});
+
+	it('reuses a sign-in that already has the scopes', async () => {
+		const config = gcloudConfig();
+		const signIn = gcloudSignIn(config);
+		await signIn.token({
+			interactive: true,
+			scopes: [CLOUD_PLATFORM_SCOPE, ANDROID_PUBLISHER_SCOPE],
+		});
+
+		await signIn.token({ interactive: false });
+
+		expect(runs().slice(3)).toEqual([
 			`${config} auth application-default print-access-token`,
 		]);
 	});

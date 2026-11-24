@@ -759,6 +759,10 @@ program
 		'Deployed stage: delete a rotated-out key now instead of on the next deploy',
 	)
 	.addOption(profileOption())
+	.option(
+		'--project <project>',
+		"Google Cloud project for the stage's Google providers (default: deploy.<kind>.<stage>.project, else <workspace>-<stage>)",
+	)
 	.action(async (options: ComposeOptions) => {
 		try {
 			const globalOptions = program.opts();
@@ -1161,6 +1165,10 @@ program
 		'Deployed stage: delete a rotated-out key now instead of on the next deploy',
 	)
 	.addOption(profileOption())
+	.option(
+		'--project <project>',
+		"Google Cloud project for the stage's Google providers (default: deploy.<kind>.<stage>.project, else <workspace>-<stage>)",
+	)
 	.action(
 		async (options: {
 			target?: string;
@@ -1175,6 +1183,7 @@ program
 			rotateKeys?: boolean;
 			retireOldKeys?: boolean;
 			profile?: string;
+			project?: string;
 		}) => {
 			const { deployCli } = await import('./deploy/cli');
 			const globalOptions = program.opts();
@@ -1194,6 +1203,7 @@ program
 				...(options.rotateKeys ? { rotateKeys: true } : {}),
 				...(options.retireOldKeys ? { retireOldKeys: true } : {}),
 				...(options.profile ? { profile: options.profile } : {}),
+				...(options.project ? { project: options.project } : {}),
 			});
 			if (code !== 0) process.exit(code);
 		},
@@ -1284,16 +1294,22 @@ program
 		'--endpoint <url>',
 		'Dokploy server URL (uses stored credentials if logged in)',
 	)
-	.requiredOption('--project <name>', 'Project name (creates if not exists)')
+	.requiredOption(
+		'--dokploy-project <name>',
+		'Dokploy project name (creates if not exists)',
+	)
 	.requiredOption('--app <name>', 'Application name')
-	.option('--project-id <id>', 'Use existing project ID instead of creating')
+	.option(
+		'--dokploy-project-id <id>',
+		'Use an existing Dokploy project ID instead of creating',
+	)
 	.option('--registry-id <id>', 'Configure registry for the application')
 	.action(
 		async (options: {
 			endpoint?: string;
-			project: string;
+			dokployProject: string;
 			app: string;
-			projectId?: string;
+			dokployProjectId?: string;
 			registryId?: string;
 		}) => {
 			try {
@@ -1304,9 +1320,9 @@ program
 
 				await deployInitCommand({
 					endpoint: options.endpoint,
-					projectName: options.project,
+					projectName: options.dokployProject,
 					appName: options.app,
-					projectId: options.projectId,
+					projectId: options.dokployProjectId,
 					registryId: options.registryId,
 				});
 			} catch (error) {

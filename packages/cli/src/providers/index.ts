@@ -38,6 +38,7 @@ import { type ProviderDnsWritten, writeProviderDns } from './dnsWriter.js';
 import { builtinProvider } from './registry.js';
 import {
 	PROVIDER_KINDS,
+	type ProviderCloud,
 	type ProviderKind,
 	type ProvisionAction,
 	type ProvisionState,
@@ -133,6 +134,8 @@ export interface ProvisionOptions {
 	retireOldKeys?: boolean;
 	/** The AWS profile for the stage's account. */
 	profile?: string;
+	/** `--project`: the Google Cloud project for the stage's Google providers. */
+	project?: string;
 	/** The CLI's home. */
 	home?: string;
 	env?: NodeJS.ProcessEnv;
@@ -183,6 +186,8 @@ export class ProviderCredentialsMissing extends GkmError {
 		readonly describe: string,
 		/** A `gkm login --provider` name, where it has one. */
 		readonly login?: string,
+		/** The cloud it provisions in: what CI has to sign in to. */
+		readonly cloud: ProviderCloud = 'aws',
 	) {
 		super(
 			`deploy.${kind}.${stage} is ${provider}, so the deploy creates what ` +
@@ -191,9 +196,14 @@ export class ProviderCredentialsMissing extends GkmError {
 				`into the stage's secrets — and it found no ${provider} credentials ` +
 				`to do it with. On this machine, supply ${describe}` +
 				(login ? `, or run gkm login --provider ${login}` : '') +
-				'. In CI, the step that runs the deploy needs them: the ' +
-				`'${stage}' environment's role ` +
-				'(AWS_ROLE_ARN, from gkm deploy:github), assumed before that step. ' +
+				'. In CI, the step that runs the deploy needs them: ' +
+				(cloud === 'google'
+					? `the '${stage}' environment's Workload Identity provider ` +
+						'(GCP_WORKLOAD_IDENTITY_PROVIDER and GCP_SERVICE_ACCOUNT, from ' +
+						'gkm deploy:github), signed in to with google-github-actions/auth ' +
+						'before that step. '
+					: `the '${stage}' environment's role ` +
+						'(AWS_ROLE_ARN, from gkm deploy:github), assumed before that step. ') +
 				`With the keys set by hand instead, set deploy.${kind}.${stage} to 'external'.`,
 		);
 		this.name = 'ProviderCredentialsMissing';
@@ -252,6 +262,7 @@ export async function provisionStage(
 			stage,
 			env,
 			...(options.profile ? { profile: options.profile } : {}),
+			...(options.project ? { project: options.project } : {}),
 			...(options.home ? { home: options.home } : {}),
 		});
 		// With nothing of the kind declared, a provider still runs where it
@@ -268,6 +279,7 @@ export async function provisionStage(
 				provider.provisioning.env,
 				provider.provisioning.describe,
 				provider.provisioning.login,
+				provider.cloud,
 			);
 		}
 		configured.push({

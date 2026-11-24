@@ -343,6 +343,7 @@ export const sesEmailProvider: ResourceProvider<
 	AwsProvisioning
 > = {
 	kind: 'email',
+	cloud: 'aws',
 	name: 'ses',
 	check: checkSesEmailConfig,
 	provisioning: SES_PROVISIONING,

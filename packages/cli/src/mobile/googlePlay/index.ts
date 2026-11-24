@@ -31,26 +31,29 @@ import { loadWorkspaceConfig } from '../../config.js';
 import { GkmError } from '../../errors';
 import { loadStage } from '../../exec/stage.js';
 import { canPrompt } from '../../prompt.js';
-import { chooseMobileApp, withStageProfiles } from '../eas.js';
-import { mobileStage } from '../stage.js';
-import { type EasApi, easApi } from './easApi.js';
+import {
+	type GoogleClient,
+	googleClient,
+} from '../../providers/google/client.js';
+import {
+	ANDROID_PUBLISHER_SCOPE,
+	CLOUD_PLATFORM_SCOPE,
+	type GoogleSignIn,
+} from '../../providers/google/gcloud.js';
 import {
 	assertGoogleId,
 	createKey,
 	deleteKey,
-	enablePublisherApi,
 	ensureProject,
 	ensureServiceAccount,
 	keyId,
 	listKeys,
-	playId,
-} from './gcp.js';
-import {
-	type GoogleClient,
-	type GoogleSignIn,
-	gcloudSignIn,
-	googleClient,
-} from './google.js';
+} from '../../providers/google/resources.js';
+import { googleSignIn } from '../../providers/google/signIn.js';
+import { chooseMobileApp, withStageProfiles } from '../eas.js';
+import { mobileStage } from '../stage.js';
+import { type EasApi, easApi } from './easApi.js';
+import { enablePublisherApi, playId } from './gcp.js';
 import {
 	ensurePlayAccess,
 	PLAY_CONSOLE_CHECKLIST,
@@ -184,8 +187,11 @@ export function expoConfig(
 	});
 }
 
+/** What the Play setup's sign-in carries: Cloud, and Play's own API. */
+const PLAY_SCOPES = [CLOUD_PLATFORM_SCOPE, ANDROID_PUBLISHER_SCOPE];
+
 export const defaultGooglePlayDeps: GooglePlayDeps = {
-	signIn: gcloudSignIn(),
+	signIn: googleSignIn(),
 	eas: easApi(),
 	expoConfig,
 	interactive: canPrompt(),
@@ -284,7 +290,10 @@ export async function deployGooglePlay(
 	const project = options.project ?? playId(workspace.name);
 	assertGoogleId('project', project);
 	const account = playId(workspace.name);
-	const token = await deps.signIn.token({ interactive: deps.interactive });
+	const token = await deps.signIn.token({
+		interactive: deps.interactive,
+		scopes: PLAY_SCOPES,
+	});
 	const bare: GoogleClient = googleClient(token);
 	const created = await ensureProject(bare, project, `${workspace.name} Play`);
 	logger.log(

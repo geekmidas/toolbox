@@ -330,6 +330,25 @@ SSH: the stage account's credentials never reach the server.
 The apps never see the provisioning credentials: only the bucket's own key, in
 its URL.
 
+### Google
+
+A provider on Google provisions in a Google Cloud project, signed in to one
+way for every command:
+
+1. the file `GOOGLE_APPLICATION_CREDENTIALS` names — in CI, what
+   `google-github-actions/auth` writes (Workload Identity Federation: the
+   job's token exchanged, no stored key); a service account key or an
+   `authorized_user` file is read too;
+2. else gkm's own gcloud sign-in, kept in `<gkm home>/gcloud`, so your own
+   gcloud configuration is never read or changed. At a terminal the deploy
+   opens the browser to sign in; without one it stops with
+   `ProviderCredentialsMissing`.
+
+The project is `--project`, else `deploy.<kind>.<stage>.project`, else
+`<workspace>-<stage>`. The first deploy records it in the stage's state; a
+later deploy that resolves another one stops with `GoogleProjectChanged`
+before anything is created.
+
 ## `--dry-run`
 
 ```bash

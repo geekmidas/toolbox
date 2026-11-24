@@ -31,6 +31,9 @@ export const PROVIDER_KINDS = ['objects', 'inbox', 'email'] as const;
 
 export type ProviderKind = (typeof PROVIDER_KINDS)[number];
 
+/** The clouds a provider can provision in. */
+export type ProviderCloud = 'aws' | 'google';
+
 /** A provider's own entry: `{ provider: 's3', … }`. */
 export interface ProviderConfig {
 	provider: string;
@@ -167,8 +170,10 @@ export interface VerifyContext<C extends ProviderConfig> {
 /** Where a provider's provisioning credentials are looked for. */
 export interface CredentialLookup {
 	stage: string;
-	/** `--profile`, when given. */
+	/** `--profile`, when given: the AWS profile for the stage's account. */
 	profile?: string;
+	/** `--project`, when given: the Google Cloud project for the stage. */
+	project?: string;
 	env: NodeJS.ProcessEnv;
 	/** The CLI's home, for stored logins. */
 	home?: string;
@@ -187,6 +192,11 @@ export interface ResourceProvider<
 	readonly kind: ProviderKind;
 	/** What `provider:` names it. */
 	readonly name: string;
+	/**
+	 * The cloud whose account it provisions in — what `stageClouds` reads to
+	 * know a stage needs that cloud's credentials, in CI and on a deploy.
+	 */
+	readonly cloud: ProviderCloud;
 	/**
 	 * Its config entry checked: returns it, or throws a named error saying
 	 * what is wrong — what the workspace schema runs.

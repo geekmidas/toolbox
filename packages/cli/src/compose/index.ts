@@ -176,6 +176,8 @@ export interface ComposeOptions {
 	retireOldKeys?: boolean;
 	/** `--profile`: the AWS profile for the stage's account. */
 	profile?: string;
+	/** `--project`: the Google Cloud project for the stage's Google providers. */
+	project?: string;
 }
 
 export interface ComposeResult {
@@ -353,6 +355,7 @@ export async function composeCommand(
 		...(options.rotateKeys ? { rotateKeys: true } : {}),
 		...(options.retireOldKeys ? { retireOldKeys: true } : {}),
 		...(options.profile ? { profile: options.profile } : {}),
+		...(options.project ? { project: options.project } : {}),
 		logger: {
 			info: (message) => console.log(message),
 			warn: (message) => console.warn(message),
