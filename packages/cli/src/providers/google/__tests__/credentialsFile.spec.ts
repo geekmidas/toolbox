@@ -33,8 +33,9 @@ const AUDIENCE =
 const STS = 'https://sts.googleapis.com/v1/token';
 const ACCOUNT = 'gkm-deploy-prod@acme.iam.gserviceaccount.com';
 const IMPERSONATE = `https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/${ACCOUNT}:generateAccessToken`;
-const GITHUB_TOKEN_URL =
-	'https://pipelines.actions.githubusercontent.com/oidc?audience=x';
+const GITHUB_TOKEN_PATH =
+	'https://pipelines.actions.githubusercontent.com/oidc';
+const GITHUB_TOKEN_URL = `${GITHUB_TOKEN_PATH}?audience=x`;
 
 const server = setupServer();
 let dir: string;
@@ -46,8 +47,9 @@ beforeEach(async () => {
 	dir = realpathSync(await createTempDir('gkm-google-creds-'));
 	calls = [];
 	server.use(
-		http.get(GITHUB_TOKEN_URL, ({ request }) =>
-			request.headers.get('authorization') === 'Bearer gh-request-token'
+		http.get(GITHUB_TOKEN_PATH, ({ request }) =>
+			request.headers.get('authorization') === 'Bearer gh-request-token' &&
+			new URL(request.url).searchParams.get('audience') === 'x'
 				? HttpResponse.json({ value: 'github.jwt' })
 				: new HttpResponse('no', { status: 401 }),
 		),
@@ -217,5 +219,185 @@ describe('a file gkm cannot use', () => {
 		await expect(
 			credentialsFileToken(path, [CLOUD_PLATFORM_SCOPE]),
 		).rejects.toBeInstanceOf(GoogleCredentialsTypeUnsupported);
+	});
+
+	it('says when the file is not there', async () => {
+		await expect(
+			credentialsFileToken(join(dir, 'missing.json'), [CLOUD_PLATFORM_SCOPE]),
+		).rejects.toBeInstanceOf(GoogleCredentialsFileUnreadable);
+	});
+
+	it('names a file with no type', async () => {
+		await expect(
+			credentialsFileToken(file('untyped.json', {}), [CLOUD_PLATFORM_SCOPE]),
+		).rejects.toMatchObject({ type: '(none)' });
+	});
+});
+
+describe('federation without a service account to act as', () => {
+	it('asks STS for the scopes and uses its token directly', async () => {
+		const subject = join(dir, 'subject');
+		writeFileSync(subject, 'github.jwt');
+		const path = file('direct.json', {
+			type: 'external_account',
+			audience: AUDIENCE,
+			subject_token_type: 'urn:ietf:params:oauth:token-type:jwt',
+			token_url: STS,
+			credential_source: { file: subject },
+		});
+
+		const token = await credentialsFileToken(path, [
+			CLOUD_PLATFORM_SCOPE,
+			ANDROID_PUBLISHER_SCOPE,
+		]);
+
+		expect({
+			token,
+			scope: new URLSearchParams(calls[0]!.body).get('scope'),
+			calls: calls.length,
+		}).toEqual({
+			token: 'federated',
+			scope: `${CLOUD_PLATFORM_SCOPE} ${ANDROID_PUBLISHER_SCOPE}`,
+			calls: 1,
+		});
+	});
+
+	it('reads a plain-text subject token from a url', async () => {
+		server.use(
+			http.get('https://tokens.example.com/subject', () =>
+				HttpResponse.text('github.jwt\n'),
+			),
+		);
+		const path = file('text.json', {
+			type: 'external_account',
+			audience: AUDIENCE,
+			subject_token_type: 'urn:ietf:params:oauth:token-type:jwt',
+			token_url: STS,
+			credential_source: { url: 'https://tokens.example.com/subject' },
+		});
+
+		expect(await credentialsFileToken(path, [CLOUD_PLATFORM_SCOPE])).toBe(
+			'federated',
+		);
+	});
+});
+
+describe('a token that cannot be had', () => {
+	function external(credential_source: Record<string, unknown>): string {
+		return file('broken.json', {
+			type: 'external_account',
+			audience: AUDIENCE,
+			subject_token_type: 'urn:ietf:params:oauth:token-type:jwt',
+			token_url: STS,
+			service_account_impersonation_url: IMPERSONATE,
+			credential_source,
+		});
+	}
+
+	it('names the subject token step when GitHub refuses', async () => {
+		const refused = credentialsFileToken(
+			external({
+				url: GITHUB_TOKEN_URL,
+				headers: { Authorization: 'Bearer stale' },
+			}),
+			[CLOUD_PLATFORM_SCOPE],
+		);
+
+		await expect(refused).rejects.toMatchObject({
+			name: 'GoogleTokenExchangeFailed',
+			step: 'subject token',
+			status: 401,
+		});
+	});
+
+	it('says when the source names neither a file nor a url', async () => {
+		await expect(
+			credentialsFileToken(external({}), [CLOUD_PLATFORM_SCOPE]),
+		).rejects.toMatchObject({ step: 'subject token', status: 0 });
+	});
+
+	it('names the impersonation step, and says what to check', async () => {
+		server.use(
+			http.post(IMPERSONATE, () =>
+				HttpResponse.json(
+					{
+						error: {
+							message: 'Permission iam.serviceAccounts.getAccessToken denied',
+						},
+					},
+					{ status: 403 },
+				),
+			),
+		);
+		const subject = join(dir, 'subject');
+		writeFileSync(subject, 'github.jwt');
+
+		const refused = credentialsFileToken(external({ file: subject }), [
+			CLOUD_PLATFORM_SCOPE,
+		]);
+
+		await expect(refused).rejects.toMatchObject({
+			step: 'impersonation',
+			status: 403,
+			detail: 'Permission iam.serviceAccounts.getAccessToken denied',
+			message: expect.stringContaining('gkm deploy:github'),
+		});
+	});
+});
+
+describe("a person's application-default credential", () => {
+	function adc(refreshToken: string): string {
+		return file('adc.json', {
+			type: 'authorized_user',
+			client_id: 'client',
+			client_secret: 'secret',
+			refresh_token: refreshToken,
+		});
+	}
+
+	it('exchanges its refresh token', async () => {
+		let grant: Record<string, string> = {};
+		server.use(
+			http.post('https://oauth2.googleapis.com/token', async ({ request }) => {
+				grant = Object.fromEntries(new URLSearchParams(await request.text()));
+				return HttpResponse.json({ access_token: 'ya29.person' });
+			}),
+		);
+
+		const token = await credentialsFileToken(adc('refresh'), [
+			CLOUD_PLATFORM_SCOPE,
+		]);
+
+		expect({ token, grant }).toEqual({
+			token: 'ya29.person',
+			grant: {
+				grant_type: 'refresh_token',
+				client_id: 'client',
+				client_secret: 'secret',
+				refresh_token: 'refresh',
+			},
+		});
+	});
+
+	it('names the oauth step when the refresh token is revoked', async () => {
+		server.use(
+			http.post('https://oauth2.googleapis.com/token', () =>
+				HttpResponse.json(
+					{
+						error: 'invalid_grant',
+						error_description: 'Token has been expired or revoked.',
+					},
+					{ status: 400 },
+				),
+			),
+		);
+
+		await expect(
+			credentialsFileToken(adc('revoked'), [CLOUD_PLATFORM_SCOPE]),
+		).rejects.toMatchObject({
+			step: 'oauth',
+			status: 400,
+			detail: 'Token has been expired or revoked.',
+		});
 	});
 });
