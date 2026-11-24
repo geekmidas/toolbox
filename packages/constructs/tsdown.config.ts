@@ -23,6 +23,8 @@ export default defineConfig({
 		'src/email.ts',
 		'src/inbox.ts',
 		'src/maps.ts',
+		'src/maps/fake.ts',
+		'src/maps/expo.ts',
 		'src/database/kysely.ts',
 		'src/endpoints/index.ts',
 		'src/functions/index.ts',

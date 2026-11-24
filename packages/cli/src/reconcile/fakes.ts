@@ -75,6 +75,32 @@ export async function readFakes(
 }
 
 /**
+ * Each `Maps` construct's own fake, for those that have one at
+ * `test/fakes/<id>.ts`. Optional, unlike an external API's: a `Maps` the
+ * project does not fake is answered by the default one `featureTest` serves.
+ *
+ * @throws {NotAFake} when the file's default export is not an app fake.
+ */
+export async function readMapsFakes(
+	root: string,
+	manifest: ConstructManifest,
+): Promise<{ id: string; file: string }[]> {
+	const fakes: { id: string; file: string }[] = [];
+
+	for (const [id, declaration] of Object.entries(manifest)) {
+		if (declaration?.kind !== 'maps') continue;
+
+		const file = await fakeFile(join(root, DEFAULT_FAKES_DIR), id);
+		if (!file) continue;
+		const value = await importFake(file);
+		if (value.kind !== 'app') throw new NotAFake(file);
+		fakes.push({ id, file });
+	}
+
+	return fakes;
+}
+
+/**
  * Each credential's fake value, as the JSON `<ID>_CREDENTIALS` holds, keyed by
  * id — for the credentials that have a fake. Unlike an external API's, a
  * credential's fake is optional here: a stage that stores the real value
@@ -226,7 +252,8 @@ export class NotAFake extends GkmError {
 				`for its construct. For an external API, export default ` +
 				`fake.app(handler, { credentials }) or ` +
 				`fake.image(image, { port, credentials }); for a credential, ` +
-				`fake.credential(value).`,
+				`fake.credential(value); for a Maps, mapsFake(handler) from ` +
+				`@geekmidas/constructs/maps/fake.`,
 		);
 		this.name = 'NotAFake';
 	}

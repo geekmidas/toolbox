@@ -5,9 +5,9 @@
  * // constructs/maps.ts
  * export const maps = new Maps('Maps', { apis: ['maps', 'places'] });
  *
- * // a server process: its own key, in a handler
+ * // a server process: a client for the web services it declared
  * .dependsOn([maps])
- * .handle(({ services }) => geocode(address, services.maps.apiKey))
+ * .handle(({ services }) => services.maps.geocode(address))
  *
  * // a site: VITE_MAPS_BROWSER_KEY, restricted to the stage's sites' hosts
  * new Site('Web', { path: 'apps/web' }).dependsOn([api, maps]);
@@ -39,9 +39,28 @@ import {
 	serviceKey,
 } from '@geekmidas/manifest';
 import type { Service, ServiceRegisterOptions } from '@geekmidas/services';
-import type { Construct } from './construct-interface';
+import type { Consumable } from './construct-interface';
+import { MAPS_HOST, type MapsClient, mapsClient } from './maps/client';
+import { traceClient } from './tracing';
 
 export type { MapsApi } from '@geekmidas/manifest';
+export {
+	type ComputeRoutesOptions,
+	type GeocodeOptions,
+	type GeocodeResult,
+	type GoogleLatLng,
+	type LatLng,
+	MAPS_HOSTS,
+	type MapsClient,
+	MapsRequestFailed,
+	type Place,
+	type PlaceDetailsOptions,
+	type Route,
+	type SearchPlacesOptions,
+	type StaticMapOptions,
+	type TravelMode,
+	type Waypoint,
+} from './maps/client';
 
 /** Every API a `Maps` construct can name. */
 export const MAPS_APIS: readonly MapsApi[] = [
@@ -52,19 +71,14 @@ export const MAPS_APIS: readonly MapsApi[] = [
 	'routes',
 ];
 
-export interface MapsOptions {
+export interface MapsOptions<TApis extends MapsApi = MapsApi> {
 	/**
 	 * The APIs the app calls. Every key is restricted to these and nothing
 	 * else: `maps` is the map itself, in a page or a phone; `static-maps`,
-	 * `places`, `geocoding` and `routes` are the web services.
+	 * `places`, `geocoding` and `routes` are the web services — and the
+	 * methods a server process's client has.
 	 */
-	apis: readonly MapsApi[];
-}
-
-/** What a server process is handed: its key. */
-export interface MapsClient {
-	/** The server key: restricted to the declared APIs. */
-	apiKey: string;
+	apis: readonly TApis[];
 }
 
 /** A `Maps` that names no API would be given keys that call nothing. */
@@ -92,18 +106,22 @@ export class MapsApiUnknown extends Error {
 	}
 }
 
-export class Maps<TName extends string = string>
-	implements Construct<TName, MapsClient>
+export class Maps<
+	TName extends string = string,
+	TApis extends MapsApi = MapsApi,
+> implements Consumable<TName, MapsClient<TApis>>
 {
+	// `Consumable` for the reason `ExternalApi` gives: a client generic in
+	// `TApis` cannot satisfy `Construct`'s conditional service type.
 	readonly id: TName;
-	readonly service: Service<Uncapitalize<TName>, MapsClient>;
+	readonly service: Service<Uncapitalize<TName>, MapsClient<TApis>>;
 
 	/** The server key: what `connect()` reads and `declare()` publishes. */
 	private readonly apiKey: string;
 
 	constructor(
 		id: ConstructName<TName>,
-		private readonly options: MapsOptions,
+		private readonly options: MapsOptions<TApis>,
 	) {
 		const canonical = canonicalId(id as string);
 		if (options.apis.length === 0) throw new MapsHasNoApis(canonical);
@@ -134,10 +152,14 @@ export class Maps<TName extends string = string>
 		];
 	}
 
-	private connect(options: ServiceRegisterOptions): MapsClient {
+	private connect(options: ServiceRegisterOptions): MapsClient<TApis> {
 		const { apiKey } = options.envParser
 			.create((get) => ({ apiKey: get(this.apiKey).string() }))
 			.parse();
-		return { apiKey };
+		// Each call a span carrying the construct's name — the parent of the
+		// fetch it makes, which is traced already.
+		return traceClient(this.id, mapsClient(apiKey, this.options.apis), {
+			'server.address': new URL(MAPS_HOST).host,
+		});
 	}
 }

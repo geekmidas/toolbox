@@ -40,7 +40,7 @@ shows each one's use — named `Maps/Web browser production`.
 export const geocode = router
   .get('/geocode')
   .dependsOn([maps])
-  .handle(({ services }) => lookUp(address, services.maps.apiKey));
+  .handle(({ services }) => services.maps.geocode(address));
 
 // a site and a phone
 new Site('Web', { path: 'apps/web' }).dependsOn([api, maps]);
@@ -55,14 +55,58 @@ Nobody writes down who holds a key: it is read off the edges. Each caller is
 handed only its own key, so a site's bundle never holds the server's key, and
 the key in a page's JavaScript is refused from another site's page or a phone.
 
-An Expo app hands its keys to the native map in `app.config.ts`:
+## On the server
+
+A server process that depends on a `Maps` is handed a client, not a string.
+It has a method for each web service the construct declares, and nothing else,
+so a call the key is not restricted to does not build:
 
 ```ts
-export default {
-  android: { config: { googleMaps: { apiKey: process.env.EXPO_PUBLIC_MAPS_ANDROID_KEY } } },
-  ios: { config: { googleMapsApiKey: process.env.EXPO_PUBLIC_MAPS_IOS_KEY } },
-};
+export const maps = new Maps('Maps', { apis: ['geocoding', 'places', 'routes'] });
+
+.handle(async ({ services }) => {
+  const [home] = await services.maps.geocode('1 Main Rd, Woodstock');
+  const cafes = await services.maps.searchPlaces('coffee near Woodstock');
+  const [route] = await services.maps.computeRoutes({
+    origin: home.location,
+    destination: { placeId: cafes[0].id },
+    travelMode: 'WALK',
+  });
+  // services.maps.staticMapUrl(...) does not exist: 'static-maps' is not declared.
+});
 ```
+
+| `apis` | Methods |
+|---|---|
+| `geocoding` | `geocode(address, { region?, language? })`, `reverseGeocode({ lat, lng })` |
+| `places` | `searchPlaces(text, { fields?, maxResultCount? })`, `placeDetails(id, { fields? })` (Places API (New)) |
+| `routes` | `computeRoutes({ origin, destination, travelMode?, fields? })` (Routes API) |
+| `static-maps` | `staticMapUrl({ center, zoom, size, markers? })`: a URL carrying the server key, for markup the server sends |
+| `maps` | nothing: the map is drawn by a page or a phone |
+
+Places and Routes bill by the fields they answer, so each takes a `fields`
+mask, with a small default. A refused call throws `MapsRequestFailed`, with
+the API, the HTTP status and Google's own status and message. Each call is
+traced as a span named after the construct (`Maps.geocode`), like an
+`ExternalApi`'s. `apiKey` is still on the client for anything it does not
+cover.
+
+## On a phone
+
+`react-native-maps` reads its keys from native config (the Android manifest
+and the iOS plist), not from JavaScript. The construct's config plugin puts
+the `EXPO_PUBLIC_` keys the app is handed there:
+
+```ts
+// apps/app/app.config.ts
+plugins: ['@geekmidas/constructs/maps/expo'],
+// a construct with another name:
+plugins: [['@geekmidas/constructs/maps/expo', { maps: 'Places' }]],
+```
+
+`gkm eas:sync`, and so `gkm publish`, refuses with `MapsKeysNotInNativeConfig`
+an app that depends on a `Maps` and never hands the keys over, since its store
+build would ship a map that never loads.
 
 ## Locally
 
@@ -100,8 +144,33 @@ gkm secrets:set MAPS_API_KEY AIza… --stage development
 gkm secrets:set MAPS_BROWSER_KEY AIza… --stage development
 ```
 
-In tests, answer the Maps web services through MSW: the key is only a string
-in the request.
+## In tests
+
+`gkm test` needs no key and calls nothing. The test stage hands the client a
+fake key, and Google's Maps hosts are answered in-process by a built-in fake.
+Its answers are deterministic: the same address is always the same point, and
+a route is as long as the distance between its ends.
+
+For other answers, default-export a fake from `test/fakes/<id>.ts`, falling
+through to the built-in one for the rest:
+
+```ts
+// test/fakes/maps.ts
+import { defaultMapsHandler, mapsFake } from '@geekmidas/constructs/maps/fake';
+
+export default mapsFake({
+  async fetch(request) {
+    const url = new URL(request.url);
+    if (url.searchParams.get('address') === 'nowhere') {
+      return Response.json({ status: 'ZERO_RESULTS', results: [] });
+    }
+    return defaultMapsHandler.fetch(request);
+  },
+});
+```
+
+`gkm dev --fake` does not fake Maps: a local process calls Google with the
+local stage's key.
 
 ## Deployed: `deploy.maps.<stage>`
 

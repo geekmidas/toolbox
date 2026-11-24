@@ -657,7 +657,7 @@ describe('generateRootConstructs - the apps, as constructs', () => {
 				generateExpoAppFiles({ ...fullstackBase, mobileApp: true }),
 				'constructs/app.ts',
 			)!.content,
-		).toContain("new MobileApp('App', { path: 'apps/app' })");
+		).toMatch(/new MobileApp\('App', \{\s*path: 'apps\/app',/);
 	});
 
 	it('declares the site with the path it lives at, at the root domain', () => {

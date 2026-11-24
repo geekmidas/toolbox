@@ -244,6 +244,26 @@
 				"default": "./dist/maps.cjs"
 			}
 		},
+		"./maps/fake": {
+			"import": {
+				"types": "./dist/maps/fake.d.mts",
+				"default": "./dist/maps/fake.mjs"
+			},
+			"require": {
+				"types": "./dist/maps/fake.d.cts",
+				"default": "./dist/maps/fake.cjs"
+			}
+		},
+		"./maps/expo": {
+			"import": {
+				"types": "./dist/maps/expo.d.mts",
+				"default": "./dist/maps/expo.mjs"
+			},
+			"require": {
+				"types": "./dist/maps/expo.d.cts",
+				"default": "./dist/maps/expo.cjs"
+			}
+		},
 		"./external-api": {
 			"import": {
 				"types": "./dist/external-api.d.mts",

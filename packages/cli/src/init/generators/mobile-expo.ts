@@ -43,6 +43,9 @@ export function generateExpoAppFiles(
 	const slug = options.name.toLowerCase().replace(/[^a-z0-9-]/g, '-');
 	// What the deployed auth server trusts: the same derivation, not a copy.
 	const scheme = schemeBase(options.name);
+	// The ids `app.config.ts` builds with, from the same scheme — written on
+	// the construct, which a deploy reads without evaluating the Expo config.
+	const bundleId = `com.${scheme.replace(/[^a-z0-9]/g, '')}.app`;
 	// Mailpit's inbox, which the construct's edge to the mailer publishes on a
 	// local stage: `EXPO_PUBLIC_<MAILER>_INBOX_URL`, derived as it derives it.
 	const inboxKey = `EXPO_PUBLIC_${providedKeyFor(emailFor().id, 'email', 'inboxUrl')}`;
@@ -971,12 +974,16 @@ import { email } from './email.ts';
  * the auth server's trusted origins, Better Auth's Expo plugin, sign-in links
  * a phone can open — and, on a local stage, the mailer's inbox, so a link sent
  * in development is read on the device.
+ *
+ * \`android.package\` and \`ios.bundleIdentifier\` are the ids \`app.config.ts\`
+ * builds with: what Google Play and a Maps key know the app by. Once
+ * \`eas init\` links the app, add its \`eas: { projectId }\` here too.
  */
-export const app = new MobileApp('App', { path: 'apps/app' }).dependsOn([
-  api,
-  auth,
-  email,
-]);
+export const app = new MobileApp('App', {
+  path: 'apps/app',
+  android: { package: '${bundleId}' },
+  ios: { bundleIdentifier: '${bundleId}' },
+}).dependsOn([api, auth, email]);
 `;
 	const gitignore = `node_modules/
 .expo/

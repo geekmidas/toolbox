@@ -44,9 +44,17 @@ describe('generateExpoAppFiles', () => {
 	it('declares the app with an edge to the API, the auth server and the mailer', () => {
 		const app = file(generateExpoAppFiles(fullstack), 'constructs/app.ts');
 
-		expect(app).toContain("new MobileApp('App', { path: 'apps/app' })");
-		expect(app).toMatch(/\.dependsOn\(\[\s*api,\s*auth,\s*email,\s*\]\)/);
+		expect(app).toMatch(/new MobileApp\('App', \{\s*path: 'apps\/app',/);
+		expect(app).toMatch(/\.dependsOn\(\[\s*api,\s*auth,\s*email,?\s*\]\)/);
 		expect(app).toContain("import { email } from './email.ts';");
+	});
+
+	it('declares the ids app.config.ts builds with, the same on both platforms', () => {
+		const app = file(generateExpoAppFiles(fullstack), 'constructs/app.ts');
+
+		expect(app).toMatch(
+			/android: \{ package: '(com\.[a-z0-9]+\.app)' \},\s*ios: \{ bundleIdentifier: '\1' \}/,
+		);
 	});
 
 	it('signs in through the routes an emailed link needs, and no other', () => {

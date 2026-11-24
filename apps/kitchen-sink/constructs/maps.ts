@@ -3,17 +3,15 @@ import { Maps } from '@geekmidas/constructs/maps';
 /**
  * Maps: the map itself, places and geocoding, called with API keys.
  *
- * Who holds which key is read off the graph, never written here. An endpoint
- * that depends on it holds `MAPS_API_KEY` (`services.maps.apiKey`); a site
- * holds `MAPS_BROWSER_KEY`, inlined as `VITE_MAPS_BROWSER_KEY` and restricted
- * to the stage's sites' hosts; a mobile app holds an Android and an iOS key,
- * restricted to its package and bundle id. Nothing depends on it yet, so no
- * stage is asked for a key:
+ * Who holds which key is read off the graph, never written here. The API's
+ * `POST /places/geocode` depends on it, so its process holds `MAPS_API_KEY`,
+ * and its handler a client with `geocode`, `searchPlaces` and `placeDetails`
+ * (`apps/api/endpoints/places.ts`). A site would hold `MAPS_BROWSER_KEY`,
+ * inlined as `VITE_MAPS_BROWSER_KEY` and restricted to its host; a mobile app
+ * an Android and an iOS key, restricted to its package and bundle id.
  *
- * ```ts
- * export const web = new StaticSite('Web', { path: 'apps/web' })
- *   .dependsOn([api, auth, uploads, maps]);
- * ```
+ * Under `gkm test` no key is needed: Google's hosts are answered in-process
+ * by the built-in fake. Locally the key is set by hand.
  *
  * Deployed, `deploy.maps.<stage> = { provider: 'google' }` makes the keys in
  * a Google Cloud project; locally they are set by hand.
