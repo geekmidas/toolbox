@@ -29,6 +29,8 @@ import { dropTestDatabases } from './teardown';
 export interface TestOptions {
 	/** Stage to load secrets from (default: development) */
 	stage?: string;
+	/** `--profile`: the AWS profile for the stage's account. */
+	profile?: string;
 	/** Run tests once without watch mode */
 	run?: boolean;
 	/** Enable watch mode */
@@ -95,7 +97,11 @@ export async function testCommand(options: TestOptions = {}): Promise<void> {
 	const autoSetup = options.autoSetup || Boolean(process.env.GKM_AUTO_SETUP);
 	if (autoSetup) {
 		const { ensureStageSecrets } = await import('../setup/index.js');
-		const generated = await ensureStageSecrets(stage, cwd);
+		const generated = await ensureStageSecrets(
+			stage,
+			cwd,
+			options.profile ? { profile: options.profile } : {},
+		);
 		if (generated) {
 			console.log(`  🔐 Generated fresh ${stage} secrets (auto-setup)`);
 		}
@@ -118,6 +124,7 @@ export async function testCommand(options: TestOptions = {}): Promise<void> {
 	//    starts its containers and resolves every declared address
 	const result = await prepareEntryCredentials({
 		stage,
+		...(options.profile ? { profile: options.profile } : {}),
 		// Preparing writes files; it has no suite to start containers for.
 		startDocker: !options.prepare,
 		secretsFileName: 'test-secrets.json',

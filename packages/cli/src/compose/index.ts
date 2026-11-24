@@ -174,6 +174,8 @@ export interface ComposeOptions {
 	rotateKeys?: boolean;
 	/** Delete a rotated-out key now, not after the next deploy. */
 	retireOldKeys?: boolean;
+	/** `--profile`: the AWS profile for the stage's account. */
+	profile?: string;
 }
 
 export interface ComposeResult {
@@ -256,6 +258,7 @@ export async function composeCommand(
 			...(options.cwd ? { cwd: options.cwd } : {}),
 			...(options.secrets ? { secrets: true } : {}),
 			...(options.dryRun ? { dryRun: true } : {}),
+			...(options.profile ? { profile: options.profile } : {}),
 		});
 		return undefined;
 	}
@@ -280,7 +283,11 @@ export async function composeCommand(
 
 	if (options.down) {
 		const { composeStackRef } = await import('./destroy');
-		const { ref, dir, server } = await composeStackRef(workspace, stage);
+		const { ref, dir, server } = await composeStackRef(
+			workspace,
+			stage,
+			options.profile,
+		);
 		const docker = deps.docker ?? dockerCompose;
 		if (server) console.log(`→ ${sshTarget(server)} (docker over ssh)`);
 		// Unregistered from the shared edge first, so it stops routing to the
@@ -345,6 +352,7 @@ export async function composeCommand(
 		...(options.skipDns ? { skipDns: true } : {}),
 		...(options.rotateKeys ? { rotateKeys: true } : {}),
 		...(options.retireOldKeys ? { retireOldKeys: true } : {}),
+		...(options.profile ? { profile: options.profile } : {}),
 		logger: {
 			info: (message) => console.log(message),
 			warn: (message) => console.warn(message),

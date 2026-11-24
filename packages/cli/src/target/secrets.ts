@@ -61,7 +61,7 @@ export async function deploySecrets(
 	workspace: NormalizedWorkspace,
 	stage: string,
 	redactor: Redactor,
-	options: { home?: string } = {},
+	options: { home?: string; profile?: string } = {},
 ): Promise<DeploySecrets> {
 	const store = await secretsStoreFor(workspace, stage, options);
 	const mask = (secrets: StageSecrets) => {

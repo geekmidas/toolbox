@@ -134,6 +134,13 @@ export interface DeployInput {
 	 */
 	home?: string;
 	/**
+	 * The AWS profile for the stage's account (`--profile`). Every AWS client
+	 * the run makes uses it — the stage's secrets and state, its providers,
+	 * DNS, SNS and the AWS credential a target asks for — over `AWS_PROFILE`,
+	 * exported keys and any profile in `gkm.config.ts`.
+	 */
+	profile?: string;
+	/**
 	 * Where docker's own output goes: the host's terminal (`inherit`, the
 	 * default), its stderr, or nowhere.
 	 */
@@ -247,10 +254,15 @@ export function deploy(input: DeployInput): DeployRun {
 	const ctx: DeployContext = {
 		emit,
 		credentials:
-			input.credentials ?? storedCredentials({ home: input.home ?? gkmHome() }),
+			input.credentials ??
+			storedCredentials({
+				home: input.home ?? gkmHome(),
+				...(input.profile ? { profile: input.profile } : {}),
+			}),
 		dryRun: input.dryRun ?? false,
 		...(input.buildOnly ? { buildOnly: true } : {}),
 		home: input.home ?? gkmHome(),
+		...(input.profile ? { profile: input.profile } : {}),
 		redactor,
 		...(input.signal ? { signal: input.signal } : {}),
 		...(input.childOutput ? { childOutput: input.childOutput } : {}),

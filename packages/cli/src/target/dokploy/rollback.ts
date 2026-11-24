@@ -45,6 +45,8 @@ export interface RollbackInput {
 	app?: string;
 	/** Every app with an earlier release, instead of one. */
 	atomic?: boolean;
+	/** `--profile`: the AWS profile the stage's state is kept with. */
+	profile?: string;
 	/** Defaults to the environment, then the logins `gkm login` stored. */
 	credentials?: CredentialProvider;
 	signal?: AbortSignal;
@@ -127,6 +129,7 @@ export async function rollbackStage(
 			workspaceRoot: workspace.root,
 			workspaceName: workspace.name,
 			namespace: workspace.deploy?.namespace,
+			...(input.profile ? { profile: input.profile } : {}),
 		});
 		if (!(await store.read(input.stage))) {
 			throw new StageNeverDeployed(input.stage);

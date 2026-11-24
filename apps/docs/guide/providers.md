@@ -304,10 +304,12 @@ The deploy provisions in the stage's AWS account with the credentials of the
 machine it runs on, found the way the SSM and Secrets Manager stores find
 them:
 
-1. `AWS_PROFILE`, else `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`
+1. `--profile`, alone — over `AWS_PROFILE`, exported keys and any profile in
+   `gkm.config.ts`;
+2. `AWS_PROFILE`, else `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`
    (`AWS_SESSION_TOKEN`) — in CI, what `aws-actions/configure-aws-credentials`
    exports;
-2. the SDK's default chain — `~/.aws`'s default profile, SSO, a role.
+3. the SDK's default chain — `~/.aws`'s default profile, SSO, a role.
 
 **None of them**: the deploy stops before anything is created with
 `ProviderCredentialsMissing`, naming the environment it reads. In CI it is

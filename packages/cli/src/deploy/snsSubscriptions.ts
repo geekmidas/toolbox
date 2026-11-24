@@ -170,6 +170,8 @@ export async function topicConnection(input: {
 	stage: string;
 	env: NodeJS.ProcessEnv;
 	home?: string;
+	/** `--profile`: the AWS profile for the stage's account. */
+	profile?: string;
 	/** The stage's providers made the topic: sign with the deploy's keys. */
 	provisioned?: boolean;
 }): Promise<SNSConnection> {
@@ -193,6 +195,7 @@ export async function topicConnection(input: {
 		const provisioning = await awsProvisioningCredentials({
 			stage: input.stage,
 			env: input.env,
+			...(input.profile ? { profile: input.profile } : {}),
 			...(input.home ? { home: input.home } : {}),
 		});
 		if (!provisioning) {
@@ -253,6 +256,8 @@ export async function confirmPendingSubscriptions(input: {
 	secrets?: Readonly<Record<string, string>>;
 	env?: NodeJS.ProcessEnv;
 	home?: string;
+	/** `--profile`: the AWS profile for the stage's account. */
+	profile?: string;
 	/** How long to wait for confirmations, in milliseconds. */
 	timeoutMs?: number;
 	record?: (record: ResourceRecord) => Promise<void>;
@@ -304,6 +309,7 @@ export async function confirmPendingSubscriptions(input: {
 				connectionString,
 				stage: input.stage,
 				env,
+				...(input.profile ? { profile: input.profile } : {}),
 				...(input.home ? { home: input.home } : {}),
 			});
 		} else {
@@ -311,6 +317,7 @@ export async function confirmPendingSubscriptions(input: {
 				provisioning = await awsProvisioningCredentials({
 					stage: input.stage,
 					env,
+					...(input.profile ? { profile: input.profile } : {}),
 					...(input.home ? { home: input.home } : {}),
 				});
 			}

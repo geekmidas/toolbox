@@ -220,6 +220,12 @@ export interface DeployPhaseContext<Options = undefined> {
 	/** Where every credential comes from. Nothing prompts. */
 	readonly credentials: CredentialProvider;
 	/**
+	 * `--profile`: the AWS profile for the stage's account. Every AWS client a
+	 * phase makes uses it, over `AWS_PROFILE`, exported keys and any profile
+	 * in `gkm.config.ts`.
+	 */
+	readonly profile?: string;
+	/**
 	 * The stage's deploy state. A real run holds the stage's lock for every
 	 * phase; a dry run holds none and must write nothing.
 	 */

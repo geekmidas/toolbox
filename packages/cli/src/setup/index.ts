@@ -337,10 +337,15 @@ export function createFreshWorkspaceSecrets(
 export async function ensureStageSecrets(
 	stage: string,
 	cwd: string = process.cwd(),
+	options: { profile?: string } = {},
 ): Promise<boolean> {
 	const { workspace } = await loadWorkspaceConfig(cwd);
 
-	const store = await secretsStoreFor(workspace, stage);
+	const store = await secretsStoreFor(
+		workspace,
+		stage,
+		options.profile ? { profile: options.profile } : {},
+	);
 	if (await store.read(stage)) {
 		return false;
 	}

@@ -464,11 +464,12 @@ and `gkm exec --stage prod` read from it. There is no copy on this
 machine to keep in step, and nothing to push before a deploy. The local stage
 is always the file, whatever `store` says.
 
-Both AWS stores use the default AWS credential chain: `AWS_PROFILE` on a
-laptop — `AWS_PROFILE=acme-prod gkm secrets:set … --stage prod` — and the
-stage's OIDC role in a deploy job. A command given `--profile` (such as
-`gkm deploy:github`) uses that profile alone, never `AWS_*` from the
-environment. The permissions each store needs are listed under
+Every command that reaches AWS takes `--profile` —
+`gkm secrets:set … --stage prod --profile acme-prod` — and uses that profile
+alone: never `AWS_PROFILE` or `AWS_*` keys from the environment, and over any
+profile `gkm.config.ts` names (`state.profile`, a Route 53 entry's). Without it,
+both AWS stores use the default AWS credential chain: `AWS_PROFILE` on a laptop,
+and the stage's OIDC role in a deploy job. The permissions each store needs are listed under
 [IAM](./deployment.md#iam-for-the-secrets-store).
 
 #### Secret Resolution Priority

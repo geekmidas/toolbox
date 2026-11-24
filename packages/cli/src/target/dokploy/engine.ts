@@ -247,6 +247,8 @@ interface DokployContext {
 	dryRun: boolean;
 	/** Where docker's own output goes. Defaults to the terminal. */
 	stdio?: RunOptions['stdio'];
+	/** `--profile`: the AWS profile for the stage's account. */
+	profile?: string;
 }
 
 /** A backend failed, so the run stopped before deploying anything after it. */
@@ -435,6 +437,7 @@ export async function validateDokploy(
 		credentials: phase.credentials,
 		signal: phase.signal,
 		dryRun: phase.dryRun,
+		...(phase.profile ? { profile: phase.profile } : {}),
 		...(phase.childOutput !== 'inherit'
 			? { stdio: CHILD_STDIO[phase.childOutput] }
 			: {}),
@@ -966,6 +969,7 @@ async function provision(run: DokployRun): Promise<void> {
 			stage,
 			config: dokployBackups,
 			existingState: getBackupState(state),
+			...(ctx.profile ? { profile: ctx.profile } : {}),
 			logger,
 		});
 

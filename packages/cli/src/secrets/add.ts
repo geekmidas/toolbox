@@ -50,6 +50,8 @@ import { secretsStoreFor } from './store';
 
 export interface SecretsAddOptions {
 	stage: string;
+	/** `--profile`: the AWS profile for the stage's account. */
+	profile?: string;
 	/** Only the keys the stage has not set. */
 	missing?: boolean;
 	/** Print the keys as JSON and ask nothing. */
@@ -145,6 +147,7 @@ export async function secretsAddCommand(
 
 	const store = await secretsStoreFor(workspace, stage, {
 		...(options.home ? { home: options.home } : {}),
+		...(options.profile ? { profile: options.profile } : {}),
 	});
 	const stored = await store.read(stage);
 	const domain = workspace.domains?.[stage];

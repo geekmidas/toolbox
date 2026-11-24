@@ -1365,7 +1365,11 @@ async function resolveStage(
 					: 'the compose target does not deploy it',
 		);
 	}
-	const store = await secretsStoreFor(workspace, stage);
+	const store = await secretsStoreFor(
+		workspace,
+		stage,
+		options.profile ? { profile: options.profile } : {},
+	);
 	const secrets = await store.read(stage);
 	return {
 		workspace,

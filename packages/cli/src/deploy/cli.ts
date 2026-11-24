@@ -40,6 +40,8 @@ export interface DeployCliOptions {
 	rotateKeys?: boolean;
 	/** `--retire-old-keys`. */
 	retireOldKeys?: boolean;
+	/** `--profile`: the AWS profile for the stage's account. */
+	profile?: string;
 }
 
 /** Where the command writes. The process's own streams, outside tests. */
@@ -91,7 +93,11 @@ export async function deployCli(
 		...(options.skipDns ? { skipDns: true } : {}),
 		...(options.rotateKeys ? { rotateKeys: true } : {}),
 		...(options.retireOldKeys ? { retireOldKeys: true } : {}),
+		...(options.profile ? { profile: options.profile } : {}),
 	};
+	const credentials = storedCredentials(
+		options.profile ? { profile: options.profile } : {},
+	);
 
 	if (options.json) {
 		// stdout carries the events and nothing else: docker's own output goes
@@ -99,7 +105,7 @@ export async function deployCli(
 		// into the stream a program is parsing.
 		const run = deploy({
 			...input,
-			credentials: storedCredentials(),
+			credentials,
 			childOutput: 'stderr',
 		});
 		for await (const event of run) {
@@ -118,7 +124,7 @@ export async function deployCli(
 	// tick later, so they interleave with a prompt exactly as they always did.
 	const run = deploy({
 		...input,
-		credentials: terminalCredentials(storedCredentials()),
+		credentials: terminalCredentials(credentials),
 		logger: {
 			info: (message) => console.log(message),
 			warn: (message) => console.warn(message),

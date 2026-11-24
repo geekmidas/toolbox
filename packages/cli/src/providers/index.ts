@@ -368,6 +368,7 @@ export async function provisionStage(
 					...(options.dnsProviderFor
 						? { providerFor: options.dnsProviderFor }
 						: {}),
+					...(options.profile ? { profile: options.profile } : {}),
 					log,
 				});
 				if (journal) await recordProviderDns(journal, written);

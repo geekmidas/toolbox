@@ -36,6 +36,8 @@ export interface BundleOptions {
 	external: string[];
 	/** Stage for secrets injection (optional) */
 	stage?: string;
+	/** `--profile`: the AWS profile for the stage's account. */
+	profile?: string;
 	/** Constructs to validate environment variables for */
 	constructs?: Construct[];
 }
@@ -141,6 +143,7 @@ export async function bundleServer(
 		sourcemap,
 		external,
 		stage,
+		profile,
 		constructs,
 	} = options;
 
@@ -206,7 +209,8 @@ export async function bundleServer(
 		// kept there. Outside
 		// any workspace nothing names one, so it is the file.
 		const store = await loadWorkspaceSettings().then(
-			(workspace) => secretsStoreFor(workspace, stage),
+			(workspace) =>
+				secretsStoreFor(workspace, stage, profile ? { profile } : {}),
 			(error) => {
 				if (error instanceof ConfigNotFound) {
 					return new FileSecretsStore(process.cwd());

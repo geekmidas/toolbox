@@ -42,6 +42,8 @@ export interface ProvisionBackupOptions {
 	logger: { log: (msg: string) => void };
 	/** AWS endpoint override (for testing with LocalStack) */
 	awsEndpoint?: string;
+	/** `--profile`: wins over the backups config's own `profile`. */
+	profile?: string;
 }
 
 /**
@@ -165,7 +167,7 @@ export async function provisionBackupDestination(
 	// Create AWS clients
 	const aws = await createAwsClients(
 		config.region,
-		config.profile,
+		options.profile ?? config.profile,
 		awsEndpoint,
 	);
 	const sanitizedProject = sanitizeName(projectName);

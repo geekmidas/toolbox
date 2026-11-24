@@ -22,9 +22,16 @@ const logger = console;
  * Secrets Manager in its account, for a deployed stage kept there. Outside any workspace nothing
  * names a store, so it is the file.
  */
-async function storeFor(stage: string): Promise<SecretsStore> {
+async function storeFor({
+	stage,
+	profile,
+}: StageOptions): Promise<SecretsStore> {
 	try {
-		return await secretsStoreFor(await loadWorkspaceSettings(), stage);
+		return await secretsStoreFor(
+			await loadWorkspaceSettings(),
+			stage,
+			profile ? { profile } : {},
+		);
 	} catch (error) {
 		if (error instanceof ConfigNotFound) {
 			return new FileSecretsStore(process.cwd());
@@ -33,27 +40,28 @@ async function storeFor(stage: string): Promise<SecretsStore> {
 	}
 }
 
-export interface SecretsInitOptions {
+/** The stage a secrets command acts on, and the account it is kept in. */
+export interface StageOptions {
 	stage: string;
+	/** `--profile`: the AWS profile for the stage's account. */
+	profile?: string;
+}
+
+export interface SecretsInitOptions extends StageOptions {
 	force?: boolean;
 }
 
-export interface SecretsSetOptions {
-	stage: string;
-}
+export type SecretsSetOptions = StageOptions;
 
-export interface SecretsShowOptions {
-	stage: string;
+export interface SecretsShowOptions extends StageOptions {
 	reveal?: boolean;
 }
 
-export interface SecretsRotateOptions {
-	stage: string;
+export interface SecretsRotateOptions extends StageOptions {
 	service?: SecretServiceName;
 }
 
-export interface SecretsImportOptions {
-	stage: string;
+export interface SecretsImportOptions extends StageOptions {
 	/** Merge with existing secrets (default: true) */
 	merge?: boolean;
 }
@@ -67,7 +75,7 @@ export async function secretsInitCommand(
 ): Promise<void> {
 	const { stage, force } = options;
 
-	const store = await storeFor(stage);
+	const store = await storeFor(options);
 
 	// Check if secrets already exist
 	if (!force && (await store.read(stage))) {
@@ -172,7 +180,7 @@ export async function secretsSetCommand(
 		}
 	}
 
-	const store = await storeFor(stage);
+	const store = await storeFor(options);
 	const secrets = await store.read(stage);
 	if (!secrets) {
 		logger.error(
@@ -187,9 +195,7 @@ export async function secretsSetCommand(
 	logger.log(`\n✓ Secret "${key}" set for stage "${stage}" (${store.name})`);
 }
 
-export interface SecretsUnsetOptions {
-	stage: string;
-}
+export type SecretsUnsetOptions = StageOptions;
 
 /** `gkm secrets:unset` for a key the stage does not hold. */
 export class SecretNotSet extends GkmError {
@@ -227,7 +233,7 @@ export async function secretsUnsetCommand(
 	options: SecretsUnsetOptions,
 ): Promise<void> {
 	const { stage } = options;
-	const store = await storeFor(stage);
+	const store = await storeFor(options);
 	const secrets = await store.read(stage);
 	if (!secrets) throw new StageSecretsNotFound(stage);
 	if (!(key in secrets.custom)) throw new SecretNotSet(key, stage);
@@ -284,7 +290,7 @@ export async function secretsShowCommand(
 ): Promise<void> {
 	const { stage, reveal } = options;
 
-	const secrets = await (await storeFor(stage)).read(stage);
+	const secrets = await (await storeFor(options)).read(stage);
 
 	if (!secrets) {
 		logger.error(
@@ -355,7 +361,7 @@ export async function secretsRotateCommand(
 ): Promise<void> {
 	const { stage, service } = options;
 
-	const store = await storeFor(stage);
+	const store = await storeFor(options);
 	const secrets = await store.read(stage);
 
 	if (!secrets) {
@@ -434,7 +440,7 @@ export async function secretsImportCommand(
 	}
 
 	// Check if secrets exist for stage
-	const store = await storeFor(stage);
+	const store = await storeFor(options);
 	const secrets = await store.read(stage);
 
 	if (!secrets) {

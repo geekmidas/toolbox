@@ -459,7 +459,7 @@ describe('against IAM', () => {
 
 			expect(JSON.stringify(calls)).not.toContain('GKM_SECRETS_KEY');
 			expect(log.mock.calls.flat().join('\n')).toContain(
-				`⚠ The "prod" store holds no secrets yet; set them with gkm secrets:set <KEY> '…' --stage prod (AWS_PROFILE=acme-prod).`,
+				`⚠ The "prod" store holds no secrets yet; set them with gkm secrets:set <KEY> '…' --stage prod --profile acme-prod.`,
 			);
 			expect(held().writes).toEqual([]);
 		} finally {
