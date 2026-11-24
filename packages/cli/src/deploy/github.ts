@@ -45,11 +45,24 @@ import {
 } from '@aws-sdk/client-iam';
 import { loadWorkspaceConfig } from '../config.js';
 import { GkmError } from '../errors';
+import { canPrompt } from '../prompt.js';
+import { stageClouds } from '../providers/clouds.js';
+import { googleClient } from '../providers/google/client.js';
+import {
+	CLOUD_PLATFORM_SCOPE,
+	type GoogleSignIn,
+} from '../providers/google/gcloud.js';
+import { googleSignIn } from '../providers/google/signIn.js';
 import { discover } from '../reconcile/discover.js';
 import { constructGlobs } from '../reconcile/workspace.js';
 import { getKeyPath, keystoreProject, readKey } from '../secrets/keystore.js';
 import { isRemoteStore, secretsStoreFor } from '../secrets/store.js';
 import { assertDeployedStage } from '../workspace/stages.js';
+import {
+	ensureGoogleTrust,
+	type GoogleTrustOutcome,
+	planGoogleTrust,
+} from './githubGoogle.js';
 import { resolveOidcSubject } from './githubOidc.js';
 import {
 	accountOf,
@@ -79,6 +92,8 @@ export interface DeployGithubOptions {
 	repo?: string;
 	/** The policy the deploy role gets, in place of the default. */
 	policyArn?: string;
+	/** The Google Cloud project, for a stage that uses Google. */
+	project?: string;
 	dryRun?: boolean;
 }
 
@@ -359,8 +374,21 @@ export async function iamFor(
 
 export async function deployGithubCommand(
 	options: DeployGithubOptions,
-	deps: { iam?: IAMClient; gh?: Gh; cwd?: string } = {},
-): Promise<{ roleArn?: string; repo: string; subject: string }> {
+	deps: {
+		iam?: IAMClient;
+		gh?: Gh;
+		cwd?: string;
+		/** How to sign in to Google; gkm's own sign-in by default. */
+		google?: GoogleSignIn;
+		/** Between two looks at a Google operation. */
+		googleIntervalMs?: number;
+	} = {},
+): Promise<{
+	roleArn?: string;
+	repo: string;
+	subject: string;
+	google?: GoogleTrustOutcome;
+}> {
 	const gh = deps.gh ?? ghCli;
 	const { workspace } = await loadWorkspaceConfig(deps.cwd);
 	assertDeployedStage(workspace.stages, options.stage);
@@ -386,6 +414,24 @@ export async function deployGithubCommand(
 		options.policyArn,
 		manifest,
 	);
+	// Google whenever one of the stage's providers works there — the answer
+	// the deploy and the workflow read too. A stage that needs nothing of
+	// AWS and uses Google is not asked for AWS credentials at all.
+	const clouds = stageClouds(workspace, options.stage);
+	const google = clouds.google
+		? planGoogleTrust({
+				workspace,
+				stage: options.stage,
+				repo,
+				...(options.project ? { project: options.project } : {}),
+			})
+		: undefined;
+	const aws = !(
+		google &&
+		!clouds.aws &&
+		access.kind === 'scoped' &&
+		access.describe.length === 0
+	);
 	// Read through the keystore so a key still at the place keys used to be kept
 	// is found, and copied to where it is kept now.
 	const key = await readKey(options.stage, keystoreProject(workspace));
@@ -404,12 +450,19 @@ export async function deployGithubCommand(
 		? `profile "${options.profile}"`
 		: 'the default credentials';
 
-	logger.log(`\n🔐 GitHub → AWS for stage "${options.stage}"\n`);
+	const to = [aws ? 'AWS' : undefined, google ? 'Google' : undefined]
+		.filter(Boolean)
+		.join(' + ');
+	logger.log(`\n🔐 GitHub → ${to} for stage "${options.stage}"\n`);
 	logger.log(`  Repository:   ${repo}`);
-	logger.log(`  AWS profile:  ${options.profile ?? '(default credentials)'}`);
-	logger.log(`  Role:         ${role}`);
-	if (access.kind === 'managed') {
+	if (aws) {
+		logger.log(`  AWS profile:  ${options.profile ?? '(default credentials)'}`);
+		logger.log(`  Role:         ${role}`);
+	}
+	if (aws && access.kind === 'managed') {
 		logger.log(`  Policy:       ${access.policyArn}  (${access.reason})`);
+	} else if (!aws) {
+		logger.log('  AWS:          none — the stage reads nothing from AWS');
 	} else if (access.describe.length > 0) {
 		logger.log(
 			`  Policy:       inline "${SCOPED_POLICY_NAME}", scoped to the compose deploy — only:`,
@@ -424,6 +477,18 @@ export async function deployGithubCommand(
 		`  Trusted by:   ${oidc.subject} only  (${SUBJECT_KINDS[oidc.kind]})`,
 	);
 	if (oidc.warning) logger.log(`  ⚠ ${oidc.warning}`);
+	if (google) {
+		logger.log(`  Google:       project ${google.project}`);
+		logger.log(
+			`                  pool github, provider ${google.providerId} (${google.condition})`,
+		);
+		logger.log(`                  deploy account ${google.email}`);
+		for (const grant of google.grants) {
+			logger.log(
+				`                  ${grant.role} on ${grant.serviceAccount ?? `project ${grant.project}`}`,
+			);
+		}
+	}
 	if (remote) {
 		logger.log(
 			`  Secrets:      ${hasSecrets ? `in the store (${store.name}), read with ${via}` : `none in the store yet — gkm secrets:set <KEY> '…' --stage ${options.stage}`}`,
@@ -447,62 +512,61 @@ export async function deployGithubCommand(
 		return { repo, subject: oidc.subject };
 	}
 
-	const iam = deps.iam ?? (await iamFor(options.profile));
-	const providerArn = await ensureOidcProvider(iam).catch((error) => {
-		// The first AWS call is where an expired SSO login surfaces; the SDK's
-		// message does not say which profile, and this command knows.
-		if (/SSO session/i.test(String(error?.message)) && options.profile) {
-			throw new SsoSessionExpired(options.profile);
-		}
-		throw error;
-	});
-	const outcome = await ensureRole(
-		iam,
-		role,
-		trustPolicy(providerArn, oidc.subject),
-		access.kind === 'managed'
-			? { managed: access.policyArn }
-			: {
-					inline: scopedPolicyDocument(
-						access.statements(accountOf(providerArn)),
-					),
-				},
-	);
-	const roleArn = outcome.arn;
-	logger.log(`\n  ✓ AWS: ${roleArn}${outcome.created ? ' (created)' : ''}`);
-	if (!outcome.created) {
-		logger.log(
-			outcome.previousSubject === oidc.subject
-				? `  ✓ Trust: unchanged, ${oidc.subject}`
-				: `  ✓ Trust: ${outcome.previousSubject ?? '(no subject)'} → ${oidc.subject}`,
+	let roleArn: string | undefined;
+	if (aws) {
+		roleArn = await ensureAwsTrust();
+	}
+
+	let googleOutcome: GoogleTrustOutcome | undefined;
+	if (google) {
+		const signIn = deps.google ?? googleSignIn();
+		const token = await signIn.token({
+			interactive: canPrompt(),
+			scopes: [CLOUD_PLATFORM_SCOPE],
+		});
+		googleOutcome = await ensureGoogleTrust(
+			{
+				bare: googleClient(token),
+				project: googleClient(token, google.project),
+			},
+			{ stage: options.stage, plan: google, subject: oidc.subject },
+			deps.googleIntervalMs !== undefined
+				? { intervalMs: deps.googleIntervalMs }
+				: {},
 		);
-	}
-	for (const detached of outcome.detached) {
-		logger.log(`  ✓ Detached ${detached} (attached by gkm, no longer needed)`);
-	}
-	if (access.kind === 'scoped') {
-		for (const attached of outcome.leftAttached) {
-			logger.log(
-				`  ⚠ ${attached} is still attached to ${role}. gkm has no record of attaching it, so it is left; the compose deploy does not need it. Detach it with: aws iam detach-role-policy --role-name ${role} --policy-arn ${attached}${options.profile ? ` --profile ${options.profile}` : ''}`,
-			);
-		}
+		logger.log(
+			`\n  ✓ Google: ${googleOutcome.serviceAccount}, through ${googleOutcome.provider}`,
+		);
+		for (const change of googleOutcome.changes) logger.log(`  ✓ ${change}`);
 	}
 
 	// The environment the generated deploy workflow runs the stage in.
 	gh(['api', '--method', 'PUT', `repos/${repo}/environments/${options.stage}`]);
-	gh([
-		'variable',
-		'set',
-		'AWS_ROLE_ARN',
-		'--env',
-		options.stage,
-		'--repo',
-		repo,
-		'--body',
-		roleArn,
-	]);
-	logger.log(`  ✓ GitHub: environment "${options.stage}", AWS_ROLE_ARN`);
-
+	const variables: [string, string][] = [
+		...(roleArn ? ([['AWS_ROLE_ARN', roleArn]] as [string, string][]) : []),
+		...(googleOutcome
+			? ([
+					['GCP_WORKLOAD_IDENTITY_PROVIDER', googleOutcome.provider],
+					['GCP_SERVICE_ACCOUNT', googleOutcome.serviceAccount],
+				] as [string, string][])
+			: []),
+	];
+	for (const [name, value] of variables) {
+		gh([
+			'variable',
+			'set',
+			name,
+			'--env',
+			options.stage,
+			'--repo',
+			repo,
+			'--body',
+			value,
+		]);
+	}
+	logger.log(
+		`  ✓ GitHub: environment "${options.stage}"${variables.map(([name]) => `, ${name}`).join('')}`,
+	);
 	if (remote) {
 		// Nothing to send: the deploy job reads the stage's store itself.
 		if (!hasSecrets) {
@@ -534,7 +598,59 @@ export async function deployGithubCommand(
 	logger.log(
 		`\n  Protect it: add required reviewers to the "${options.stage}" environment in the repository settings.\n`,
 	);
-	return { roleArn, repo, subject: oidc.subject };
+	return {
+		...(roleArn ? { roleArn } : {}),
+		repo,
+		subject: oidc.subject,
+		...(googleOutcome ? { google: googleOutcome } : {}),
+	};
+
+	async function ensureAwsTrust(): Promise<string> {
+		const iam = deps.iam ?? (await iamFor(options.profile));
+		const providerArn = await ensureOidcProvider(iam).catch((error) => {
+			// The first AWS call is where an expired SSO login surfaces; the SDK's
+			// message does not say which profile, and this command knows.
+			if (/SSO session/i.test(String(error?.message)) && options.profile) {
+				throw new SsoSessionExpired(options.profile);
+			}
+			throw error;
+		});
+		const outcome = await ensureRole(
+			iam,
+			role,
+			trustPolicy(providerArn, oidc.subject),
+			access.kind === 'managed'
+				? { managed: access.policyArn }
+				: {
+						inline: scopedPolicyDocument(
+							access.statements(accountOf(providerArn)),
+						),
+					},
+		);
+		const roleArn = outcome.arn;
+		logger.log(`\n  ✓ AWS: ${roleArn}${outcome.created ? ' (created)' : ''}`);
+		if (!outcome.created) {
+			logger.log(
+				outcome.previousSubject === oidc.subject
+					? `  ✓ Trust: unchanged, ${oidc.subject}`
+					: `  ✓ Trust: ${outcome.previousSubject ?? '(no subject)'} → ${oidc.subject}`,
+			);
+		}
+		for (const detached of outcome.detached) {
+			logger.log(
+				`  ✓ Detached ${detached} (attached by gkm, no longer needed)`,
+			);
+		}
+		if (access.kind === 'scoped') {
+			for (const attached of outcome.leftAttached) {
+				logger.log(
+					`  ⚠ ${attached} is still attached to ${role}. gkm has no record of attaching it, so it is left; the compose deploy does not need it. Detach it with: aws iam detach-role-policy --role-name ${role} --policy-arn ${attached}${options.profile ? ` --profile ${options.profile}` : ''}`,
+				);
+			}
+		}
+
+		return roleArn;
+	}
 }
 
 const SUBJECT_KINDS = {

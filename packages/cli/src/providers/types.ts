@@ -236,4 +236,33 @@ export interface ResourceProvider<
 	runtimeKeys(manifest: ConstructManifest): string[];
 	ensure(ctx: EnsureContext<C, K>): Promise<void>;
 	verify(ctx: VerifyContext<C>): Promise<void>;
+	/**
+	 * A Google provider: what the stage's CI identity is granted, so a deploy
+	 * from GitHub Actions can do what `ensure()` does there — and nothing
+	 * more. `gkm deploy:github` grants exactly these to the stage's deploy
+	 * service account.
+	 */
+	ciGrants?(input: CiGrantInput<C>): readonly GoogleCiGrant[];
+}
+
+/** What {@link ResourceProvider.ciGrants} is handed. */
+export interface CiGrantInput<C extends ProviderConfig> {
+	workspace: NormalizedWorkspace;
+	stage: string;
+	config: C;
+	/** `--project`, when given. */
+	project?: string;
+}
+
+/** One role the stage's CI identity holds in Google Cloud. */
+export interface GoogleCiGrant {
+	/** The project it is held in. */
+	project: string;
+	/** `roles/serviceusage.apiKeysAdmin`. */
+	role: string;
+	/**
+	 * Held on this one service account (its email) rather than on the
+	 * project — what lets CI read one account's keys and no other's.
+	 */
+	serviceAccount?: string;
 }

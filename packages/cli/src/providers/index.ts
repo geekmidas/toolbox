@@ -193,7 +193,7 @@ export class ProviderCredentialsMissing extends GkmError {
 				(cloud === 'google'
 					? `the '${stage}' environment's Workload Identity provider ` +
 						'(GCP_WORKLOAD_IDENTITY_PROVIDER and GCP_SERVICE_ACCOUNT, from ' +
-						'gkm deploy:github), signed in to with google-github-actions/auth ' +
+						`gkm deploy:github --stage ${stage}), signed in to with google-github-actions/auth ` +
 						'before that step. '
 					: `the '${stage}' environment's role ` +
 						'(AWS_ROLE_ARN, from gkm deploy:github), assumed before that step. ') +

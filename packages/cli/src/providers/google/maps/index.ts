@@ -50,7 +50,11 @@ import type {
 } from '../../types.js';
 import { GoogleApiError, type GoogleClient, googleClient } from '../client.js';
 import { CLOUD_PLATFORM_SCOPE } from '../gcloud.js';
-import { googleProject, holdGoogleProject } from '../project.js';
+import {
+	GoogleProjectNotCreated,
+	googleProject,
+	holdGoogleProject,
+} from '../project.js';
 import {
 	type GoogleCredential,
 	googleProvisioningCredentials,
@@ -704,6 +708,9 @@ export function createGoogleMapsProvider(
 		});
 		const bare = googleClient(token);
 		if (!(await projectExists(bare, project))) {
+			if (ctx.credential.source === 'file') {
+				throw new GoogleProjectNotCreated(ctx.stage, 'maps', project);
+			}
 			await ctx.change(
 				{
 					construct: 'maps',
@@ -830,8 +837,28 @@ export function createGoogleMapsProvider(
 		},
 		ensure,
 		verify,
+		ciGrants({ workspace, stage, config, project }) {
+			const where = googleProject({
+				flag: project,
+				configured: config.project,
+				workspace: workspace.name,
+				stage,
+			});
+			return MAPS_CI_ROLES.map((role) => ({ project: where, role }));
+		},
 	};
 }
+
+/**
+ * What a deploy from CI does with the project, and the role each needs:
+ * turn on the APIs (and send it as the quota project), make, restrict and
+ * read keys, and read whether billing is linked.
+ */
+export const MAPS_CI_ROLES = [
+	'roles/serviceusage.serviceUsageAdmin',
+	'roles/serviceusage.apiKeysAdmin',
+	'roles/browser',
+] as const;
 
 export const googleMapsProvider = createGoogleMapsProvider({
 	now: () => Date.now(),

@@ -170,6 +170,7 @@ describe('gkm stages', () => {
 				'has-build': 'true',
 				'has-deploy': 'true',
 				'aws-region': '',
+				google: '[]',
 				registry: '',
 			});
 		});
@@ -223,6 +224,18 @@ describe('gkm stages', () => {
 			expect((await outputs({ event: 'push' }))['aws-region']).toBe(
 				'af-south-1',
 			);
+		});
+
+		it('names the stages whose deploy signs in to Google', async () => {
+			await writeFile(
+				join(dir, 'gkm.config.ts'),
+				config(
+					DEPLOYED,
+					`deploy: { maps: { prod: { provider: 'google', project: 'acme-maps' } } },`,
+				),
+			);
+
+			expect((await outputs({ event: 'push' })).google).toBe('["prod"]');
 		});
 
 		it('annotates the run and writes nothing for a dispatch to an unknown stage', async () => {

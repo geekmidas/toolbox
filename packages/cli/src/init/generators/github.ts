@@ -258,6 +258,27 @@ permissions:
 `;
 }
 
+/**
+ * Signing in to Google Cloud as the stage's deploy account, through its
+ * Workload Identity provider — no key stored anywhere. Only for a stage the
+ * stages job names in \`google\`: one whose deploy makes something there (a
+ * Maps key, a MobileApp's Google Play set-up). \`gkm deploy:github\` sets
+ * both variables on the stage's environment.
+ */
+function googleSignIn(): string {
+	return `      # A stage whose deploy works in Google Cloud signs in as its deploy
+      # account, through the Workload Identity provider gkm deploy:github set
+      # up (GCP_WORKLOAD_IDENTITY_PROVIDER and GCP_SERVICE_ACCOUNT on the
+      # environment). The credentials file it writes is what gkm reads.
+      - name: Sign in to Google Cloud
+        if: contains(fromJSON(needs.stages.outputs.google), matrix.stage)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: \${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: \${{ vars.GCP_SERVICE_ACCOUNT }}
+`;
+}
+
 function stagesJob(options: TemplateOptions): string {
 	const pm = tooling(options);
 	return `  stages:
@@ -270,6 +291,7 @@ function stagesJob(options: TemplateOptions): string {
       has-deploy: \${{ steps.stages.outputs.has-deploy }}
       protected: \${{ steps.stages.outputs.protected }}
       aws-region: \${{ steps.stages.outputs.aws-region }}
+      google: \${{ steps.stages.outputs.google }}
       registry: \${{ steps.stages.outputs.registry }}
     steps:
       - uses: actions/checkout@v4
@@ -479,6 +501,7 @@ ${registryLogin()}
           role-to-assume: \${{ vars.AWS_ROLE_ARN }}
           aws-region: \${{ needs.stages.outputs.aws-region }}
 
+${googleSignIn()}
       # The push run of this workflow that built the commit for this stage:
       # this run on a push, the newest one with the stage's digests otherwise.
       - name: Find the commit's push build
@@ -646,7 +669,8 @@ ${stagesJob(options)}
       group: deploy-\${{ matrix.stage }}
       cancel-in-progress: false
     permissions:
-      contents: read${sst ? '\n      id-token: write' : ''}
+      contents: read
+      id-token: write
     steps:
       # The event's own commit — a release's tag, the push — or the ref a
       # manual run names.
@@ -658,6 +682,7 @@ ${pm.setup}
       - name: Install
         run: ${pm.install}
 ${stageSecrets}
+${googleSignIn()}
       # Builds, releases and health-checks the stage through deploy.default
       # in gkm.config.ts, and fails the job if any of it fails.
       - name: Deploy

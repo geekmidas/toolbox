@@ -458,9 +458,18 @@ secrets there with the role, and GitHub is handed no key; with the `'file'`
 store it sets `GKM_SECRETS_KEY` (from `~/.gkm/keys/<namespace>/<project>/<stage>.key`).
 Re-running it converges.
 
+A stage whose deploy works in Google Cloud — `Maps`, a `MobileApp` on Google
+Play — gets Workload Identity Federation there as well, with no flag: a
+`github` pool, a provider admitting only this repository, and a
+`gkm-github-<stage>` service account the stage's environment may act as,
+granted only the roles its Google providers need. It sets
+`GCP_WORKLOAD_IDENTITY_PROVIDER` and `GCP_SERVICE_ACCOUNT` on the environment.
+See [Google Cloud](./deployment.md#google-cloud).
+
 | Option | |
 |---|---|
 | `--stage` | a stage in `stages.deployed` |
+| `--project` | the stage's Google Cloud project, for a stage that uses Google; defaults to the one its Google providers use |
 | `--profile` | the AWS profile for the stage's account — keys, assume-role or SSO, whatever `~/.aws/config` says. Only that profile: exported `AWS_*` variables are not consulted |
 | `--policy-arn` | what the role may do, in place of the default: `AdministratorAccess`, which SST needs to create stacks — or, for a stage only the `compose` target deploys, an inline policy allowing just the stage's secrets (and deploy state in AWS), plus, when the stage uses them, its `s3` provider's buckets and IAM users and its `route53` domain's records. See [what the role may do](./deployment.md#what-the-role-may-do) |
 | `--repo` | `owner/name`; defaults to the repository `gh` sees |
