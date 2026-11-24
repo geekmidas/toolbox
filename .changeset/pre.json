@@ -111,6 +111,7 @@
     "deploy-creates-resources",
     "deploy-domains-subdomains",
     "deploy-email-ses",
+    "deploy-github-google",
     "deploy-github-oidc-subject",
     "deploy-github-oidc",
     "deploy-identity",

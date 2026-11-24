@@ -1,5 +1,33 @@
 # @geekmidas/cli
 
+## 10.0.0-alpha.197
+
+### Minor Changes
+
+- [#560](https://github.com/geekmidas/toolbox/pull/560) [`7bc9d66`](https://github.com/geekmidas/toolbox/commit/7bc9d662fc857f1bf1d6cd1530a0f333d552dea6) Thanks [@geekmidas](https://github.com/geekmidas)! - `gkm deploy:github` sets up Google's keyless sign-in whenever a stage uses Google
+
+  - **No flag.** A stage whose deploy works in Google Cloud — `Maps` on `google`, a `MobileApp` on `google-play` — gets Workload Identity Federation in its project: a `github` pool, a provider whose attribute condition admits only this repository, and a `gkm-github-<stage>` service account that exactly the stage environment's OIDC subject may act as. `--project` names the project.
+  - **Only the roles the providers need.** Each Google provider declares what a deploy from CI needs (`ResourceProvider.ciGrants`); the account gets those and loses any it no longer needs. A role can be held on one service account rather than the project — CI reads the Play publishing account's keys and no other's.
+  - ✨ **The workflow signs in.** `GCP_WORKLOAD_IDENTITY_PROVIDER` and `GCP_SERVICE_ACCOUNT` go on the stage's GitHub environment; the stages action's new `google` output lists the stages that use Google, and the generated deploy job runs `google-github-actions/auth` for them.
+  - A stage that needs nothing of AWS and uses Google is not asked for AWS credentials.
+  - A deploy from CI never creates a Google Cloud project: one that finds none stops with `GoogleProjectNotCreated`, and a missing CI sign-in names `gkm deploy:github --stage <stage>`.
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/cache@10.0.0-alpha.197
+  - @geekmidas/constructs@10.0.0-alpha.197
+  - @geekmidas/db@10.0.0-alpha.197
+  - @geekmidas/edge@10.0.0-alpha.197
+  - @geekmidas/envkit@10.0.0-alpha.197
+  - @geekmidas/errors@10.0.0-alpha.197
+  - @geekmidas/logger@10.0.0-alpha.197
+  - @geekmidas/manifest@10.0.0-alpha.197
+  - @geekmidas/schema@10.0.0-alpha.197
+  - @geekmidas/services@10.0.0-alpha.197
+  - @geekmidas/storage@10.0.0-alpha.197
+  - @geekmidas/telescope@10.0.0-alpha.197
+
 ## 10.0.0-alpha.196
 
 ### Minor Changes
