@@ -216,6 +216,7 @@
     "minio-object-events",
     "mobile-app-one-scheme",
     "mobile-app",
+    "mobile-google-play-provider",
     "mobile-publish",
     "mobile-stage-values",
     "named-errors-cloud-events",

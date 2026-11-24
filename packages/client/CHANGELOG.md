@@ -1,5 +1,13 @@
 # @geekmidas/client
 
+## 10.0.0-alpha.195
+
+### Patch Changes
+
+- Updated dependencies [[`46bdbb3`](https://github.com/geekmidas/toolbox/commit/46bdbb36b1f6b7f42a5ac6f65addf7801895e36e)]:
+  - @geekmidas/constructs@10.0.0-alpha.195
+  - @geekmidas/schema@10.0.0-alpha.195
+
 ## 10.0.0-alpha.194
 
 ### Patch Changes
