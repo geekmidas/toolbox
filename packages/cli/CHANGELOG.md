@@ -1,5 +1,27 @@
 # @geekmidas/cli
 
+## 10.0.0-alpha.198
+
+### Minor Changes
+
+- [#564](https://github.com/geekmidas/toolbox/pull/564) [`8be20c6`](https://github.com/geekmidas/toolbox/commit/8be20c64afe9049dc1d65056576af693aced3195) Thanks [@geekmidas](https://github.com/geekmidas)! - `gkm provision --stage <stage>`: a stage's providers on their own — each provider's `ensure()` and `verify()`, the records they ask for and the keys they write — with nothing built or released. `gkm deploy` runs the same step first. The local stage can be provisioned too, for the kinds with no local stand-in: each provider kind says what it is locally in one place (`LOCAL_PROVIDER_RULES`). `objects`, `email` and `inbox` are served by MinIO and Mailpit and `mobile` means nothing locally, so `deploy.<kind>.<local>` for them fails to load with `ProviderNotForLocalStage`; `maps` has no emulator, so `deploy.maps.<local>` is allowed and `gkm provision --stage <local>` creates its keys, the browser key restricted to each site's host on the local edge.
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/cache@10.0.0-alpha.198
+  - @geekmidas/constructs@10.0.0-alpha.198
+  - @geekmidas/db@10.0.0-alpha.198
+  - @geekmidas/edge@10.0.0-alpha.198
+  - @geekmidas/envkit@10.0.0-alpha.198
+  - @geekmidas/errors@10.0.0-alpha.198
+  - @geekmidas/logger@10.0.0-alpha.198
+  - @geekmidas/manifest@10.0.0-alpha.198
+  - @geekmidas/schema@10.0.0-alpha.198
+  - @geekmidas/services@10.0.0-alpha.198
+  - @geekmidas/storage@10.0.0-alpha.198
+  - @geekmidas/telescope@10.0.0-alpha.198
+
 ## 10.0.0-alpha.197
 
 ### Minor Changes
