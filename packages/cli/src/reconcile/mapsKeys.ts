@@ -14,7 +14,7 @@
  * - **A local stage**: the role's name in its secrets, set by hand and read
  *   by every caller alike — there is no Google project making keys for it.
  * - **A deployed stage**: the caller's own key (`mapsKeyOf`,
- *   `MAPS_BROWSER_KEY__WEB`), which the google provider makes and restricts
+ *   `MAPS_BROWSER_KEY_WEB`), which the google provider makes and restricts
  *   to that caller; and, where the stage holds none, the role's name — one key
  *   set by hand for every caller, on a stage with no provider.
  */

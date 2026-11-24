@@ -10,8 +10,8 @@
  * **A key per caller, under one name.** Every caller reads its key by the
  * construct's name for its role — `MAPS_API_KEY`, `MAPS_BROWSER_KEY`,
  * `MAPS_ANDROID_KEY`, `MAPS_IOS_KEY` — and on a deployed stage each holds a
- * key of its own, kept in the stage's secrets as `<name>__<CALLER>`
- * (`MAPS_BROWSER_KEY__WEB`, `MAPS_BROWSER_KEY__ADMIN`): restricted to that
+ * key of its own, kept in the stage's secrets as `<name>_<CALLER>`
+ * (`MAPS_BROWSER_KEY_WEB`, `MAPS_BROWSER_KEY_ADMIN`): restricted to that
  * caller alone, rotated alone, and counted alone in Cloud Console.
  */
 
@@ -43,15 +43,12 @@ export function mapsRolesFor(kind: DeclarationKind): readonly MapsRole[] {
 	return ['apiKey'];
 }
 
-/** Between a role's name and the caller a stored key is its: `__`. */
-const CALLER_SEPARATOR = '__';
+/** Between a role's name and the caller a stored key is its: `_`. */
+const CALLER_SEPARATOR = '_';
 
 /**
  * Where the stage's secrets keep the key `caller` holds of the `Maps`
- * construct `maps` in `role` — `MAPS_BROWSER_KEY__WEB` for the site `Web`.
- *
- * `environmentCase` never writes two underscores in a row, so no construct's
- * own key can be read as a caller's.
+ * construct `maps` in `role` — `MAPS_BROWSER_KEY_WEB` for the site `Web`.
  */
 export function mapsKeyOf(
 	maps: string,
@@ -67,6 +64,25 @@ export function mapsRoleOf(maps: string, key: string): MapsRole | undefined {
 }
 
 /**
+ * The caller `key` keeps a key of the `Maps` construct `maps` for — `Web` of
+ * `MAPS_BROWSER_KEY_WEB` — read against each role's name exactly: the rest
+ * after it and one `_`, never a split on underscores. `undefined` for a key
+ * that is no caller's, in its environment case (`WEB`, `ADMIN_APP`).
+ */
+export function mapsCallerOf(
+	maps: string,
+	key: string,
+): { role: MapsRole; caller: string } | undefined {
+	for (const role of MAPS_ROLES) {
+		const prefix = `${providedKeyFor(maps, 'maps', role)}${CALLER_SEPARATOR}`;
+		if (key.startsWith(prefix) && key.length > prefix.length) {
+			return { role, caller: key.slice(prefix.length) };
+		}
+	}
+	return undefined;
+}
+
+/**
  * Whether `key` is where a caller's own key of one of the manifest's `Maps`
  * constructs is kept — a value only that caller is handed, under the role's
  * name, and never a stage key every process reads.
@@ -75,14 +91,9 @@ export function isMapsCallerKey(
 	manifest: ConstructManifest,
 	key: string,
 ): boolean {
-	if (!key.includes(CALLER_SEPARATOR)) return false;
 	return Object.values(manifest).some(
 		(declaration) =>
 			declaration.kind === 'maps' &&
-			MAPS_ROLES.some((role) =>
-				key.startsWith(
-					`${providedKeyFor(declaration.id, 'maps', role)}${CALLER_SEPARATOR}`,
-				),
-			),
+			mapsCallerOf(declaration.id, key) !== undefined,
 	);
 }

@@ -342,10 +342,10 @@ describe('the google provider for maps', () => {
 		await provider.ensure(run.ctx);
 
 		expect(Object.keys(run.secrets).sort()).toEqual([
-			'MAPS_ANDROID_KEY__APP',
-			'MAPS_API_KEY__GEOCODE',
-			'MAPS_BROWSER_KEY__WEB',
-			'MAPS_IOS_KEY__APP',
+			'MAPS_ANDROID_KEY_APP',
+			'MAPS_API_KEY_GEOCODE',
+			'MAPS_BROWSER_KEY_WEB',
+			'MAPS_IOS_KEY_APP',
 		]);
 	});
 
@@ -354,7 +354,7 @@ describe('the google provider for maps', () => {
 
 		await provider.ensure(run.ctx);
 
-		expect(keyFor(run.secrets.MAPS_BROWSER_KEY__WEB!)?.displayName).toBe(
+		expect(keyFor(run.secrets.MAPS_BROWSER_KEY_WEB!)?.displayName).toBe(
 			`Maps/Web browser ${STAGE}`,
 		);
 	});
@@ -364,7 +364,7 @@ describe('the google provider for maps', () => {
 
 		await provider.ensure(run.ctx);
 
-		expect(keyFor(run.secrets.MAPS_API_KEY__GEOCODE!)?.restrictions).toEqual({
+		expect(keyFor(run.secrets.MAPS_API_KEY_GEOCODE!)?.restrictions).toEqual({
 			apiTargets: [
 				{ service: 'places-backend.googleapis.com' },
 				{ service: 'places.googleapis.com' },
@@ -378,7 +378,7 @@ describe('the google provider for maps', () => {
 		await provider.ensure(run.ctx);
 
 		expect(
-			keyFor(run.secrets.MAPS_BROWSER_KEY__WEB!)?.restrictions
+			keyFor(run.secrets.MAPS_BROWSER_KEY_WEB!)?.restrictions
 				.browserKeyRestrictions,
 		).toEqual({ allowedReferrers: ['https://shop.example/*'] });
 	});
@@ -388,7 +388,7 @@ describe('the google provider for maps', () => {
 
 		await provider.ensure(run.ctx);
 
-		expect(keyFor(run.secrets.MAPS_ANDROID_KEY__APP!)?.restrictions).toEqual({
+		expect(keyFor(run.secrets.MAPS_ANDROID_KEY_APP!)?.restrictions).toEqual({
 			apiTargets: [
 				{ service: 'maps-android-backend.googleapis.com' },
 				{ service: 'places-backend.googleapis.com' },
@@ -408,7 +408,7 @@ describe('the google provider for maps', () => {
 		await provider.ensure(run.ctx);
 
 		expect(
-			keyFor(run.secrets.MAPS_IOS_KEY__APP!)?.restrictions.iosKeyRestrictions,
+			keyFor(run.secrets.MAPS_IOS_KEY_APP!)?.restrictions.iosKeyRestrictions,
 		).toEqual({ allowedBundleIds: ['com.shop.app'] });
 	});
 
@@ -528,9 +528,9 @@ describe('the google provider for maps', () => {
 		await provider.ensure(second.ctx);
 
 		expect({
-			web: keyFor(second.secrets.MAPS_BROWSER_KEY__WEB!)?.restrictions
+			web: keyFor(second.secrets.MAPS_BROWSER_KEY_WEB!)?.restrictions
 				.browserKeyRestrictions?.allowedReferrers,
-			admin: keyFor(second.secrets.MAPS_BROWSER_KEY__ADMIN!)?.restrictions
+			admin: keyFor(second.secrets.MAPS_BROWSER_KEY_ADMIN!)?.restrictions
 				.browserKeyRestrictions?.allowedReferrers,
 			created: google.created,
 		}).toEqual({
@@ -542,7 +542,7 @@ describe('the google provider for maps', () => {
 
 	it.for([
 		['MAPS_API_KEY', 'for every caller of the role'],
-		['MAPS_API_KEY__GEOCODE', "for the caller's own"],
+		['MAPS_API_KEY_GEOCODE', "for the caller's own"],
 	] as const)('uses %s set by hand %s, and makes none for it', async ([
 		key,
 	]) => {
@@ -562,7 +562,7 @@ describe('the google provider for maps', () => {
 	it('rotates a key, and keeps the old one until the stage runs the new one', async () => {
 		const first = stage({});
 		await provider.ensure(first.ctx);
-		const before = first.secrets.MAPS_API_KEY__GEOCODE!;
+		const before = first.secrets.MAPS_API_KEY_GEOCODE!;
 		const rotating = stage({
 			secrets: first.secrets,
 			records: first.records,
@@ -572,7 +572,7 @@ describe('the google provider for maps', () => {
 		await provider.ensure(rotating.ctx);
 
 		expect({
-			changed: rotating.secrets.MAPS_API_KEY__GEOCODE !== before,
+			changed: rotating.secrets.MAPS_API_KEY_GEOCODE !== before,
 			oldKept: keyFor(before) !== undefined,
 		}).toEqual({ changed: true, oldKept: true });
 	});
@@ -580,7 +580,7 @@ describe('the google provider for maps', () => {
 	it('deletes the rotated-out key once the stage deployed after the rotation', async () => {
 		const first = stage({});
 		await provider.ensure(first.ctx);
-		const before = first.secrets.MAPS_API_KEY__GEOCODE!;
+		const before = first.secrets.MAPS_API_KEY_GEOCODE!;
 		await provider.ensure(
 			stage({
 				secrets: first.secrets,
@@ -642,10 +642,10 @@ describe('the google provider for maps', () => {
 
 	it("lists the keys a deploy writes: each caller's own", () => {
 		expect(provider.runtimeKeys(everyCaller)).toEqual([
-			'MAPS_API_KEY__GEOCODE',
-			'MAPS_BROWSER_KEY__WEB',
-			'MAPS_ANDROID_KEY__APP',
-			'MAPS_IOS_KEY__APP',
+			'MAPS_API_KEY_GEOCODE',
+			'MAPS_BROWSER_KEY_WEB',
+			'MAPS_ANDROID_KEY_APP',
+			'MAPS_IOS_KEY_APP',
 		]);
 	});
 });
@@ -658,7 +658,7 @@ describe('a key across deploys', () => {
 		await provider.ensure(first.ctx);
 		const second = stage({
 			manifest: serverOnly(),
-			secrets: { MAPS_API_KEY__GEOCODE: 'AIza-overwritten' },
+			secrets: { MAPS_API_KEY_GEOCODE: 'AIza-overwritten' },
 			records: first.records,
 		});
 
@@ -666,7 +666,7 @@ describe('a key across deploys', () => {
 
 		expect({
 			change: second.actions.at(-1)?.change,
-			replaced: second.secrets.MAPS_API_KEY__GEOCODE !== 'AIza-overwritten',
+			replaced: second.secrets.MAPS_API_KEY_GEOCODE !== 'AIza-overwritten',
 			created: google.created,
 		}).toEqual({
 			change:
@@ -690,7 +690,7 @@ describe('a key across deploys', () => {
 
 		expect({
 			change: second.actions.at(-1)?.change,
-			held: keyFor(second.secrets.MAPS_API_KEY__GEOCODE!) !== undefined,
+			held: keyFor(second.secrets.MAPS_API_KEY_GEOCODE!) !== undefined,
 		}).toEqual({ change: "create the Geocode's server key", held: true });
 	});
 
@@ -712,7 +712,7 @@ describe('a key across deploys', () => {
 	it('deletes the rotated-out key at once with --retire-old-keys', async () => {
 		const first = stage({ manifest: serverOnly() });
 		await provider.ensure(first.ctx);
-		const before = first.secrets.MAPS_API_KEY__GEOCODE!;
+		const before = first.secrets.MAPS_API_KEY_GEOCODE!;
 		const carry = { secrets: first.secrets, records: first.records };
 		await provider.ensure(
 			stage({ manifest: serverOnly(), ...carry, rotateKeys: true }).ctx,
@@ -757,7 +757,7 @@ describe('a key across deploys', () => {
 	it('waits for a deletion Google has not finished', async () => {
 		const first = stage({ manifest: serverOnly() });
 		await provider.ensure(first.ctx);
-		const before = first.secrets.MAPS_API_KEY__GEOCODE!;
+		const before = first.secrets.MAPS_API_KEY_GEOCODE!;
 		const carry = { secrets: first.secrets, records: first.records };
 		await provider.ensure(
 			stage({ manifest: serverOnly(), ...carry, rotateKeys: true }).ctx,
@@ -840,7 +840,7 @@ describe('operations Google has not finished', () => {
 
 		expect({
 			polled,
-			held: keyFor(run.secrets.MAPS_API_KEY__GEOCODE!) !== undefined,
+			held: keyFor(run.secrets.MAPS_API_KEY_GEOCODE!) !== undefined,
 		}).toEqual({ polled: 2, held: true });
 	});
 
@@ -914,7 +914,7 @@ describe('operations Google has not finished', () => {
 		expect({
 			polled,
 			apis: keyFor(
-				first.secrets.MAPS_API_KEY__GEOCODE!,
+				first.secrets.MAPS_API_KEY_GEOCODE!,
 			)?.restrictions.apiTargets.map((t) => t.service),
 		}).toEqual({
 			polled: 1,
@@ -948,7 +948,7 @@ describe('operations Google has not finished', () => {
 
 		expect({ polled, keys: Object.keys(run.secrets) }).toEqual({
 			polled: 1,
-			keys: ['MAPS_API_KEY__GEOCODE'],
+			keys: ['MAPS_API_KEY_GEOCODE'],
 		});
 	});
 });
@@ -1035,12 +1035,12 @@ describe('a mobile app that declares one platform or neither', () => {
 		[
 			'only Android',
 			{ android: { package: 'com.shop.app' } },
-			['MAPS_ANDROID_KEY__APP'],
+			['MAPS_ANDROID_KEY_APP'],
 		],
 		[
 			'only iOS',
 			{ ios: { bundleIdentifier: 'com.shop.app' } },
-			['MAPS_IOS_KEY__APP'],
+			['MAPS_IOS_KEY_APP'],
 		],
 	] as const)('%s: a key for each platform it declares', async ([
 		,
@@ -1068,10 +1068,10 @@ describe("the google provider's check of a stage", () => {
 	it('passes a stage holding every key its callers hold', async () => {
 		await expect(
 			verify({
-				MAPS_API_KEY__GEOCODE: 'a',
-				MAPS_BROWSER_KEY__WEB: 'b',
-				MAPS_ANDROID_KEY__APP: 'c',
-				MAPS_IOS_KEY__APP: 'd',
+				MAPS_API_KEY_GEOCODE: 'a',
+				MAPS_BROWSER_KEY_WEB: 'b',
+				MAPS_ANDROID_KEY_APP: 'c',
+				MAPS_IOS_KEY_APP: 'd',
 			}),
 		).resolves.toBeUndefined();
 	});
@@ -1088,12 +1088,12 @@ describe("the google provider's check of a stage", () => {
 	});
 
 	it("refuses a stage missing a caller's key, naming it", async () => {
-		await expect(verify({ MAPS_API_KEY__GEOCODE: 'a' })).rejects.toMatchObject({
+		await expect(verify({ MAPS_API_KEY_GEOCODE: 'a' })).rejects.toMatchObject({
 			name: 'MapsNotProvisioned',
 			missing: [
-				'MAPS_BROWSER_KEY__WEB',
-				'MAPS_ANDROID_KEY__APP',
-				'MAPS_IOS_KEY__APP',
+				'MAPS_BROWSER_KEY_WEB',
+				'MAPS_ANDROID_KEY_APP',
+				'MAPS_IOS_KEY_APP',
 			],
 		});
 	});
@@ -1109,9 +1109,9 @@ describe("the google provider's check of a stage", () => {
 				stage: STAGE,
 				config: { provider: 'google' },
 				secrets: {
-					MAPS_API_KEY__GEOCODE: 'a',
-					MAPS_BROWSER_KEY__WEB: 'b',
-					MAPS_ANDROID_KEY__APP: 'c',
+					MAPS_API_KEY_GEOCODE: 'a',
+					MAPS_BROWSER_KEY_WEB: 'b',
+					MAPS_ANDROID_KEY_APP: 'c',
 				},
 			}),
 		).resolves.toBeUndefined();
@@ -1159,7 +1159,7 @@ describe("a server's key on a stage that runs on a server", () => {
 		await provider.ensure(run.ctx);
 
 		expect(
-			keyFor(run.secrets.MAPS_API_KEY__GEOCODE!)?.restrictions
+			keyFor(run.secrets.MAPS_API_KEY_GEOCODE!)?.restrictions
 				.serverKeyRestrictions,
 		).toEqual({ allowedIps: ['203.0.113.10', '2001:db8::10'] });
 	});
@@ -1188,7 +1188,7 @@ describe("a server's key on a stage that runs on a server", () => {
 		await provider.ensure(run.ctx);
 
 		expect({
-			ips: keyFor(run.secrets.MAPS_API_KEY__GEOCODE!)?.restrictions
+			ips: keyFor(run.secrets.MAPS_API_KEY_GEOCODE!)?.restrictions
 				.serverKeyRestrictions,
 			said: run.lines.some((line) => line.includes(said)),
 		}).toEqual({ ips: undefined, said: true });
@@ -1252,7 +1252,7 @@ describe("an Android key's signing certificates", () => {
 
 	const allowed = (run: Run) =>
 		keyFor(
-			run.secrets.MAPS_ANDROID_KEY__APP!,
+			run.secrets.MAPS_ANDROID_KEY_APP!,
 		)?.restrictions.androidKeyRestrictions?.allowedApplications.map(
 			(app) => app.sha1Fingerprint,
 		);
@@ -1351,7 +1351,7 @@ describe('a key nothing holds any more', () => {
 		await provider.ensure(run.ctx);
 
 		expect({
-			own: keyFor(run.secrets.MAPS_API_KEY__GEOCODE!) !== undefined,
+			own: keyFor(run.secrets.MAPS_API_KEY_GEOCODE!) !== undefined,
 			shared: google.keys.has(name),
 			retiring: typeof run.records.get('maps-key:Maps:server')?.data?.retiredAt,
 			said: run.lines.some((line) =>
@@ -1380,7 +1380,7 @@ describe('a key nothing holds any more', () => {
 			change: after.actions.at(-1)?.change,
 		}).toEqual({
 			shared: false,
-			secrets: ['MAPS_API_KEY__GEOCODE'],
+			secrets: ['MAPS_API_KEY_GEOCODE'],
 			record: false,
 			change: 'delete the shared server key, which nothing holds',
 		});
@@ -1395,13 +1395,13 @@ describe('a key nothing holds any more', () => {
 		expect({
 			shared: google.keys.has(name),
 			secrets: Object.keys(run.secrets),
-		}).toEqual({ shared: false, secrets: ['MAPS_API_KEY__GEOCODE'] });
+		}).toEqual({ shared: false, secrets: ['MAPS_API_KEY_GEOCODE'] });
 	});
 
 	it('retires the key of a caller that left the graph', async () => {
 		const first = stage({});
 		await provider.ensure(first.ctx);
-		const gone = first.secrets.MAPS_BROWSER_KEY__WEB!;
+		const gone = first.secrets.MAPS_BROWSER_KEY_WEB!;
 		const { Web: _web, ...withoutWeb } = everyCaller as Record<string, unknown>;
 		const manifest = withoutWeb as unknown as ConstructManifest;
 		const carry = { secrets: first.secrets, records: first.records };
@@ -1416,7 +1416,7 @@ describe('a key nothing holds any more', () => {
 
 		expect({
 			key: keyFor(gone),
-			secret: after.secrets.MAPS_BROWSER_KEY__WEB,
+			secret: after.secrets.MAPS_BROWSER_KEY_WEB,
 			record: after.records.has(keyEntryKey('Maps', 'browserKey', 'Web')),
 			change: after.actions.at(-1)?.change,
 		}).toEqual({
@@ -1430,7 +1430,7 @@ describe('a key nothing holds any more', () => {
 	it('deletes the keys of a construct nothing calls now', async () => {
 		const first = stage({ manifest: serverOnly() });
 		await provider.ensure(first.ctx);
-		const gone = first.secrets.MAPS_API_KEY__GEOCODE!;
+		const gone = first.secrets.MAPS_API_KEY_GEOCODE!;
 
 		await provider.ensure(
 			stage({

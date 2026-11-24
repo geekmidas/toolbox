@@ -146,6 +146,7 @@ export {
 	isMapsCallerKey,
 	MAPS_ROLES,
 	type MapsRole,
+	mapsCallerOf,
 	mapsKeyOf,
 	mapsRoleOf,
 	mapsRolesFor,

@@ -30,7 +30,7 @@ and reads it under the role's name:
 Two sites that call Maps get two browser keys, each allowed only from its own
 host; two apps, two Android keys. The code is the same in each — it reads
 `MAPS_BROWSER_KEY` — and on a deployed stage the value is its own: the stage
-keeps each caller's apart as `MAPS_BROWSER_KEY__WEB`, `MAPS_BROWSER_KEY__ADMIN`,
+keeps each caller's apart as `MAPS_BROWSER_KEY_WEB`, `MAPS_BROWSER_KEY_ADMIN`,
 and hands each process only its own, under the role's name. A key that leaks
 from one app works for no other, each is rotated alone, and Cloud Console
 shows each one's use — named `Maps/Web browser production`.
@@ -120,7 +120,7 @@ deploy: {
 
 | Value | Meaning |
 |---|---|
-| `'external'` (or nothing) | The keys are set in the stage's secrets by you: one per role (`MAPS_BROWSER_KEY`), read by every caller of it, or a caller's own (`MAPS_BROWSER_KEY__WEB`). |
+| `'external'` (or nothing) | The keys are set in the stage's secrets by you: one per role (`MAPS_BROWSER_KEY`), read by every caller of it, or a caller's own (`MAPS_BROWSER_KEY_WEB`). |
 | `{ provider: 'google', project?, android? }` | Every deploy makes the keys in a Google Cloud project, and writes them into the stage's secrets. |
 | `false` | The stage has no maps. A deploy of a workspace that declares a `Maps` is refused with `StageProviderDisabled`. |
 
@@ -136,7 +136,7 @@ The `google` provider, on every deploy:
    never links billing itself.
 4. **The keys.** One per caller the graph has, each restricted to that
    caller as above and written into the stage's secrets as its own
-   (`MAPS_BROWSER_KEY__WEB`). Restrictions follow the graph on every deploy:
+   (`MAPS_BROWSER_KEY_WEB`). Restrictions follow the graph on every deploy:
    add an API to `apis`, and every key is allowed it — the keys stay the
    same. A new caller gets a new key.
 

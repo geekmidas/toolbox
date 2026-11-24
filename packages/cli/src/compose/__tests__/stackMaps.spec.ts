@@ -104,9 +104,9 @@ function stack(
 }
 
 const OWN = {
-	MAPS_API_KEY__API: 'api-own',
-	MAPS_API_KEY__JOBS: 'jobs-own',
-	MAPS_BROWSER_KEY__WEB: 'web-own',
+	MAPS_API_KEY_API: 'api-own',
+	MAPS_API_KEY_JOBS: 'jobs-own',
+	MAPS_BROWSER_KEY_WEB: 'web-own',
 };
 
 describe('a deployed stage', () => {
@@ -127,7 +127,7 @@ describe('a deployed stage', () => {
 			...s.workers.map((w) => w.env),
 		]);
 		expect({
-			kept: envs.includes('__'),
+			kept: /MAPS_[A-Z]+_KEY_[A-Z]/.test(envs),
 			webs: envs.includes('web-own'),
 		}).toEqual({ kept: false, webs: false });
 	});
@@ -150,7 +150,7 @@ describe('a deployed stage', () => {
 	it('reads the key set by hand for every caller, where a caller has none of its own', () => {
 		const s = stack('production', {
 			MAPS_API_KEY: 'shared',
-			MAPS_API_KEY__API: 'api-own',
+			MAPS_API_KEY_API: 'api-own',
 			MAPS_BROWSER_KEY: 'shared-browser',
 		});
 
@@ -163,13 +163,13 @@ describe('a deployed stage', () => {
 	it('refuses a caller with no key, naming the one it would be kept under', () => {
 		expect(() =>
 			stack('production', {
-				MAPS_API_KEY__JOBS: 'jobs-own',
-				MAPS_BROWSER_KEY__WEB: 'web-own',
+				MAPS_API_KEY_JOBS: 'jobs-own',
+				MAPS_BROWSER_KEY_WEB: 'web-own',
 			}),
 		).toThrow(
 			expect.objectContaining({
 				constructor: StageSecretMissing,
-				message: expect.stringContaining('MAPS_API_KEY__API'),
+				message: expect.stringContaining('MAPS_API_KEY_API'),
 			}),
 		);
 	});

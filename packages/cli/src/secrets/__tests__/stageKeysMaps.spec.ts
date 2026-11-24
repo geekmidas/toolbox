@@ -41,11 +41,11 @@ describe('the Maps keys a stage must be given', () => {
 		expect(
 			listed({
 				providers: { maps: { accounted: true, hint: 'gkm deploy makes it' } },
-				supplied: { MAPS_BROWSER_KEY__WEB: 'AIza-web' },
+				supplied: { MAPS_BROWSER_KEY_WEB: 'AIza-web' },
 			}),
 		).toEqual([
-			{ key: 'MAPS_BROWSER_KEY__ADMIN', apps: ['admin'], set: false },
-			{ key: 'MAPS_BROWSER_KEY__WEB', apps: ['web'], set: true },
+			{ key: 'MAPS_BROWSER_KEY_ADMIN', apps: ['admin'], set: false },
+			{ key: 'MAPS_BROWSER_KEY_WEB', apps: ['web'], set: true },
 		]);
 	});
 

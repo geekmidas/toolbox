@@ -107,7 +107,7 @@ describe("where a caller's key is kept", () => {
 
 	it.for([
 		[true, 'MAPS_BROWSER_KEY'],
-		[false, 'MAPS_BROWSER_KEY__WEB'],
+		[false, 'MAPS_BROWSER_KEY_WEB'],
 	] as const)('local %s: %s', ([local, key]) => {
 		expect(storedMapsKey(web, local)).toBe(key);
 	});
@@ -115,7 +115,7 @@ describe("where a caller's key is kept", () => {
 	it.for([
 		[
 			'its own, deployed',
-			{ MAPS_BROWSER_KEY__WEB: 'own', MAPS_BROWSER_KEY: 'shared' },
+			{ MAPS_BROWSER_KEY_WEB: 'own', MAPS_BROWSER_KEY: 'shared' },
 			false,
 			'own',
 		],
@@ -135,10 +135,10 @@ describe("where a caller's key is kept", () => {
 describe("the stage's secrets as one process reads them", () => {
 	const stored = {
 		STRIPE_KEY: 'sk',
-		MAPS_API_KEY__API: 'api-own',
-		MAPS_API_KEY__JOBS: 'jobs-own',
-		MAPS_BROWSER_KEY__WEB: 'web-own',
-		MAPS_BROWSER_KEY__ADMIN: 'admin-own',
+		MAPS_API_KEY_API: 'api-own',
+		MAPS_API_KEY_JOBS: 'jobs-own',
+		MAPS_BROWSER_KEY_WEB: 'web-own',
+		MAPS_BROWSER_KEY_ADMIN: 'admin-own',
 	};
 
 	it.for([
@@ -161,7 +161,7 @@ describe("the stage's secrets as one process reads them", () => {
 
 		expect({
 			stage: keys?.has('STRIPE_KEY'),
-			callers: [...(keys ?? [])].filter((key) => key.includes('__')),
+			callers: [...(keys ?? [])].filter((key) => /^MAPS_[A-Z]+_KEY_/.test(key)),
 		}).toEqual({ stage: true, callers: [] });
 	});
 });

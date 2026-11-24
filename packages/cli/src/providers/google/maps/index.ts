@@ -17,7 +17,7 @@
  *   the stage's server address where it has one, a site's to its host, a
  *   mobile app's to its Android package and signing certificates or its iOS
  *   bundle id — and write it into the stage's secrets as the caller's own
- *   (`MAPS_BROWSER_KEY__WEB`), which the caller reads as `MAPS_BROWSER_KEY`.
+ *   (`MAPS_BROWSER_KEY_WEB`), which the caller reads as `MAPS_BROWSER_KEY`.
  *   A key's restrictions follow the graph on every deploy.
  *
  * A key the stage's secrets hold that gkm did not make is used as it is, and
