@@ -116,13 +116,15 @@ export function prepareSecretsForApp(
 export function prepareSecretsForAllApps(
 	stageSecrets: StageSecrets,
 	sniffedApps: Map<string, SniffedEnvironment>,
+	/** The stage's secrets as one app reads them — its own Maps keys. */
+	forApp: (appName: string) => StageSecrets = () => stageSecrets,
 ): Map<string, EncryptedAppSecrets> {
 	const results = new Map<string, EncryptedAppSecrets>();
 
 	for (const [appName, sniffedEnv] of sniffedApps) {
 		// Only prepare secrets for apps that have required env vars
 		if (sniffedEnv.requiredEnvVars.length > 0) {
-			const encrypted = prepareSecretsForApp(stageSecrets, sniffedEnv);
+			const encrypted = prepareSecretsForApp(forApp(appName), sniffedEnv);
 			results.set(appName, encrypted);
 		}
 	}

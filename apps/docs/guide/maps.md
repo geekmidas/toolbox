@@ -16,15 +16,24 @@ export const maps = new Maps('Maps', {
 `static-maps`, `places`, `geocoding` and `routes`. Every key is restricted to
 these and nothing else.
 
-## A key per kind of caller
+## A key per caller
 
-Depend on it from whatever calls Maps. Each kind of caller gets its own key:
+Depend on it from whatever calls Maps. Every caller gets a key of its own,
+and reads it under the role's name:
 
-| Caller | Key | Restricted to |
+| Caller | Reads | Its key is restricted to |
 |---|---|---|
-| a server process — an endpoint, a function, a cron, a subscriber | `MAPS_API_KEY`, as `services.maps.apiKey` | the declared web services |
-| a site | `MAPS_BROWSER_KEY`, inlined as `VITE_`/`NEXT_PUBLIC_MAPS_BROWSER_KEY` | the APIs, and the stage's calling sites' hosts as referrers |
-| a mobile app | `MAPS_ANDROID_KEY` and `MAPS_IOS_KEY`, inlined as `EXPO_PUBLIC_…` | the APIs, and the app's Android package and signing certificates, or its iOS bundle id |
+| a server process — an API, a worker, a function no worker runs | `MAPS_API_KEY`, as `services.maps.apiKey` | the declared web services, and the stage's server address where it runs on one |
+| a site | `MAPS_BROWSER_KEY`, inlined as `VITE_`/`NEXT_PUBLIC_MAPS_BROWSER_KEY` | the APIs, and that site's host as referrer |
+| a mobile app | `MAPS_ANDROID_KEY` and `MAPS_IOS_KEY`, inlined as `EXPO_PUBLIC_…` | the APIs, and that app's Android package and signing certificates, or its iOS bundle id |
+
+Two sites that call Maps get two browser keys, each allowed only from its own
+host; two apps, two Android keys. The code is the same in each — it reads
+`MAPS_BROWSER_KEY` — and on a deployed stage the value is its own: the stage
+keeps each caller's apart as `MAPS_BROWSER_KEY_WEB`, `MAPS_BROWSER_KEY_ADMIN`,
+and hands each process only its own, under the role's name. A key that leaks
+from one app works for no other, each is rotated alone, and Cloud Console
+shows each one's use — named `Maps/Web browser production`.
 
 ```ts
 // a server process
@@ -45,7 +54,6 @@ new MobileApp('App', {
 Nobody writes down who holds a key: it is read off the edges. Each caller is
 handed only its own key, so a site's bundle never holds the server's key, and
 the key in a page's JavaScript is refused from another site's page or a phone.
-A server's key is restricted by its APIs alone: keep it on the server.
 
 An Expo app hands its keys to the native map in `app.config.ts`:
 
@@ -76,14 +84,16 @@ deploy: {
 gkm provision --stage development
 ```
 
-The keys are restricted from the local stage's own facts: the browser key to
-each site's host on the local edge (`https://shop.localhost/*`), the server key
-to its APIs alone — a laptop has no fixed address. They are written into the
+Each caller gets its own key, restricted from the local stage's own facts:
+a site's browser key to its host on the local edge (`https://shop.localhost/*`),
+a server key to its APIs alone — a laptop has no fixed address. `gkm dev` and
+`gkm test` hand each app its own key under the role's name
+(`MAPS_BROWSER_KEY_WEB` arrives as `MAPS_BROWSER_KEY`). They are written into the
 local stage's secrets and recorded in this machine's state, so each developer
 provisions their own and a second run makes nothing.
 
 Without `deploy.maps.<local>`, the local stage's keys are set by hand, as a
-credential's are:
+credential's are — one per role, read by every caller of it:
 
 ```bash
 gkm secrets:set MAPS_API_KEY AIza… --stage development
@@ -110,7 +120,7 @@ deploy: {
 
 | Value | Meaning |
 |---|---|
-| `'external'` (or nothing) | Each key is set in the stage's secrets by you. |
+| `'external'` (or nothing) | The keys are set in the stage's secrets by you: one per role (`MAPS_BROWSER_KEY`), read by every caller of it, or a caller's own (`MAPS_BROWSER_KEY_WEB`). |
 | `{ provider: 'google', project?, android? }` | Every deploy makes the keys in a Google Cloud project, and writes them into the stage's secrets. |
 | `false` | The stage has no maps. A deploy of a workspace that declares a `Maps` is refused with `StageProviderDisabled`. |
 
@@ -124,18 +134,29 @@ The `google` provider, on every deploy:
 3. **Billing.** Maps serves no project without a billing account. Without one
    the deploy stops with `MapsBillingDisabled` and the link to link one. gkm
    never links billing itself.
-4. **The keys.** One per kind of caller the graph has, each restricted as
-   above and written into the stage's secrets. Its restrictions follow the
-   graph on every deploy: add a site that calls Maps, and its host is
-   allowed — the key stays the same.
+4. **The keys.** One per caller the graph has, each restricted to that
+   caller as above and written into the stage's secrets as its own
+   (`MAPS_BROWSER_KEY_WEB`). Restrictions follow the graph on every deploy:
+   add an API to `apis`, and every key is allowed it — the keys stay the
+   same. A new caller gets a new key.
 
 **Android** keys are restricted by package *and* signing certificate. The
-package is the `MobileApp`'s `android.package`; the
-certificates are `android.sha1`: Play's app signing key from Play Console's
-*App integrity* page, and EAS's upload key. Without `sha1` the Android key is
-restricted to its APIs alone, and the deploy says so. **iOS** keys are
-restricted to the `MobileApp`'s `ios.bundleIdentifier`. A platform the
-`MobileApp` does not declare gets no key.
+package is the `MobileApp`'s `android.package`. The certificates are each
+keystore EAS signs the app's builds with — read from EAS by the app's
+`eas.projectId` when `EXPO_TOKEN` is set — and `android.sha1`: Play's app
+signing certificate, from Play Console → Test and release → App integrity →
+*App signing key certificate*. Play re-signs what it installs, so a stage
+that ships the app through Google Play (`deploy.mobile.<stage>` is
+`google-play`) needs Play's; any other stage needs one or the other. With
+none, the deploy stops with `MapsAndroidKeyUnsigned` rather than make a key
+anyone who unpacks the app could use. **iOS** keys are restricted to the
+`MobileApp`'s `ios.bundleIdentifier`. A platform the `MobileApp` does not
+declare gets no key, and the app reads none.
+
+**A server key** is restricted to the stage's server where it runs on one:
+a compose stage's `GKM_SERVER_IPV4`, and `GKM_SERVER_IPV6` where it has one.
+A stage with no fixed outbound address — functions on AWS — restricts it to
+its APIs alone, and the deploy says so: keep it on the server.
 
 **A browser key** needs a host to be restricted to: a site on a stage with no
 domain stops the deploy with `MapsSiteHasNoHost`, since a browser key
@@ -146,14 +167,20 @@ endpoint — stops with `MapsServerKeyCallsNothing`: the map is drawn in a page
 or a phone, and a server key has nothing to call.
 
 **A key you set wins.** A key the stage's secrets already hold, that the
-provider did not make, is used as it is and nothing is made for it.
+provider did not make, is used as it is and nothing is made for it: a
+caller's own, or one per role, read by every caller that has none of its
+own.
 
 `--rotate-keys` makes each key a successor; the old one is deleted by the
 first deploy after the stage has run with the new one, or at once with
 `--retire-old-keys` (see [Rotating a key](./providers.md#rotating-a-key)).
+A key nothing holds any more — a caller that dropped its edge, or the one
+key per kind of caller an earlier version made — is retired the same way:
+kept until the stage has run without it, then deleted from Google, the
+state and the stage's secrets.
 
-Every deploy checks each key a caller holds is in the stage's secrets, and
-stops with `MapsNotProvisioned` if not.
+Every deploy checks each caller's key is in the stage's secrets, and stops
+with `MapsNotProvisioned`, naming the ones that are not.
 
 See [Credentials → Google](./providers.md#google) for how the deploy signs in
 to Google, locally and in CI.

@@ -11,7 +11,6 @@
 
 import {
 	type ConstructManifest,
-	MAPS_ROLES,
 	type MapsRole,
 	providedKeyFor,
 } from '@geekmidas/manifest';
@@ -24,6 +23,7 @@ import {
 	stageServiceDeclarations,
 } from '../deploy/devServices';
 import { appEnvKeys, workerEnvKeys } from '../reconcile/apps';
+import { mapsHolders, storedMapsKey } from '../reconcile/mapsKeys.js';
 import { appKey } from '../workspace/derive';
 
 /** Whose a Maps key is, for the line that names it. */
@@ -96,19 +96,36 @@ export function workspaceStageKeys(
 		const apps = readers(id, kind);
 		if (apps.length > 0) credentials.push({ id, kind, apps });
 	}
-	// Each Maps key some process holds: which ones is the graph's
-	// (`mapsRolesFor`), already in each process's keys.
+	// Each Maps key some process holds (`mapsHolders`). A stage whose
+	// provider makes them keeps one per caller; any other stage one per role,
+	// set by hand and read by every caller of it.
+	const perCaller = !input.local && input.providers?.maps !== undefined;
 	const maps: MapsKeyDeclaration[] = [];
-	for (const [id, declaration] of Object.entries(manifest)) {
-		if (declaration.kind !== 'maps') continue;
-		for (const role of MAPS_ROLES) {
-			const key = providedKeyFor(id, 'maps', role);
-			const apps = [...reads]
-				.filter(([, env]) => env.has(key))
-				.map(([app]) => app)
-				.sort();
-			if (apps.length > 0) maps.push({ id, key, holder: HOLDER[role], apps });
+	const shared = new Map<string, MapsKeyDeclaration>();
+	for (const holder of mapsHolders(manifest)) {
+		const app = appKey(holder.caller);
+		if (perCaller) {
+			maps.push({
+				id: holder.maps,
+				key: storedMapsKey(holder),
+				holder: HOLDER[holder.role],
+				apps: [app],
+			});
+			continue;
 		}
+		const found = shared.get(holder.key);
+		if (found) {
+			found.apps = [...(found.apps ?? []), app].sort();
+			continue;
+		}
+		const declaration: MapsKeyDeclaration = {
+			id: holder.maps,
+			key: holder.key,
+			holder: HOLDER[holder.role],
+			apps: [app],
+		};
+		shared.set(holder.key, declaration);
+		maps.push(declaration);
 	}
 	// Mail and storage: the list a deploy's readiness check refuses by.
 	const services = stageServiceDeclarations({

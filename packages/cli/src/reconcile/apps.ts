@@ -24,7 +24,10 @@ import {
 	dependentsOf,
 	EDGE_TOKEN_KEY,
 	imageOriginsFor,
+	isMapsCallerKey,
 	isPublicDeclaration,
+	mapsKeyOf,
+	mapsRoleOf,
 	providedKeyFor,
 	provisionOrder,
 	publicEnvFor,
@@ -481,6 +484,9 @@ export function processEnvKeys(
 
 	const owned = constructKeys(manifest);
 	for (const key of stageKeys) {
+		// A caller's own Maps key is that caller's, handed to it under the
+		// role's name — never a stage key every process reads.
+		if (isMapsCallerKey(manifest, key)) continue;
 		if (!owned.has(key) && !isStackKey(key)) keys.add(key);
 	}
 	return keys;
@@ -499,9 +505,55 @@ export function processEnv(
 	const env = stageEnv(stored, resolved);
 	const keys = processEnvKeys(manifest, units, Object.keys(stored));
 	if (!keys) return env;
-	return Object.fromEntries(
+	const own = Object.fromEntries(
 		Object.entries(env).filter(([key]) => keys.has(key)),
 	);
+	// A Maps key is read under the role's name, and its value is the
+	// caller's own where the stage keeps one (`gkm provision` makes them, the
+	// local stage included) — the app's first, then each worker's and
+	// processor's — and otherwise the role's, set by hand for every caller.
+	const callers = processCallers(manifest, units);
+	for (const key of keys) {
+		for (const [maps, declaration] of Object.entries(manifest)) {
+			if (declaration.kind !== 'maps') continue;
+			const role = mapsRoleOf(maps, key);
+			if (!role) continue;
+			const value = callers
+				.map((caller) => stored[mapsKeyOf(maps, role, caller)])
+				.find((v) => v !== undefined);
+			if (value !== undefined) own[key] = value;
+		}
+	}
+	return own;
+}
+
+/** The construct an app of the workspace is, by its name: `api` → `Api`. */
+export function appCaller(
+	manifest: ConstructManifest,
+	appName: string,
+): string | undefined {
+	return Object.entries(manifest).find(
+		([id, declaration]) =>
+			(declaration.kind === 'rest-api' ||
+				declaration.kind === 'websocket-api' ||
+				declaration.kind === 'site' ||
+				declaration.kind === 'mobile-app') &&
+			appKey(id) === appName,
+	)?.[0];
+}
+
+/** The constructs whose code one process runs: its app's, then the rest. */
+function processCallers(
+	manifest: ConstructManifest,
+	units: ProcessUnits,
+): string[] {
+	const app =
+		units.app === undefined ? undefined : appCaller(manifest, units.app);
+	return [
+		...(app === undefined ? [] : [app]),
+		...(units.workers ?? []),
+		...(units.processors ?? []),
+	];
 }
 
 /**

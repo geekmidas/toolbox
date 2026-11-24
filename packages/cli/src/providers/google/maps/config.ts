@@ -19,10 +19,12 @@ export interface GoogleMapsConfig {
 	project?: string;
 	/**
 	 * The SHA-1 fingerprints of the certificates the stage's Android builds are
-	 * signed with — Play's app signing key, from Play Console's App integrity
-	 * page, and EAS's upload key. Without them the Android key is restricted to
-	 * its APIs alone: Google restricts an Android key by package *and*
-	 * certificate, never by package alone.
+	 * signed with that EAS does not know: Play's app signing certificate, from
+	 * Play Console → Test and release → App integrity. Each EAS keystore's is
+	 * read from EAS and added. Google restricts an Android key by package
+	 * *and* certificate, so a key with none is refused
+	 * (`MapsAndroidKeyUnsigned`) — as is a stage that ships through Play and
+	 * names none of Play's.
 	 */
 	android?: { sha1?: readonly string[] };
 }

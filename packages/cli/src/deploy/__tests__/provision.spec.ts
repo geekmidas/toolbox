@@ -9,6 +9,7 @@ import { generateKeyPairSync } from 'node:crypto';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { ConstructManifest } from '@geekmidas/manifest';
 import { HttpResponse, http } from 'msw';
 import { setupServer } from 'msw/node';
 import {
@@ -22,6 +23,7 @@ import {
 	vi,
 } from 'vitest';
 import type { KeyRestrictions } from '../../providers/google/maps/index';
+import { processEnv } from '../../reconcile/apps';
 import { secretsStoreFor } from '../../secrets/store';
 import { normalizeWorkspace } from '../../workspace/index';
 import type { WorkspaceConfig } from '../../workspace/types';
@@ -246,10 +248,35 @@ describe('gkm provision, on the local stage', { timeout: 30_000 }, () => {
 
 		const secrets = await localSecrets();
 		expect(Object.keys(secrets).sort()).toEqual([
-			'MAPS_API_KEY',
-			'MAPS_BROWSER_KEY',
+			'MAPS_API_KEY_GEOCODE',
+			'MAPS_BROWSER_KEY_WEB',
 		]);
 		expect(google.keys.size).toBe(2);
+	});
+
+	it('hands the site the key made for it, under the role’s name', async () => {
+		await provision(mapsOnLocal);
+		const secrets = await localSecrets();
+		const manifest = {
+			Maps: { kind: 'maps', id: 'Maps', apis: ['geocoding', 'maps'] },
+			Geocode: {
+				kind: 'function',
+				id: 'Geocode',
+				handler: 'src/geocode.ts#handler',
+				dependencies: [{ target: 'Maps', kind: 'maps' }],
+			},
+			Web: {
+				kind: 'site',
+				id: 'Web',
+				variant: 'static',
+				app: { path: 'apps/web' },
+				dependencies: [{ target: 'Maps', kind: 'maps' }],
+			},
+		} as unknown as ConstructManifest;
+
+		expect(
+			processEnv(manifest, { app: 'web' }, secrets, {}).MAPS_BROWSER_KEY,
+		).toBe(secrets.MAPS_BROWSER_KEY_WEB);
 	});
 
 	it("restricts the browser key to the site's host on the local edge", async () => {
@@ -283,8 +310,8 @@ describe('gkm provision, on the local stage', { timeout: 30_000 }, () => {
 		const stored = await store.read(LOCAL);
 		expect(Object.keys(stored?.resources ?? {}).sort()).toEqual([
 			'google-project:maps',
-			'maps-key:Maps:browser',
-			'maps-key:Maps:server',
+			'maps-key:Maps:browser:Web',
+			'maps-key:Maps:server:Geocode',
 		]);
 		const lock = await store.lock(LOCAL, { operation: 'test' });
 		await lock.release();
@@ -361,8 +388,8 @@ describe('gkm provision, on a deployed stage', { timeout: 30_000 }, () => {
 			allowedReferrers: ['https://shop.com/*'],
 		});
 		expect(Object.keys(await secretsOf('production')).sort()).toEqual([
-			'MAPS_API_KEY',
-			'MAPS_BROWSER_KEY',
+			'MAPS_API_KEY_GEOCODE',
+			'MAPS_BROWSER_KEY_WEB',
 		]);
 	});
 
@@ -478,8 +505,8 @@ describe('gkm provision, the command', { timeout: 60_000 }, () => {
 		const events = lines.map((line) => JSON.parse(line) as ProvisionEvent);
 		expect(events.at(-1)?.type).toBe('provision.finished');
 		expect(Object.keys(await localSecrets()).sort()).toEqual([
-			'MAPS_API_KEY',
-			'MAPS_BROWSER_KEY',
+			'MAPS_API_KEY_GEOCODE',
+			'MAPS_BROWSER_KEY_WEB',
 		]);
 	});
 
