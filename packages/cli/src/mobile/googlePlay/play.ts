@@ -4,12 +4,23 @@
  * check that the new key can act on the app.
  */
 
-import { createSign } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { extname, join } from 'node:path';
 import type { PlayTrack } from '@geekmidas/manifest';
 import { GkmError } from '../../errors';
-import { GoogleApiError, type GoogleClient, googleClient } from './google.js';
+import {
+	GoogleApiError,
+	type GoogleClient,
+	googleClient,
+} from '../../providers/google/client.js';
+import {
+	GoogleTokenExchangeFailed,
+	type ServiceAccountJson,
+	serviceAccountToken,
+} from '../../providers/google/credentialsFile.js';
+import { ANDROID_PUBLISHER_SCOPE } from '../../providers/google/gcloud.js';
+
+export type { ServiceAccountJson };
 
 export const PLAY =
 	'https://androidpublisher.googleapis.com/androidpublisher/v3';
@@ -140,49 +151,16 @@ export async function ensurePlayAccess(
 	return 'updated';
 }
 
-/** A service account key file, as Google writes it. */
-export interface ServiceAccountJson {
-	client_email: string;
-	private_key: string;
-	token_uri?: string;
-}
-
 /** An access token for the key itself: a signed JWT, exchanged. */
 export async function keyToken(key: ServiceAccountJson): Promise<string> {
-	const tokenUri = key.token_uri ?? 'https://oauth2.googleapis.com/token';
-	const now = Math.floor(Date.now() / 1000);
-	const encode = (value: object) =>
-		Buffer.from(JSON.stringify(value)).toString('base64url');
-	const unsigned = `${encode({ alg: 'RS256', typ: 'JWT' })}.${encode({
-		iss: key.client_email,
-		scope: 'https://www.googleapis.com/auth/androidpublisher',
-		aud: tokenUri,
-		iat: now,
-		exp: now + 600,
-	})}`;
-	const signature = createSign('RSA-SHA256')
-		.update(unsigned)
-		.sign(key.private_key)
-		.toString('base64url');
-	const response = await fetch(tokenUri, {
-		method: 'POST',
-		headers: { 'content-type': 'application/x-www-form-urlencoded' },
-		body: new URLSearchParams({
-			grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
-			assertion: `${unsigned}.${signature}`,
-		}),
-	});
-	const body = (await response.json().catch(() => ({}))) as {
-		access_token?: string;
-		error_description?: string;
-	};
-	if (!response.ok || !body.access_token) {
-		throw new PlayKeyUnverified(
-			key.client_email,
-			body.error_description ?? `token exchange answered ${response.status}`,
-		);
+	try {
+		return await serviceAccountToken(key, [ANDROID_PUBLISHER_SCOPE]);
+	} catch (error) {
+		if (error instanceof GoogleTokenExchangeFailed) {
+			throw new PlayKeyUnverified(key.client_email, error.detail);
+		}
+		throw error;
 	}
-	return body.access_token;
 }
 
 /**

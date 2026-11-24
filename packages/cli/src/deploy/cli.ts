@@ -42,6 +42,8 @@ export interface DeployCliOptions {
 	retireOldKeys?: boolean;
 	/** `--profile`: the AWS profile for the stage's account. */
 	profile?: string;
+	/** `--project`: the Google Cloud project for the stage's Google providers. */
+	project?: string;
 }
 
 /** Where the command writes. The process's own streams, outside tests. */
@@ -94,6 +96,7 @@ export async function deployCli(
 		...(options.rotateKeys ? { rotateKeys: true } : {}),
 		...(options.retireOldKeys ? { retireOldKeys: true } : {}),
 		...(options.profile ? { profile: options.profile } : {}),
+		...(options.project ? { project: options.project } : {}),
 	};
 	const credentials = storedCredentials(
 		options.profile ? { profile: options.profile } : {},

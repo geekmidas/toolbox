@@ -120,6 +120,8 @@ export interface DeployInput {
 	rotateKeys?: boolean;
 	/** Delete a rotated-out key now, not after the next deploy. */
 	retireOldKeys?: boolean;
+	/** `--project`: the Google Cloud project for the stage's Google providers. */
+	project?: string;
 	/** Receives each progress line as it is written. Defaults to none. */
 	logger?: DeployLogger;
 	/**
@@ -300,6 +302,7 @@ export function deploy(input: DeployInput): DeployRun {
 								...(input.skipDns ? { skipDns: true } : {}),
 								...(input.rotateKeys ? { rotateKeys: true } : {}),
 								...(input.retireOldKeys ? { retireOldKeys: true } : {}),
+								...(input.project ? { project: input.project } : {}),
 							},
 							ctx,
 						),

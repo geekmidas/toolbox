@@ -808,7 +808,7 @@ gkm login --endpoint https://dokploy.example.com
 ```bash
 # These commands no longer need DOKPLOY_API_TOKEN
 gkm deploy:list
-gkm deploy:init --project my-project --app api
+gkm deploy:init --dokploy-project my-project --app api
 gkm deploy --stage production
 ```
 
@@ -950,30 +950,30 @@ From a program: `rollbackStage({ cwd, stage, app })` from `@geekmidas/cli/deploy
 Initialize a new Dokploy deployment by creating a project and application via the Dokploy API. Nothing is written to `gkm.config.ts`: the ids are rediscovered by name on each run and kept in the deploy state file.
 
 ```bash
-gkm deploy:init --project <name> --app <name> [options]
+gkm deploy:init --dokploy-project <name> --app <name> [options]
 ```
 
 **Options:**
 - `--endpoint <url>`: Dokploy server URL (uses stored credentials if logged in)
-- `--project <name>`: Project name (creates if not exists)
+- `--dokploy-project <name>`: Dokploy project name (creates if not exists)
 - `--app <name>`: Application name to create
-- `--project-id <id>`: Use existing project ID instead of finding/creating
+- `--dokploy-project-id <id>`: Use an existing Dokploy project ID instead of finding/creating
 - `--registry-id <id>`: Configure a registry for the application
 
 **Examples:**
 ```bash
 # After gkm login (no endpoint needed)
-gkm deploy:init --project my-project --app api
+gkm deploy:init --dokploy-project my-project --app api
 
 # With explicit endpoint (or if not logged in)
 gkm deploy:init \
   --endpoint https://dokploy.example.com \
-  --project my-project \
+  --dokploy-project my-project \
   --app api
 
 # With registry configuration
 gkm deploy:init \
-  --project my-project \
+  --dokploy-project my-project \
   --app api \
   --registry-id reg_xyz789
 ```

@@ -1081,6 +1081,7 @@ async function verifyS3(ctx: VerifyContext<S3ObjectsConfig>): Promise<void> {
 
 export const s3Provider: ResourceProvider<S3ObjectsConfig, AwsProvisioning> = {
 	kind: 'objects',
+	cloud: 'aws',
 	name: 's3',
 	check: checkS3Config,
 	provisioning: S3_PROVISIONING,

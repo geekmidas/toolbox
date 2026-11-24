@@ -69,6 +69,8 @@ export interface DeployRequest {
 	rotateKeys?: boolean;
 	/** `--retire-old-keys`: delete a rotated-out key now. */
 	retireOldKeys?: boolean;
+	/** `--project`: the Google Cloud project for the stage's Google providers. */
+	project?: string;
 }
 
 /**
@@ -372,6 +374,7 @@ async function provisionResources(
 			dryRun: ctx.dryRun,
 			...(request.rotateKeys ? { rotateKeys: true } : {}),
 			...(request.retireOldKeys ? { retireOldKeys: true } : {}),
+			...(request.project ? { project: request.project } : {}),
 			...(ctx.home ? { home: ctx.home } : {}),
 			...(ctx.profile ? { profile: ctx.profile } : {}),
 			credentials: ctx.credentials,

@@ -367,6 +367,10 @@ Options:
                          successor; this deploy releases on it, the next one
                          deletes the old key
   --retire-old-keys      Deployed stage: delete a rotated-out key now
+  --project <project>    The Google Cloud project for the stage's Google
+                         providers (default: deploy.<kind>.<stage>.project,
+                         else <workspace>-<stage>). Recorded in the stage's
+                         state: a later run with another is GoogleProjectChanged
   --provider <name>      Deprecated: `dokploy` means --target dokploy;
                          docker and aws-lambda are removed
   --skip-push, --skip-build
@@ -613,6 +617,9 @@ Options:
   --rotate-keys    Deployed stage: issue each provisioned key a successor
   --retire-old-keys
                    Deployed stage: delete a rotated-out key now
+  --project <project>
+                   Deployed stage: the Google Cloud project for its Google
+                   providers, as on gkm deploy
 
 The same as `gkm deploy --target compose --stage <stage>`, plus --build, --pull,
 --push, --digests-file, --down and --destroy. See

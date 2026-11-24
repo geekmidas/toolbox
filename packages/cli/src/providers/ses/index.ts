@@ -545,6 +545,7 @@ async function verifySes(ctx: VerifyContext<SesInboxConfig>): Promise<void> {
 
 export const sesProvider: ResourceProvider<SesInboxConfig, AwsProvisioning> = {
 	kind: 'inbox',
+	cloud: 'aws',
 	name: 'ses',
 	check: checkSesConfig,
 	provisioning: SES_PROVISIONING,
