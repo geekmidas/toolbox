@@ -234,6 +234,16 @@
 				"default": "./dist/credential.cjs"
 			}
 		},
+		"./maps": {
+			"import": {
+				"types": "./dist/maps.d.mts",
+				"default": "./dist/maps.mjs"
+			},
+			"require": {
+				"types": "./dist/maps.d.cts",
+				"default": "./dist/maps.cjs"
+			}
+		},
 		"./external-api": {
 			"import": {
 				"types": "./dist/external-api.d.mts",

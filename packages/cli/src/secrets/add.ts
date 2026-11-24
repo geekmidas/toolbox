@@ -327,6 +327,7 @@ const KIND_LABEL: Record<WorkspaceStageKey['kind'], string> = {
 	'file-server': 'file server',
 	'external-api': 'external API',
 	credential: 'credential',
+	maps: 'maps key',
 	server: 'server address',
 };
 

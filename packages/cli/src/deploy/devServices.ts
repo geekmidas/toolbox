@@ -308,6 +308,7 @@ export interface ExternalServicesInput {
 export interface StageProviderNotes {
 	objects?: StageProviderNote;
 	email?: StageProviderNote;
+	maps?: StageProviderNote;
 }
 
 /** What the stage's provider says of one kind. */
@@ -342,6 +343,17 @@ export interface CredentialDeclaration {
 	apps?: readonly string[];
 }
 
+/** One `Maps` key a caller on the stage holds. */
+export interface MapsKeyDeclaration {
+	id: string;
+	/** `MAPS_BROWSER_KEY`. */
+	key: string;
+	/** Whose it is: `server`, `browser`, `android`, `ios`. */
+	holder: string;
+	/** The apps that read it, where known. */
+	apps?: readonly string[];
+}
+
 /** What a stage-supplied key belongs to. */
 export type StageKeyKind =
 	| 'bucket'
@@ -349,6 +361,7 @@ export type StageKeyKind =
 	| 'file-server'
 	| 'external-api'
 	| 'credential'
+	| 'maps'
 	/** The server a compose stage's stack runs on: `GKM_SERVER_IPV4`. */
 	| 'server';
 
@@ -384,6 +397,8 @@ export interface StageKeysInput {
 	services?: readonly ServiceDeclaration[];
 	/** Every third party's credentials something on the stage reads. */
 	credentials?: readonly CredentialDeclaration[];
+	/** Every Maps key something on the stage holds. */
+	maps?: readonly MapsKeyDeclaration[];
 	/** The stage's base domain, for the examples. */
 	domain?: string;
 	/** What the stage's providers say — see {@link StageProviderNotes}. */
@@ -500,6 +515,22 @@ export function requiredStageKeys(input: StageKeysInput): StageKey[] {
 		});
 	}
 
+	const maps = input.providers?.maps;
+	const mapsKeys = [...(input.maps ?? [])].sort((a, b) =>
+		a.key.localeCompare(b.key),
+	);
+	for (const d of mapsKeys) {
+		add({
+			key: d.key,
+			id: d.id,
+			kind: 'maps',
+			what: `the ${d.holder} key '${d.id}' calls Maps with — a Google Cloud API key`,
+			example: 'AIza…',
+			...(maps?.hint ? { hint: maps.hint } : {}),
+			...apps(d),
+		});
+	}
+
 	return keys;
 }
 
@@ -517,7 +548,7 @@ export function suppliedOnly(
 	key: string,
 	local: boolean,
 ): boolean {
-	if (kind === 'credential') return true;
+	if (kind === 'credential' || kind === 'maps') return true;
 	if (kind === 'external-api')
 		return key === providedKeyFor(id, 'external-api', 'credentials');
 	if (local) return false;

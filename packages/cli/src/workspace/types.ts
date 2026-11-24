@@ -4,6 +4,7 @@ import type { StageCdnConfig } from '../compose/cdnConfig.js';
 import type { DnsRecordsMode } from '../compose/dnsConfig.js';
 import type { AwsRegion, StateConfig } from '../deploy/StateProvider.js';
 import type { GooglePlayConfig } from '../providers/googlePlay/config.js';
+import type { GoogleMapsConfig } from '../providers/google/maps/config.js';
 import type {
 	SesEmailConfig,
 	SesInboxConfig,
@@ -403,6 +404,24 @@ export type StageEmailConfig = 'external' | SesEmailConfig | false;
 export type StageMobileConfig = 'external' | GooglePlayConfig | false;
 
 /**
+ * What makes one deployed stage's Maps keys — `deploy.maps`, by stage:
+ *
+ * - `{ provider: 'google' }` — the deploy makes each `Maps` construct's keys
+ *   in a Google Cloud project (`--project`, else `project`, else
+ *   `<workspace>-<stage>`): one per kind of caller, each restricted to the
+ *   construct's APIs and to what calls it — the sites' hosts, a mobile app's
+ *   package and bundle id — and writes them into the stage's secrets.
+ * - `'external'` — the default: the stage's secrets hold each key, set by you.
+ * - `false` — the stage has no maps; a `Maps` on it is refused.
+ *
+ * @example
+ * ```ts
+ * maps: { production: { provider: 'google', project: 'acme-maps' } }
+ * ```
+ */
+export type StageMapsConfig = 'external' | GoogleMapsConfig | false;
+
+/**
  * One deployed compose stage's backups — `deploy.backups`, by stage.
  *
  * A stage that runs Postgres is backed up whether it names one or not: every
@@ -608,6 +627,11 @@ export interface DeployConfig<S extends string = string> {
 	 * `mobile-app` kind `MobileApp` produces. See {@link StageMobileConfig}.
 	 */
 	mobile?: StageMap<S, StageMobileConfig>;
+	/**
+	 * What makes each deployed stage's Maps keys — the `maps` kind `Maps`
+	 * produces. See {@link StageMapsConfig}.
+	 */
+	maps?: StageMap<S, StageMapsConfig>;
 	/**
 	 * When each deployed compose stage's databases are backed up, and how
 	 * long a backup is kept — see {@link StageBackupsConfig}.

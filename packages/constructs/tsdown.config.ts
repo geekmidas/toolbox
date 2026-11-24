@@ -22,6 +22,7 @@ export default defineConfig({
 		'src/telemetry.ts',
 		'src/email.ts',
 		'src/inbox.ts',
+		'src/maps.ts',
 		'src/database/kysely.ts',
 		'src/endpoints/index.ts',
 		'src/functions/index.ts',

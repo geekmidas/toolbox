@@ -28,10 +28,11 @@ the same way.
 
 The kinds are `objects` — what `ObjectStorage` and `FileServer` produce —
 `email`, what `Email` produces, `inbox` (see
-[Receiving email](./receiving-email.md#deployed-deploy-inbox)), and `mobile`,
+[Receiving email](./receiving-email.md#deployed-deploy-inbox)), `mobile`,
 what `MobileApp` produces: `{ provider: 'google-play', developer }` sets each
 app up for EAS Submit to publish to Google Play (see
-[Mobile apps](./mobile.md#google-play-set-up-by-the-deploy)). `cache` takes
+[Mobile apps](./mobile.md#google-play-set-up-by-the-deploy)), and `maps`, what
+`Maps` produces (see [Maps](./maps.md#deployed-deploy-maps-stage)). `cache` takes
 the same `deploy.<kind>.<stage>` shape when its provider arrives.
 
 ## What a provider is

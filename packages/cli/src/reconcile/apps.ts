@@ -615,6 +615,12 @@ function addEdgeKeys(
 				keys.add(providedKeyFor(id, target.kind, 'publisherConnectionString'));
 			continue;
 		}
+		// A Maps key is its caller's own: a server process holds the server
+		// key, and a site or a phone only what `publicValues` hands its bundle.
+		if (target.kind === 'maps') {
+			if (!client) keys.add(providedKeyFor(id, 'maps', 'apiKey'));
+			continue;
+		}
 		for (const key of target.provides ?? []) keys.add(key);
 
 		// Locally Mailpit posts what an inbox receives to the worker that

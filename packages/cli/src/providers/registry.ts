@@ -5,6 +5,7 @@
  */
 
 import { googlePlayProvider } from './googlePlay/index.js';
+import { googleMapsProvider } from './google/maps/index.js';
 import { s3Provider } from './s3/index.js';
 import { sesEmailProvider } from './ses/email.js';
 import { sesProvider } from './ses/index.js';
@@ -19,6 +20,7 @@ export const BUILTIN_PROVIDERS: {
 	inbox: { ses: sesProvider },
 	email: { ses: sesEmailProvider },
 	mobile: { 'google-play': googlePlayProvider },
+	maps: { google: googleMapsProvider },
 };
 
 /** The provider `kind` names `name`, if gkm has one. */
