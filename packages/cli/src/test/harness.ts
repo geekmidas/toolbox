@@ -41,7 +41,7 @@ import { EndpointGenerator } from '../generators/EndpointGenerator.js';
 import { OpenApiTsGenerator } from '../generators/OpenApiTsGenerator.js';
 import { SubscriberGenerator } from '../generators/SubscriberGenerator.js';
 import { type ConstructSource, discover } from '../reconcile/discover.js';
-import { readFakes } from '../reconcile/fakes.js';
+import { readFakes, readMapsFakes } from '../reconcile/fakes.js';
 import type { CacheBackend, EventsBackend } from '../types.js';
 
 /**
@@ -293,9 +293,13 @@ export async function writeTestHarness(
 	);
 	// Each external API's fake, from the convention rather than the construct —
 	// which is what keeps a fake out of every deployed bundle.
-	const fakes = Object.entries(await readFakes(options.root, declared)).map(
-		([id, { file }]) => ({ id, file }),
-	);
+	// A Maps construct's is optional: without one, featureTest serves its own.
+	const fakes = [
+		...Object.entries(await readFakes(options.root, declared)).map(
+			([id, { file }]) => ({ id, file }),
+		),
+		...(await readMapsFakes(options.root, declared)),
+	];
 	// Every construct a handler can depend on — what a test reaches through
 	// `services.get(…)`, typed by the client its service registers. A tenant an
 	// auth server owns is reached through that server, as databases are.

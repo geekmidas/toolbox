@@ -380,6 +380,78 @@ export function withStageProfiles(
 	};
 }
 
+/**
+ * A mobile app depends on a `Maps`, and its Expo config does not put the keys
+ * where the map's SDK reads them. `react-native-maps` takes them from native
+ * config, so a store build would ship a map that never loads.
+ */
+export class MapsKeysNotInNativeConfig extends GkmError {
+	constructor(
+		readonly app: string,
+		readonly maps: readonly string[],
+		readonly dir: string,
+	) {
+		const plugin =
+			maps.length === 1 && maps[0] === 'Maps'
+				? `'${MAPS_EXPO_PLUGIN}'`
+				: maps
+						.map((id) => `['${MAPS_EXPO_PLUGIN}', { maps: '${id}' }]`)
+						.join(', ');
+		super(
+			`${app} depends on ${maps.join(', ')}, and its Expo config in ${dir} ` +
+				`never puts the keys where react-native-maps reads them: the ` +
+				`native config, not JavaScript. Add the plugin to app.config.ts: ` +
+				`plugins: [${plugin}].`,
+		);
+		this.name = 'MapsKeysNotInNativeConfig';
+	}
+}
+
+/** The config plugin that writes a `Maps`'s mobile keys into native config. */
+export const MAPS_EXPO_PLUGIN = '@geekmidas/constructs/maps/expo';
+
+/** The files Expo reads an app's config from, in the order it looks. */
+const EXPO_CONFIG_FILES = [
+	'app.config.ts',
+	'app.config.js',
+	'app.config.mjs',
+	'app.config.cjs',
+	'app.json',
+];
+
+/**
+ * Throws unless an app that depends on a `Maps` hands its keys to native
+ * config — through the plugin, or by naming the native fields itself. Read
+ * from the config's source, since evaluating it needs the stage's values.
+ *
+ * @throws {MapsKeysNotInNativeConfig}
+ */
+export async function assertMapsInNativeConfig(
+	manifest: ConstructManifest,
+	declaration: MobileAppDeclaration,
+	dir: string,
+): Promise<void> {
+	const maps = declaration.dependencies
+		.map((edge) => edge.target)
+		.filter((id) => manifest[id]?.kind === 'maps')
+		.sort();
+	if (maps.length === 0) return;
+
+	const sources = await Promise.all(
+		EXPO_CONFIG_FILES.map((file) =>
+			readFile(join(dir, file), 'utf8').catch(() => ''),
+		),
+	);
+	const source = sources.join('\n');
+	const wired =
+		source.includes(MAPS_EXPO_PLUGIN) ||
+		source.includes('withMapsKeys') ||
+		(source.includes('googleMapsApiKey') && source.includes('googleMaps'));
+	if (!wired) {
+		throw new MapsKeysNotInNativeConfig(appKey(declaration.id), maps, dir);
+	}
+}
+
 export interface EasSyncOptions {
 	stage: string;
 	/** The mobile app, by its app key; the one here, or the only one, if not. */
@@ -435,6 +507,7 @@ export async function easSync(
 	const values =
 		stack.mobileApps.find((candidate) => candidate.name === name)?.values ?? {};
 	const dir = join(workspace.root, declaration.app.path);
+	await assertMapsInNativeConfig(manifest, declaration, dir);
 
 	const path = join(dir, 'eas.json');
 	const before = existsSync(path)

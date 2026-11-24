@@ -27,6 +27,7 @@ import { randomUUID } from 'node:crypto';
 import { EnvironmentParser } from '@geekmidas/envkit';
 import {
 	INBOX_EVENT,
+	MAPS_ROLES,
 	providedKeyFor,
 	WILDCARD_SUBDOMAIN,
 } from '@geekmidas/manifest';
@@ -63,6 +64,8 @@ import { Email } from '../email';
 import { Endpoint } from '../endpoints/Endpoint';
 import { HonoEndpoint } from '../endpoints/HonoEndpointAdaptor';
 import type { Fake } from '../fake';
+import { MAPS_HOSTS } from '../maps/client';
+import { FAKE_MAPS_KEY, mapsFake } from '../maps/fake';
 import type { ObjectStorage } from '../object-storage';
 import { Queue } from '../queue/Queue';
 import { TestQueueAdaptor } from '../queue/TestQueueAdaptor';
@@ -115,7 +118,9 @@ export interface FeatureTestOptions<
 	/**
 	 * Each external API's fake — the default export of `test/fakes/<id>.ts`,
 	 * which the generated harness imports — keyed by the API's construct id.
-	 * An app fake is served at the URL the test stage resolved for it.
+	 * An app fake is served at the URL the test stage resolved for it. A
+	 * `Maps` needs none: its fake answers Google's own hosts, and one here
+	 * replaces it.
 	 */
 	fakes?: Readonly<Record<string, Fake>>;
 }
@@ -429,7 +434,7 @@ export function featureTest<
 >(
 	options: FeatureTestOptions<TBrowser, TFactories> = {},
 ): FeatureIt<TBrowser, TDatabases, TFactories, TServices> {
-	const manifest = options.manifest ?? loadTestManifest();
+	const manifest = withMapsKeys(options.manifest ?? loadTestManifest());
 	const BrowserClass = (options.browser ?? TestBrowser) as new (
 		options?: BrowserOptions,
 	) => TBrowser;
@@ -455,6 +460,7 @@ export function featureTest<
 			...Object.entries(options.fakes ?? {}).flatMap(([id, fake]) =>
 				fakeHandler(id, fake, manifest.env),
 			),
+			...mapsHandlers(manifest, options.fakes ?? {}),
 		);
 		network.listen({
 			onUnhandledRequest(request, print) {
@@ -1245,6 +1251,51 @@ function fakeHandler(
 	return [
 		http.all(`${trim(base)}/*`, ({ request }) => fake.handler.fetch(request)),
 	];
+}
+
+/**
+ * Each `Maps` construct's keys on the test stage: a Maps key is issued by
+ * Google, so a stage set up fresh holds none, and its fake takes any. A key
+ * the stage does hold is kept — the fake answers it all the same.
+ */
+function withMapsKeys(manifest: TestManifest): TestManifest {
+	const keys = Object.entries(manifest.constructs)
+		.filter(([, construct]) => construct.kind === 'maps')
+		.flatMap(([id]) =>
+			MAPS_ROLES.map((role) => providedKeyFor(id, 'maps', role)),
+		)
+		.filter((key) => manifest.env[key] === undefined);
+	if (keys.length === 0) return manifest;
+	return {
+		...manifest,
+		env: {
+			...Object.fromEntries(keys.map((key) => [key, FAKE_MAPS_KEY])),
+			...manifest.env,
+		},
+	};
+}
+
+/**
+ * Google's Maps hosts, answered by the fake: the project's own from
+ * `test/fakes/<id>.ts` where it has one, else the default. The hosts are
+ * Google's for every `Maps` in an app, so one fake answers them — the first
+ * construct's that has one.
+ */
+function mapsHandlers(
+	manifest: TestManifest,
+	fakes: Readonly<Record<string, Fake>>,
+) {
+	const ids = Object.entries(manifest.constructs)
+		.filter(([, construct]) => construct.kind === 'maps')
+		.map(([id]) => id)
+		.sort();
+	if (ids.length === 0) return [];
+	const own = ids.map((id) => fakes[id]).find((fake) => fake?.kind === 'app');
+	const fake = own ?? mapsFake();
+	if (fake.kind !== 'app') return [];
+	return MAPS_HOSTS.map((host) =>
+		http.all(`${host}/*`, ({ request }) => fake.handler.fetch(request)),
+	);
 }
 
 /**

@@ -23,12 +23,20 @@ describe('Maps', () => {
 		]);
 	});
 
-	it('hands a server process its key', async () => {
+	it('hands a server process a client with its key, for the APIs declared', async () => {
 		const client = await maps.service.register({
 			envParser: new EnvironmentParser({ MAPS_API_KEY: 'AIza-server' }),
 		} as never);
 
-		expect(client).toEqual({ apiKey: 'AIza-server' });
+		expect({
+			apiKey: client.apiKey,
+			methods: ['geocode', 'searchPlaces', 'placeDetails', 'computeRoutes']
+				.filter((method) => typeof (client as never)[method] === 'function')
+				.sort(),
+		}).toEqual({
+			apiKey: 'AIza-server',
+			methods: ['placeDetails', 'searchPlaces'],
+		});
 	});
 
 	it('is an edge a mobile app can take', () => {
