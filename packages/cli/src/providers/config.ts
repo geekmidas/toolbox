@@ -7,6 +7,7 @@
  */
 
 import { GkmError } from '../errors';
+import { assertDeployedStageKeys } from '../workspace/stages.js';
 import {
 	checkGoogleMapsConfig,
 	GOOGLE_MAPS_PROVISIONING,
@@ -21,11 +22,13 @@ import {
 	checkSesEmailConfig,
 	SES_PROVISIONING,
 } from './ses/config.js';
-import type {
-	ProviderConfig,
-	ProviderKind,
-	ResourceProvider,
-	StageProviderEntry,
+import {
+	LOCAL_PROVIDER_RULES,
+	type LocalProviderRule,
+	type ProviderConfig,
+	type ProviderKind,
+	type ResourceProvider,
+	type StageProviderEntry,
 } from './types.js';
 
 /** Each provider's config check, by kind and name. */
@@ -129,15 +132,70 @@ export interface StageProviderSource {
 }
 
 /**
- * What backs `kind` on `stage`: the local stage is always `external` here —
- * `gkm dev` runs its own — and a deployed stage that names nothing is too.
+ * `deploy.<kind>.<local stage>` for a kind the local stage cannot name a
+ * provider for: one the local stack stands in for, or one with no local
+ * meaning ({@link LOCAL_PROVIDER_RULES}).
+ */
+export class ProviderNotForLocalStage extends GkmError {
+	constructor(
+		readonly kind: ProviderKind,
+		readonly stage: string,
+		readonly rule: Exclude<LocalProviderRule, { mode: 'provisioned' }>,
+	) {
+		super(
+			`deploy.${kind}.${stage} names a provider for the local stage, ` +
+				(rule.mode === 'stand-in'
+					? `and locally ${rule.by} serves ${kind} — gkm dev and gkm test run it from the construct plan, so there is nothing to provision. `
+					: `and ${kind} has no local meaning: ${rule.why}. `) +
+				`Remove deploy.${kind}.${stage}; name a provider for a deployed stage instead.`,
+		);
+		this.name = 'ProviderNotForLocalStage';
+	}
+}
+
+/**
+ * The keys of `deploy.<kind>`: each a deployed stage, or the local stage
+ * where the kind may be provisioned locally ({@link LOCAL_PROVIDER_RULES}).
+ *
+ * @throws {ProviderNotForLocalStage} for the local stage of a kind that cannot
+ * @throws {UnknownStageKey} for a key that is no stage of the workspace's
+ */
+export function assertProviderStageKeys(
+	kind: ProviderKind,
+	map: Readonly<Record<string, unknown>> | undefined,
+	stages: { local?: string; deployed?: readonly string[] } | undefined,
+): void {
+	if (!map || !stages) return;
+	const rule = LOCAL_PROVIDER_RULES[kind];
+	const local = stages.local;
+	const rest = Object.fromEntries(
+		Object.entries(map).filter(([stage]) => stage !== local),
+	);
+	if (local !== undefined && Object.hasOwn(map, local)) {
+		if (rule.mode !== 'provisioned') {
+			throw new ProviderNotForLocalStage(kind, local, rule);
+		}
+	}
+	assertDeployedStageKeys(`deploy.${kind}`, rest, stages);
+}
+
+/**
+ * What backs `kind` on `stage`. A deployed stage that names nothing is
+ * `external`; so is the local stage, unless the kind is provisioned locally
+ * ({@link LOCAL_PROVIDER_RULES}) and the local stage names a provider — the
+ * others have a local stand-in, or no local meaning.
  */
 export function stageProvider(
 	workspace: StageProviderSource,
 	kind: ProviderKind,
 	stage: string,
 ): StageProviderChoice {
-	if (stage === workspace.stages?.local) return { mode: 'external' };
+	if (
+		stage === workspace.stages?.local &&
+		LOCAL_PROVIDER_RULES[kind].mode !== 'provisioned'
+	) {
+		return { mode: 'external' };
+	}
 	const value = workspace.deploy?.[kind]?.[stage];
 	if (value === undefined) return { mode: 'external' };
 	const entry = checkStageProvider(kind, stage, value);

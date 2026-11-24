@@ -3,7 +3,11 @@ import { checkStageBackups } from '../backups/schedule.js';
 import { checkStageCdn } from '../compose/cdnConfig.js';
 import { checkDnsRecordsMode } from '../compose/dnsConfig.js';
 import { checkComposeStages } from '../compose/proxy.js';
-import { checkStageProvider } from '../providers/config.js';
+import {
+	assertProviderStageKeys,
+	checkStageProvider,
+} from '../providers/config.js';
+import { PROVIDER_KINDS } from '../providers/types.js';
 import { s3SecretsLocation } from '../secrets/providers.js';
 import {
 	BUILTIN_TARGETS,
@@ -1274,11 +1278,6 @@ export const WorkspaceConfigSchema = z
 		// Every other per-stage map names deployed stages only.
 		const perStage: [string, (string | number)[], unknown][] = [
 			['domains', ['domains'], data.domains],
-			['deploy.objects', ['deploy', 'objects'], data.deploy?.objects],
-			['deploy.inbox', ['deploy', 'inbox'], data.deploy?.inbox],
-			['deploy.email', ['deploy', 'email'], data.deploy?.email],
-			['deploy.mobile', ['deploy', 'mobile'], data.deploy?.mobile],
-			['deploy.maps', ['deploy', 'maps'], data.deploy?.maps],
 			['deploy.backups', ['deploy', 'backups'], data.deploy?.backups],
 			['deploy.telemetry', ['deploy', 'telemetry'], data.deploy?.telemetry],
 			['deploy.cdn', ['deploy', 'cdn'], data.deploy?.cdn],
@@ -1309,6 +1308,24 @@ export const WorkspaceConfigSchema = z
 					code: 'custom',
 					message: error instanceof Error ? error.message : String(error),
 					path,
+				});
+			}
+		}
+
+		// A provider kind's map names deployed stages, and the local stage only
+		// for a kind with no local stand-in (`LOCAL_PROVIDER_RULES`).
+		for (const kind of PROVIDER_KINDS) {
+			try {
+				assertProviderStageKeys(
+					kind,
+					data.deploy?.[kind] as Record<string, unknown> | undefined,
+					data.stages,
+				);
+			} catch (error) {
+				ctx.addIssue({
+					code: 'custom',
+					message: error instanceof Error ? error.message : String(error),
+					path: ['deploy', kind],
 				});
 			}
 		}

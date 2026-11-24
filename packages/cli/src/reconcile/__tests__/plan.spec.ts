@@ -1,6 +1,11 @@
 import { type ConstructManifest, provisionOrder } from '@geekmidas/manifest';
 import { describe, expect, it } from 'vitest';
 import {
+	DECLARATION_KINDS,
+	LOCAL_PROVIDER_RULES,
+	PROVIDER_KINDS,
+} from '../../providers/types';
+import {
 	CacheIsAmbiguous,
 	CacheNeedsDatabase,
 	containerFor,
@@ -104,6 +109,24 @@ describe('containerFor', () => {
 		// One local container for every provider: the inbox you can actually
 		// open, and the provider survives only as a host in the URL.
 		expect(containerFor('email')).toBe('mailpit');
+	});
+
+	it('runs the local stand-in LOCAL_PROVIDER_RULES names for each kind', () => {
+		const standIns = PROVIDER_KINDS.flatMap((kind) => {
+			const rule = LOCAL_PROVIDER_RULES[kind];
+			return rule.mode === 'stand-in'
+				? [[DECLARATION_KINDS[kind], rule.container] as const]
+				: [];
+		});
+
+		expect(standIns.map(([kind]) => [kind, containerFor(kind)])).toEqual(
+			standIns,
+		);
+		expect(standIns).toEqual([
+			['objects', 'minio'],
+			['inbox', 'mailpit'],
+			['email', 'mailpit'],
+		]);
 	});
 
 	it('maps a cache onto the proxy the client actually speaks to', () => {

@@ -211,6 +211,7 @@ const workspace = (domain: string | undefined) =>
 	({
 		name: 'shop',
 		root: '/work/shop',
+		stages: { local: 'dev', deployed: [STAGE] },
 		domains: domain ? { [STAGE]: domain } : {},
 		apps: {
 			web: { type: 'web', domain: domain ? { [STAGE]: domain } : undefined },

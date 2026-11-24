@@ -58,8 +58,32 @@ export default {
 
 ## Locally
 
-The local stage's keys are set by hand, as a credential's are — a key from
-your own Google Cloud project, unrestricted or restricted to `localhost`:
+Maps has no local emulator, so it is the one provider kind the local stage
+may name. Point the local stage at a Google Cloud project of its own — not a
+deployed stage's — and `gkm provision` creates its keys:
+
+```ts
+// gkm.config.ts
+deploy: {
+  maps: {
+    development: { provider: 'google', project: 'shop-dev' },
+    production: { provider: 'google' },
+  },
+}
+```
+
+```bash
+gkm provision --stage development
+```
+
+The keys are restricted from the local stage's own facts: the browser key to
+each site's host on the local edge (`https://shop.localhost/*`), the server key
+to its APIs alone — a laptop has no fixed address. They are written into the
+local stage's secrets and recorded in this machine's state, so each developer
+provisions their own and a second run makes nothing.
+
+Without `deploy.maps.<local>`, the local stage's keys are set by hand, as a
+credential's are:
 
 ```bash
 gkm secrets:set MAPS_API_KEY AIza… --stage development

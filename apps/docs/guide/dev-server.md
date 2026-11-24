@@ -400,10 +400,12 @@ gkm dev
 2. Resolves the local stage's secrets (generating any that are missing)
 3. Starts the containers the constructs imply, creating each database's roles from the stage's credential
 
-It creates nothing for a deployed stage: `gkm setup --stage <deployed>` fails
-with `SetupIsLocal`. A deployed stage's resources — its buckets and keys, its
-DNS records — are created by its deploy (`gkm deploy --stage <stage>`); see
-[Providers](./providers.md).
+It creates nothing in a cloud: `gkm setup --stage <deployed>` fails with
+`SetupIsLocal`. A stage's resources — its buckets and keys, its DNS records —
+are created by `gkm provision --stage <stage>` or by its deploy, which runs the
+same step first. The local stage's Maps keys, the one local resource with no
+container to stand in, come from `gkm provision --stage <local>`; see
+[Providers](./providers.md#the-local-stage).
 
 ### What's Gitignored
 

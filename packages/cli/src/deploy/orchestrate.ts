@@ -11,11 +11,8 @@
 import { dnsCredentials, stageDnsDomains } from '../compose/dns.js';
 import { assertSitePasswords } from '../compose/sitePassword.js';
 import { GkmError } from '../errors';
-import { provisionStage } from '../providers/index.js';
 import { type BoundSubscriber, discover } from '../reconcile/discover.js';
 import { constructGlobs } from '../reconcile/workspace.js';
-import { moveBucketKeys } from '../secrets/bucketKeys.js';
-import { initStageSecrets } from '../secrets/storage.js';
 import { builtinTarget } from '../target/builtins';
 import {
 	parseTargetOptions,
@@ -38,6 +35,7 @@ import type { CredentialProvider } from './credentials';
 import { DevServicesNeedServerTarget } from './devServices';
 import { type DeployEvent, type DeployPhase, eventError } from './events';
 import { applicationName, deployIdentity } from './identity.js';
+import { PLANNED_BY_THE_DEPLOY, provisionResources } from './provision';
 import { assertStageReady } from './readiness';
 import {
 	assertStateOutlivesRun,
@@ -45,6 +43,8 @@ import {
 	createStateStore,
 } from './StateStore.js';
 import type { DeployResult } from './types';
+
+export { PLANNED_BY_THE_DEPLOY };
 
 /** What a run deploys, once the workspace is loaded. */
 export interface DeployRequest {
@@ -230,14 +230,16 @@ export async function runDeploy(
 	// The stage's resources — what its providers create, and the keys they
 	// write into its secrets — before any check reads those secrets, so a key
 	// the deploy creates is never reported missing. A build-only run creates
-	// nothing, and neither does the local stage.
-	const resources =
-		!ctx.buildOnly && phaseCtx.stage !== phaseCtx.workspace.stages.local;
+	// nothing. The local stage runs only what it may provision
+	// (`LOCAL_PROVIDER_RULES`): the rest are MinIO's and Mailpit's.
+	const local = phaseCtx.stage === phaseCtx.workspace.stages.local;
+	const resources = !ctx.buildOnly;
 	const provision = async () => {
-		// The token the stage's DNS records are written with, asked for first:
-		// a deploy without it fails before anything is created or started.
-		if (!request.skipDns && resolved.target.runtime === 'server') {
-			try {
+		try {
+			// The token the stage's DNS records are written with, asked for
+			// first: a deploy without it fails before anything is created or
+			// started.
+			if (!local && !request.skipDns && resolved.target.runtime === 'server') {
 				await dnsCredentials(
 					phaseCtx.stage,
 					stageDnsDomains(
@@ -247,17 +249,16 @@ export async function runDeploy(
 					),
 					ctx.credentials,
 				);
-			} catch (error) {
-				emit({
-					type: 'phase.failed',
-					phase: 'validate',
-					error: eventError(error),
-				});
-				throw error;
 			}
+			await provisionResources(phaseCtx, request, ctx, store);
+		} catch (error) {
+			emit({
+				type: 'phase.failed',
+				phase: 'validate',
+				error: eventError(error),
+			});
+			throw error;
 		}
-		await moveStoredBucketKeys(phaseCtx, ctx.dryRun);
-		await provisionResources(phaseCtx, request, ctx, store, emit);
 	};
 
 	// A dry run takes no lock: it writes nothing a lock would protect, and it
@@ -350,101 +351,6 @@ export async function runDeploy(
 		await lock.release();
 	}
 }
-
-/**
- * The stage's providers, run inside the validate phase. A dry run plans them
- * and, so the checks after it see the stage as the run would leave it, reads
- * the keys they would write as placeholders.
- */
-async function provisionResources(
-	phaseCtx: DeployPhaseContext<unknown>,
-	request: DeployRequest,
-	ctx: DeployContext,
-	store: Awaited<ReturnType<typeof createStateStore>>,
-	emit: (event: DeployEvent) => void,
-): Promise<void> {
-	try {
-		const reports = await provisionStage({
-			workspace: phaseCtx.workspace,
-			stage: phaseCtx.stage,
-			manifest: phaseCtx.manifest,
-			...(phaseCtx.subscribers ? { subscribers: phaseCtx.subscribers } : {}),
-			secrets: phaseCtx.secrets,
-			state: store,
-			dryRun: ctx.dryRun,
-			...(request.rotateKeys ? { rotateKeys: true } : {}),
-			...(request.retireOldKeys ? { retireOldKeys: true } : {}),
-			...(request.project ? { project: request.project } : {}),
-			...(ctx.home ? { home: ctx.home } : {}),
-			...(ctx.profile ? { profile: ctx.profile } : {}),
-			credentials: ctx.credentials,
-			log: (line) => phaseCtx.logger.info(line),
-		});
-		phaseCtx.providerDns = reports.flatMap((r) => r.dns);
-		if (!ctx.dryRun) return;
-		const planned = reports.flatMap((r) => r.planned);
-		if (planned.length === 0) return;
-		const secrets = phaseCtx.secrets;
-		(phaseCtx as { secrets: typeof secrets }).secrets = {
-			...secrets,
-			async read() {
-				const stored =
-					(await secrets.read()) ?? initStageSecrets(phaseCtx.stage);
-				const custom = { ...stored.custom };
-				for (const key of planned) custom[key] ??= PLANNED_BY_THE_DEPLOY;
-				return { ...stored, custom };
-			},
-		};
-	} catch (error) {
-		emit({ type: 'phase.failed', phase: 'validate', error: eventError(error) });
-		throw error;
-	}
-}
-
-/**
- * The stage's bucket and file-server keys moved to the names they are read
- * from (`moveBucketKeys`), before its providers or its readiness check read
- * them. A dry run moves them in what it reads, and writes nothing.
- */
-async function moveStoredBucketKeys(
-	phaseCtx: DeployPhaseContext<unknown>,
-	dryRun: boolean,
-): Promise<void> {
-	const secrets = phaseCtx.secrets;
-	const stored = await secrets.read();
-	if (!stored) return;
-	const { custom, moved } = moveBucketKeys(phaseCtx.manifest, stored.custom);
-	if (moved.length === 0) return;
-
-	for (const { from, to } of moved) {
-		phaseCtx.logger.info(
-			`🔑 ${from} → ${to}${dryRun ? ' (dry run: not written)' : ''}`,
-		);
-	}
-	if (!dryRun) {
-		await secrets.write({
-			...stored,
-			custom,
-			updatedAt: new Date().toISOString(),
-		});
-		return;
-	}
-	(phaseCtx as { secrets: typeof secrets }).secrets = {
-		...secrets,
-		async read() {
-			const current = await secrets.read();
-			return current
-				? {
-						...current,
-						custom: moveBucketKeys(phaseCtx.manifest, current.custom).custom,
-					}
-				: current;
-		},
-	};
-}
-
-/** What a dry run reads for a key its providers would write. */
-export const PLANNED_BY_THE_DEPLOY = 's3://planned-by-this-deploy';
 
 /**
  * What a deploy validates: the stage ready to be deployed — every key it
