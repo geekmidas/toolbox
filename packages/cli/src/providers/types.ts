@@ -18,18 +18,30 @@
  * The key under `deploy` is the manifest kind — `objects`, which
  * `ObjectStorage` and `FileServer` produce, `inbox`, `email` — so a kind
  * such as `deploy.cache` slots in beside them with providers of its own.
+ * `mobile` is the one short name: it backs `mobile-app` declarations, and
+ * `deploy['mobile-app']` is no key anyone wants to write.
  */
 
-import type { ConstructManifest } from '@geekmidas/manifest';
+import type { ConstructManifest, Declaration } from '@geekmidas/manifest';
 import type { DeployIdentity } from '../deploy/identity.js';
 import type { ResourceRecord } from '../deploy/StateStore.js';
 import type { BoundSubscriber } from '../reconcile/discover.js';
 import type { NormalizedWorkspace } from '../workspace/types.js';
 
 /** The manifest kinds a stage can name a provider for. */
-export const PROVIDER_KINDS = ['objects', 'inbox', 'email'] as const;
+export const PROVIDER_KINDS = ['objects', 'inbox', 'email', 'mobile'] as const;
 
 export type ProviderKind = (typeof PROVIDER_KINDS)[number];
+
+/** The manifest kind each provider kind backs. */
+export const DECLARATION_KINDS: {
+	readonly [K in ProviderKind]: Declaration['kind'];
+} = {
+	objects: 'objects',
+	inbox: 'inbox',
+	email: 'email',
+	mobile: 'mobile-app',
+};
 
 /** The clouds a provider can provision in. */
 export type ProviderCloud = 'aws' | 'google';

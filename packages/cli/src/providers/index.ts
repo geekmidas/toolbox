@@ -35,6 +35,7 @@ import type {
 import { stageProvider } from './config.js';
 import { deploysWithCompose } from './dns.js';
 import { type ProviderDnsWritten, writeProviderDns } from './dnsWriter.js';
+import { constructsOf } from './notes.js';
 import { builtinProvider } from './registry.js';
 import {
 	PROVIDER_KINDS,
@@ -59,14 +60,6 @@ export {
 } from './notes.js';
 export { BUILTIN_PROVIDERS, builtinProvider } from './registry.js';
 export type * from './types.js';
-
-/** The constructs of a kind: `objects` is every bucket. */
-function constructsOf(manifest: ConstructManifest, kind: ProviderKind) {
-	return Object.entries(manifest)
-		.filter(([, d]) => d.kind === kind)
-		.map(([id]) => id)
-		.sort();
-}
 
 export interface VerifyStageInput {
 	workspace: NormalizedWorkspace;

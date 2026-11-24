@@ -1,6 +1,9 @@
 import { readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { HttpResponse, http } from 'msw';
+import { setupServer } from 'msw/node';
 import {
+	afterAll,
 	afterEach,
 	beforeAll,
 	beforeEach,
@@ -14,8 +17,13 @@ import {
 	WARM_TIMEOUT,
 	warmComposeApp,
 } from '../../compose/__tests__/__helpers__/composeApp';
+import { easApi } from '../../providers/googlePlay/easApi';
 import { easCli } from '../eas';
-import { NoStoreBuildForUpdate, publish } from '../publish';
+import {
+	NoStoreBuildForUpdate,
+	PlaySubmitKeyMissing,
+	publish,
+} from '../publish';
 import {
 	deployedMobileApp,
 	easRecorder,
@@ -46,6 +54,53 @@ afterEach(async () => {
 	vi.restoreAllMocks();
 	await cleanupDir(dir);
 });
+
+/** Whether EAS holds a Play key for the app, as its GraphQL answers. */
+let submissionsKey: boolean;
+
+const server = setupServer(
+	http.post('https://api.expo.dev/graphql', async ({ request }) => {
+		const body = (await request.json()) as { operationName: string };
+		if (body.operationName === 'AppByIdQuery') {
+			return HttpResponse.json({
+				data: {
+					app: {
+						byId: {
+							id: 'eas-project-1',
+							fullName: '@acme/shop',
+							ownerAccount: { id: 'account-1', name: 'acme' },
+						},
+					},
+				},
+			});
+		}
+		return HttpResponse.json({
+			data: {
+				app: {
+					byFullName: {
+						id: 'eas-project-1',
+						androidAppCredentials: [
+							{
+								id: 'credentials-1',
+								googleServiceAccountKeyForSubmissions: submissionsKey
+									? {
+											id: 'eas-key-1',
+											clientEmail:
+												'shop-play@shop-play.iam.gserviceaccount.com',
+											privateKeyIdentifier: 'key1',
+										}
+									: null,
+							},
+						],
+					},
+				},
+			},
+		});
+	}),
+);
+
+beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));
+afterAll(() => server.close());
 
 const releases = (calls: ReturnType<typeof easRecorder>['calls']) =>
 	calls.filter((call) => call.op === 'build' || call.op === 'update');
@@ -296,6 +351,53 @@ describe('the eas it runs to decide', () => {
 				'--no-wait',
 				'--non-interactive',
 			],
+		]);
+	});
+});
+
+describe('gkm publish, on a stage the deploy sets up on Google Play', () => {
+	const play = {
+		mobile: {
+			android: { package: 'com.shop.app' },
+			eas: { projectId: 'eas-project-1' },
+		},
+		deployMobile: {
+			production: { provider: 'google-play', developer: '5551234567' },
+		},
+	};
+
+	it('refuses an Android store build EAS holds no key to submit', async () => {
+		await deployedMobileApp(dir, play);
+		submissionsKey = false;
+		const { eas, calls } = easRecorder();
+
+		await expect(
+			publish(
+				{ stage: 'production', cwd: appDir, platform: 'android' },
+				eas,
+				() => easApi('expo-token'),
+			),
+		).rejects.toThrow(PlaySubmitKeyMissing);
+		expect(releases(calls)).toEqual([]);
+	});
+
+	it('builds and submits once the deploy has set the key up', async () => {
+		await deployedMobileApp(dir, play);
+		submissionsKey = true;
+		const { eas, calls } = easRecorder();
+
+		await publish(
+			{ stage: 'production', cwd: appDir, platform: 'android' },
+			eas,
+			() => easApi('expo-token'),
+		);
+
+		expect(releases(calls)).toEqual([
+			expect.objectContaining({
+				op: 'build',
+				platform: 'android',
+				submit: true,
+			}),
 		]);
 	});
 });

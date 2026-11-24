@@ -158,50 +158,84 @@ Each store needs things only an account owner can set up:
   (`eas credentials -p ios`), and an App Store Connect API key in EAS so CI
   can submit without an Apple login.
 - **Android:** the app in Play Console, and a Google service account key in
-  EAS for EAS Submit: `gkm deploy:google-play` sets up the key (below). Play
-  requires the very first upload of a new app to be done by hand.
+  EAS for EAS Submit. With `deploy.mobile.<stage>` on `google-play`, the
+  deploy sets up the key (below). Play requires the very first upload of a
+  new app to be done by hand.
 
-## `gkm deploy:google-play`
+## Google Play, set up by the deploy
 
-```bash
-gkm deploy:google-play --developer 1234567890
+The `MobileApp` says how Play and EAS know it, and the stage names the Play
+developer account:
+
+```ts
+// constructs/mobile.ts
+export const app = new MobileApp('App', {
+  path: 'apps/app',
+  android: { package: 'com.acme.shop' }, // what its app.config.ts builds with
+  eas: { projectId: '4f1c…' }, // what `eas init` linked it to
+}).dependsOn([api, auth]);
+
+// gkm.config.ts
+deploy: {
+  mobile: { prod: { provider: 'google-play', developer: '1234567890' } },
+}
 ```
 
-Sets up what EAS Submit needs to publish to Google Play, the way
-`gkm deploy:github` sets up the AWS role CI deploys with. Run it as a Play
-Console admin. Running it again rotates the key and pushes the listing.
+`developer` is the number in Play Console's address. With that, every
+`gkm deploy --stage prod` sets up what EAS Submit needs to publish the app to
+Google Play, the way a stage's other providers make its buckets and mail.
+Deploy from a terminal as a Play Console admin the first time. The deploy
+also needs `EXPO_TOKEN` for EAS.
 
-1. **`eas.json`:** each deployed stage's `submit.<stage>.android` track and
-   release status.
-2. **Google:** the project (`--project`, else `<workspace>-play`, created when
-   absent) with the Android Publisher API on, and the service account
-   `<workspace>-play` in it. The sign-in is gcloud's
-   (`gcloud auth application-default login`), kept in gkm's own gcloud config
-   (`~/.gkm/gcloud`), so your own gcloud setup is untouched.
-3. **Play Console:** the service account invited with a grant on this app
+1. **Google:** the project (`--project`, else `deploy.mobile.<stage>.project`,
+   else `<workspace>-play`, created when absent) with the Android Publisher
+   API on, and the service account `<workspace>-play` in it. Every stage
+   publishes the same app, so every stage shares the project. The stage's
+   state records it, and a deploy that would use another one stops. The
+   sign-in is gcloud's (`gcloud auth application-default login`), kept in
+   gkm's own gcloud config (`~/.gkm/gcloud`), so your own gcloud setup is
+   untouched.
+2. **Play Console:** the service account invited with a grant on this app
    alone, and no account-wide permission. It can release to the testing
-   tracks (`CAN_MANAGE_TRACK_APKS`), to production only when a stage submits
-   there (`CAN_MANAGE_PUBLIC_APKS`), and edit the listing when the app keeps
-   one (`CAN_MANAGE_PUBLIC_LISTING`). A later run that needs different
-   permissions updates the grant.
-4. **The key:** a new JSON key, held in memory only and never written or
-   printed. It's uploaded to EAS and assigned to the app's Android credentials
-   for EAS Submit, then checked by opening and discarding an edit on the app
-   with it. Only then are the account's older keys deleted from EAS and
-   Google, so a failed run leaves the old key working.
-5. **The listing,** when the app keeps one, pushed through an edit.
-6. **A checklist** of what Play Console only takes by hand: privacy policy,
-   app access, ads, content rating, target audience, health and sensitive
-   permissions declarations.
+   tracks (`CAN_MANAGE_TRACK_APKS`), to production only when a Play stage
+   submits there (`CAN_MANAGE_PUBLIC_APKS`), and edit the listing when the
+   app keeps one (`CAN_MANAGE_PUBLIC_LISTING`). A deploy that needs different
+   permissions updates the grant. The first one prints a checklist of what
+   Play Console only takes by hand: privacy policy, app access, ads, content
+   rating, target audience, health and sensitive permissions declarations.
+3. **The key:** kept while EAS submits the app with one of the account's live
+   keys. Otherwise, or with `--rotate-keys`, a new JSON key, held in memory
+   only and never written or printed. It's uploaded to EAS and assigned to
+   the app's Android credentials for EAS Submit, then checked by opening and
+   discarding an edit on the app with it. Only then are the account's older
+   keys deleted from EAS and Google, so a failed deploy leaves the old key
+   working.
+4. **The listing,** when the app keeps one, pushed through an edit whenever
+   it changed.
 
-Play knows the app by its package, which gkm reads from the app's Expo config
-(`android.package`), with its EAS project (`extra.eas.projectId`). It needs
-`EXPO_TOKEN` for EAS, and `--developer`: the number in Play Console's address.
+`eas.json`'s submit profiles stay `gkm eas:sync`'s, which every
+`gkm publish` runs first.
 
 Play has no API that creates an app. When the package isn't in Play Console,
-the run prints the link to create it. With someone at the terminal it then
-waits until the app exists; in CI it stops (`PlayAppMissing`) before any key is
-made.
+the deploy prints the link to create it and what to fill in. With someone at
+the terminal it then waits until the app exists; without one the app is left
+pending, no key is made, and the rest of the deploy goes on. Until Play has a
+first upload, the listing waits too, and the deploy names the newest EAS
+store build's `.aab` to upload by hand.
+
+### From CI
+
+A deploy from CI only checks. It signs in to Google through the stage's
+Workload Identity credentials (`google-github-actions/auth`, from
+`gkm deploy:github`), and inviting the account to Play Console or issuing a
+key need a Play Console admin and key admin, which a CI identity should not
+hold. It checks that EAS submits the app with one of the account's live keys,
+and leaves the app pending when it doesn't. `--rotate-keys` from CI is an
+error: rotate from a terminal.
+
+`gkm publish` refuses to start an Android store build on such a stage while
+EAS holds no key to submit it with (`PlaySubmitKeyMissing`), rather than build
+something that can't be submitted.
 
 ### The listing as code
 
@@ -221,9 +255,9 @@ apps/app/store/play/
       phoneScreenshots/1.png, 2.png …
 ```
 
-Each run replaces every image kind it finds, in file-name order. A new app
+Each push replaces every image kind it finds, in file-name order. A new app
 that has never had an upload may refuse an edit; the listing is then skipped
-with a note, and the next run pushes it.
+with a note, and the next deploy pushes it.
 
 ## `gkm exec --stage` for a mobile app
 

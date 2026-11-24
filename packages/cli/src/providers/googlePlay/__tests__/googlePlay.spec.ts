@@ -1,11 +1,5 @@
 import { createVerify, generateKeyPairSync } from 'node:crypto';
-import {
-	existsSync,
-	mkdirSync,
-	readFileSync,
-	realpathSync,
-	writeFileSync,
-} from 'node:fs';
+import { mkdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { HttpResponse, http } from 'msw';
 import { setupServer } from 'msw/node';
@@ -21,20 +15,29 @@ import {
 } from 'vitest';
 import { cleanupDir, createTempDir } from '../../../__tests__/test-helpers';
 import {
+	loadComposeApp,
 	WARM_TIMEOUT,
 	warmComposeApp,
+	writeComposeApp,
 } from '../../../compose/__tests__/__helpers__/composeApp';
-import { deployedMobileApp } from '../../__tests__/__helpers__/mobileApp';
+import { deployIdentity } from '../../../deploy/identity';
+import type { ResourceRecord } from '../../../deploy/StateStore';
+import { stageProvider } from '../../config';
+import { GoogleProjectChanged } from '../../google/project';
+import type { EnsureContext, ProvisionAction } from '../../types';
+import type { GooglePlayConfig } from '../config';
 import { easApi } from '../easApi';
 import {
-	deployGooglePlay,
-	type GooglePlayDeps,
-	PlayDeveloperMissing,
+	createGooglePlayProvider,
+	type GooglePlayCredential,
+	MobileAppStoreIdentityMissing,
+	PlaySetupNeedsPerson,
 } from '../index';
-import { PlayAppMissing, PlayKeyUnverified } from '../play';
+import { PlayKeyUnverified } from '../play';
 
 /**
- * `gkm deploy:google-play` against Google and EAS stood in for by MSW, with
+ * The `google-play` provider's `ensure()` against Google and EAS stood in
+ * for by MSW, with
  * the shapes their APIs answer: Resource Manager v3 and Service Usage
  * operations, IAM service accounts and keys (`privateKeyData` base64 JSON),
  * Play's users and grants, edits and data safety, Google's token endpoint —
@@ -75,6 +78,8 @@ let google: {
 	users: Map<string, Record<string, string[]>>;
 	edits: number;
 	dataSafety?: string;
+	/** The app has had no upload: Play refuses the person's edits. */
+	noUpload: boolean;
 	/** Whether the service account's token works for Play yet. */
 	keyAccepted: boolean;
 };
@@ -272,6 +277,15 @@ const server = setupServer(
 	http.post(`${PLAY}/applications/:package/edits`, async ({ request }) => {
 		await record(request);
 		if (
+			request.headers.get('authorization') === `Bearer ${USER_TOKEN}` &&
+			google.noUpload
+		) {
+			return HttpResponse.json(
+				{ error: { message: 'This app has no uploaded bundle yet.' } },
+				{ status: 400 },
+			);
+		}
+		if (
 			request.headers.get('authorization') === `Bearer ${KEY_TOKEN}` &&
 			!google.keyAccepted
 		) {
@@ -414,6 +428,24 @@ const server = setupServer(
 						},
 					},
 				});
+			case 'ViewBuildsOnAppQuery':
+				return HttpResponse.json({
+					data: {
+						app: {
+							byId: {
+								id: v.appId,
+								builds: [
+									{
+										id: 'build-1',
+										artifacts: {
+											buildUrl: 'https://expo.dev/artifacts/eas/build-1.aab',
+										},
+									},
+								],
+							},
+						},
+					},
+				});
 			case 'DeleteGoogleServiceAccountKeyMutation':
 				eas.keys = eas.keys.filter((k) => k.id !== v.googleServiceAccountKeyId);
 				return HttpResponse.json({
@@ -435,6 +467,8 @@ const server = setupServer(
 
 let dir: string;
 let appDir: string;
+/** The stage's deploy state, across one test's runs. */
+let records: Map<string, ResourceRecord>;
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));
 afterAll(() => server.close());
@@ -445,7 +479,6 @@ beforeEach(async () => {
 	dir = realpathSync(await createTempDir('gkm-google-play-'));
 	appDir = join(dir, 'apps', 'app');
 	vi.stubEnv('GKM_HOME', join(dir, '.home'));
-	vi.spyOn(console, 'log').mockImplementation(() => {});
 	google = {
 		projects: new Set(),
 		enabled: new Set(),
@@ -455,10 +488,12 @@ beforeEach(async () => {
 		apps: new Set([PACKAGE]),
 		users: new Map(),
 		edits: 0,
+		noUpload: false,
 		keyAccepted: true,
 	};
 	eas = { keys: [], uploaded: [] };
 	requests = [];
+	records = new Map();
 });
 
 afterEach(async () => {
@@ -468,37 +503,114 @@ afterEach(async () => {
 	await cleanupDir(dir);
 });
 
-function deps(overrides: Partial<GooglePlayDeps> = {}): GooglePlayDeps & {
-	slept: number[];
-} {
+const PLAY_STAGE = {
+	production: { provider: 'google-play', developer: DEVELOPER },
+};
+
+/** The fixture with its `MobileApp` known to Play and EAS, on `google-play`. */
+function writeApp(
+	options: Parameters<typeof writeComposeApp>[1] = {},
+	mobile: {
+		android?: { package: string };
+		eas?: { projectId: string };
+	} = {
+		android: { package: PACKAGE },
+		eas: { projectId: PROJECT_ID },
+	},
+): void {
+	writeComposeApp(dir, {
+		target: 'compose',
+		mobile,
+		deployMobile: PLAY_STAGE,
+		...options,
+	});
+}
+
+interface RunOptions {
+	/** Where the Google sign-in comes from: gcloud, or CI's credentials file. */
+	source?: 'gcloud' | 'file';
+	interactive?: boolean;
+	rotateKeys?: boolean;
+	dryRun?: boolean;
+	/** `--project`. */
+	project?: string;
+	/** Stands in for waiting: what happens while gkm waits. */
+	sleep?: (ms: number) => void;
+}
+
+/** One deploy's `ensure()` of the provider, as `provisionStage` runs it. */
+async function ensure(options: RunOptions = {}) {
+	const { workspace, manifest } = await loadComposeApp(dir);
+	const choice = stageProvider(workspace, 'mobile', 'production');
+	if (choice.mode !== 'provider') throw new Error('not on google-play');
 	const slept: number[] = [];
-	return {
-		signIn: { token: async () => USER_TOKEN },
-		eas: easApi('expo-token'),
-		expoConfig: async () => ({
-			android: { package: PACKAGE },
-			extra: { eas: { projectId: PROJECT_ID } },
-		}),
-		interactive: false,
+	const provider = createGooglePlayProvider({
+		eas: (token) => easApi(token),
 		sleep: async (ms) => {
 			slept.push(ms);
+			options.sleep?.(ms);
 		},
-		slept,
-		...overrides,
+	});
+	const actions: ProvisionAction[] = [];
+	const logs: string[] = [];
+	const dryRun = options.dryRun ?? false;
+	const ctx: EnsureContext<GooglePlayConfig, GooglePlayCredential> = {
+		workspace,
+		manifest,
+		stage: 'production',
+		identity: deployIdentity(workspace, 'production'),
+		config: choice.config as GooglePlayConfig,
+		credential: {
+			google: {
+				signIn: { token: async () => USER_TOKEN },
+				source: options.source ?? 'gcloud',
+				interactive: options.interactive ?? false,
+				...(options.project ? { project: options.project } : {}),
+			},
+			eas: easApi('expo-token'),
+		},
+		secrets: {},
+		state: {
+			record: (key) => records.get(key),
+			pending: async () => {},
+			ready: async (entry, id) => {
+				records.set(entry.key, {
+					key: entry.key,
+					type: entry.type,
+					id,
+					status: 'ready',
+					updatedAt: new Date().toISOString(),
+				} as ResourceRecord);
+			},
+		},
+		dryRun,
+		rotateKeys: options.rotateKeys ?? false,
+		retireOldKeys: false,
+		async change(action, apply) {
+			if (!dryRun) await apply();
+			actions.push(action);
+		},
+		writeSecrets: async () => {},
+		writeDns: async () => ({ manual: [] }),
+		log: (line) => logs.push(line),
 	};
+	await provider.ensure(ctx);
+	return { actions, logs: logs.join('\n'), slept };
 }
 
 const called = (method: string, fragment: string) =>
 	requests.filter((r) => r.method === method && r.url.includes(fragment));
 
-describe('gkm deploy:google-play', () => {
-	it('sets up everything from nothing, in one run', async () => {
-		await deployedMobileApp(dir);
+/** The key EAS submits the app with, as Google knows it. */
+const submitKey = () =>
+	eas.keys.find((k) => k.id === eas.credentials?.submissionsKeyId)
+		?.privateKeyIdentifier;
 
-		const result = await deployGooglePlay(
-			{ developer: DEVELOPER, cwd: appDir },
-			deps(),
-		);
+describe('a MobileApp on google-play, set up by the deploy', () => {
+	it('sets up everything from nothing, in one deploy', async () => {
+		writeApp();
+
+		const { actions, logs } = await ensure();
 
 		// Google: the project, the API, the account.
 		expect(google.projects.has(PROJECT)).toBe(true);
@@ -518,7 +630,6 @@ describe('gkm deploy:google-play', () => {
 			],
 		});
 		expect(invite.quota).toBe(PROJECT);
-		expect(result.access).toBe('invited');
 
 		// EAS: the whole key file uploaded, and assigned for submissions.
 		expect(eas.uploaded).toHaveLength(1);
@@ -538,117 +649,125 @@ describe('gkm deploy:google-play', () => {
 			),
 		).toBe(true);
 
-		// Each stage's track in eas.json.
-		expect(
-			JSON.parse(readFileSync(join(appDir, 'eas.json'), 'utf8')).submit,
-		).toEqual({
-			production: { android: { track: 'internal', releaseStatus: 'draft' } },
-		});
-
-		// The key never reaches the output, and nothing is written but eas.json.
-		const said = vi.mocked(console.log).mock.calls.flat().join('\n');
-		expect(said).not.toContain('PRIVATE KEY');
-		expect(said).toContain('Content rating');
-		expect(result.deleted).toEqual({ google: [], eas: [] });
+		// Recorded where the stage's project is kept; the key never printed.
+		expect(records.get('google-project:mobile')?.id).toBe(PROJECT);
+		expect(actions.map((a) => a.resource)).toEqual([
+			`Google Cloud project ${PROJECT}`,
+			`Play access for ${EMAIL} on ${PACKAGE}`,
+			`EAS Submit key of ${EMAIL}`,
+		]);
+		expect(logs).not.toContain('PRIVATE KEY');
+		expect(logs).toContain('Content rating');
 	});
 
-	it('rotates the key on a second run, deleting the old one from Google and EAS', async () => {
-		await deployedMobileApp(dir);
-		const first = await deployGooglePlay(
-			{ developer: DEVELOPER, cwd: appDir },
-			deps(),
-		);
+	it('keeps the key on a later deploy, and changes nothing', async () => {
+		writeApp();
+		await ensure();
+		const key = submitKey();
+		requests = [];
 
-		const second = await deployGooglePlay(
-			{ developer: DEVELOPER, cwd: appDir },
-			deps(),
-		);
+		const { actions } = await ensure();
 
-		expect(second.access).toBe('unchanged');
-		expect(second.key.google).not.toBe(first.key.google);
-		expect(google.keys.get(EMAIL)).toEqual([second.key.google]);
-		expect(eas.keys.map((k) => k.id)).toEqual([second.key.eas]);
-		expect(eas.credentials?.submissionsKeyId).toBe(second.key.eas);
-		expect(second.deleted).toEqual({
-			google: [first.key.google],
-			eas: [first.key.eas],
-		});
+		expect(actions).toEqual([]);
+		expect(submitKey()).toBe(key);
+		expect(google.keys.get(EMAIL)).toEqual([key]);
+		expect(called('POST', '/keys')).toEqual([]);
+	});
+
+	it('rotates the key with --rotate-keys, deleting the old one from Google and EAS', async () => {
+		writeApp();
+		await ensure();
+		const first = {
+			google: submitKey(),
+			eas: eas.credentials?.submissionsKeyId,
+		};
+
+		await ensure({ rotateKeys: true });
+
+		expect(submitKey()).not.toBe(first.google);
+		expect(google.keys.get(EMAIL)).toEqual([submitKey()]);
+		expect(eas.keys.map((k) => k.id)).toEqual([
+			eas.credentials?.submissionsKeyId,
+		]);
+		expect(eas.keys.map((k) => k.id)).not.toContain(first.eas);
 		// Found, not made again.
 		expect(called('POST', 'cloudresourcemanager')).toHaveLength(1);
-		expect(
-			called('POST', '/serviceAccounts').filter(
-				(r) => !r.url.endsWith('/keys'),
-			),
-		).toHaveLength(1);
+	});
+
+	it('issues a key when the one EAS holds is no longer live in Google', async () => {
+		writeApp();
+		await ensure();
+		google.keys.set(EMAIL, []);
+
+		await ensure();
+
+		expect(google.keys.get(EMAIL)).toEqual([submitKey()]);
+		expect(eas.uploaded).toHaveLength(2);
 	});
 
 	it('grants production releases once a stage submits to production', async () => {
 		// Granted testing tracks by an earlier run, before the stage shipped
 		// to production — now it is protected, and does.
-		await deployedMobileApp(dir, { protected: ['production'] });
+		writeApp({ protected: ['production'] });
 		google.users.set(EMAIL, { [PACKAGE]: ['CAN_MANAGE_TRACK_APKS'] });
 
-		const result = await deployGooglePlay(
-			{ developer: DEVELOPER, cwd: appDir },
-			deps(),
-		);
+		await ensure();
 
-		expect(result.access).toBe('updated');
 		expect(called('PATCH', '/grants/')[0]!.body).toEqual({
 			appLevelPermissions: ['CAN_MANAGE_PUBLIC_APKS', 'CAN_MANAGE_TRACK_APKS'],
 		});
 	});
 
-	it('stops where only a person can make the app, before any key is made', async () => {
-		await deployedMobileApp(dir);
+	it('leaves an app not in Play Console pending, with no key made, and says what to create', async () => {
+		writeApp();
 		google.apps.clear();
 
-		await expect(
-			deployGooglePlay({ developer: DEVELOPER, cwd: appDir }, deps()),
-		).rejects.toThrow(PlayAppMissing);
+		const { logs } = await ensure();
+
 		expect(google.keys.get(EMAIL) ?? []).toEqual([]);
 		expect(eas.uploaded).toEqual([]);
+		expect(logs).toContain(`${PACKAGE}: pending`);
+		expect(logs).toContain(
+			`https://play.google.com/console/developers/${DEVELOPER}/create-new-app`,
+		);
+		expect(logs).toContain('default language');
 	});
 
 	it('waits for the app, with someone here to make it', async () => {
-		await deployedMobileApp(dir);
+		writeApp();
 		google.apps.clear();
-		const waiting = deps({
+
+		const { slept } = await ensure({
 			interactive: true,
-			sleep: async (ms) => {
-				waiting.slept.push(ms);
-				// Made in Play Console while gkm waits.
-				google.apps.add(PACKAGE);
-			},
+			// Made in Play Console while gkm waits.
+			sleep: () => google.apps.add(PACKAGE),
 		});
 
-		const result = await deployGooglePlay(
-			{ developer: DEVELOPER, cwd: appDir },
-			waiting,
-		);
-
-		expect(waiting.slept).toEqual([15_000]);
-		expect(result.access).toBe('invited');
+		expect(slept).toEqual([15_000]);
+		expect(google.users.get(EMAIL)).toEqual({
+			[PACKAGE]: ['CAN_MANAGE_TRACK_APKS'],
+		});
 	});
 
 	it('keeps the old key when the new one cannot reach the app', async () => {
-		await deployedMobileApp(dir);
-		const first = await deployGooglePlay(
-			{ developer: DEVELOPER, cwd: appDir },
-			deps(),
-		);
+		writeApp();
+		await ensure();
+		const first = {
+			google: submitKey(),
+			eas: eas.credentials?.submissionsKeyId,
+		};
 		google.keyAccepted = false;
 
-		await expect(
-			deployGooglePlay({ developer: DEVELOPER, cwd: appDir }, deps()),
-		).rejects.toThrow(PlayKeyUnverified);
+		await expect(ensure({ rotateKeys: true })).rejects.toThrow(
+			PlayKeyUnverified,
+		);
 
-		expect(google.keys.get(EMAIL)).toContain(first.key.google);
-		expect(eas.keys.map((k) => k.id)).toContain(first.key.eas);
+		expect(google.keys.get(EMAIL)).toContain(first.google);
+		expect(eas.keys.map((k) => k.id)).toContain(first.eas);
 	});
 
-	it('pushes the store listing and data safety kept beside the app', async () => {
-		await deployedMobileApp(dir);
+	it('pushes the store listing kept beside the app, once until it changes', async () => {
+		writeApp();
 		const listing = join(appDir, 'store', 'play', 'listings', 'en-US');
 		mkdirSync(join(listing, 'images', 'phoneScreenshots'), { recursive: true });
 		writeFileSync(join(listing, 'title.txt'), 'Shop\n');
@@ -665,40 +784,151 @@ describe('gkm deploy:google-play', () => {
 			'Question,Answer\n',
 		);
 
-		const result = await deployGooglePlay(
-			{ developer: DEVELOPER, cwd: appDir },
-			deps(),
-		);
+		await ensure();
+		await ensure();
+		writeFileSync(join(listing, 'title.txt'), 'Shop!\n');
+		await ensure();
 
-		expect(result.permissions).toContain('CAN_MANAGE_PUBLIC_LISTING');
-		expect(called('PUT', '/listings/en-US')[0]!.body).toEqual({
-			language: 'en-US',
-			title: 'Shop',
-			shortDescription: 'Buy things.',
-			fullDescription: 'Buy all the things.',
-		});
+		expect(google.users.get(EMAIL)?.[PACKAGE]).toContain(
+			'CAN_MANAGE_PUBLIC_LISTING',
+		);
+		expect(called('PUT', '/listings/en-US').map((r) => r.body)).toEqual([
+			{
+				language: 'en-US',
+				title: 'Shop',
+				shortDescription: 'Buy things.',
+				fullDescription: 'Buy all the things.',
+			},
+			{
+				language: 'en-US',
+				title: 'Shop!',
+				shortDescription: 'Buy things.',
+				fullDescription: 'Buy all the things.',
+			},
+		]);
 		expect(
-			called('DELETE', '/listings/en-US/').map((r) => r.url.split('/').pop()),
-		).toEqual(['icon', 'phoneScreenshots']);
-		expect(
-			called('POST', '/upload/').map((r) => [r.url.split('/').pop(), r.body]),
+			called('POST', '/upload/')
+				.slice(0, 3)
+				.map((r) => [r.url.split('/').pop(), r.body]),
 		).toEqual([
 			['icon', 'image/png'],
 			['phoneScreenshots', 'image/png'],
 			['phoneScreenshots', 'image/jpeg'],
 		]);
-		expect(called('POST', ':commit')).toHaveLength(1);
+		expect(called('POST', ':commit')).toHaveLength(2);
 		expect(google.dataSafety).toBe('Question,Answer');
-		expect(result.listing).toEqual({ listing: true, dataSafety: true });
 	});
 
-	it('needs the Play developer account', async () => {
-		await deployedMobileApp(dir);
+	it('names the EAS store build to upload when Play has no build of the app yet', async () => {
+		writeApp();
+		const listing = join(appDir, 'store', 'play', 'listings', 'en-US');
+		mkdirSync(listing, { recursive: true });
+		writeFileSync(join(listing, 'title.txt'), 'Shop\n');
+		google.noUpload = true;
 
-		await expect(deployGooglePlay({ cwd: appDir }, deps())).rejects.toThrow(
-			PlayDeveloperMissing,
+		const { logs } = await ensure();
+
+		expect(logs).toContain('https://expo.dev/artifacts/eas/build-1.aab');
+		expect(records.has('google-play-listing:App')).toBe(false);
+	});
+
+	it('in CI, only checks the key EAS holds — and leaves a missing one pending', async () => {
+		writeApp();
+
+		const { logs } = await ensure({ source: 'file' });
+
+		expect(logs).toContain(`${PACKAGE}: EAS has no live key of ${EMAIL}`);
+		expect(called('POST', 'cloudresourcemanager')).toEqual([]);
+		expect(called('POST', '/users')).toEqual([]);
+		expect(called('POST', '/keys')).toEqual([]);
+	});
+
+	it('in CI, finds the key a deploy from a terminal set up', async () => {
+		writeApp();
+		await ensure();
+		requests = [];
+
+		const { logs } = await ensure({ source: 'file' });
+
+		expect(logs).toContain(
+			`${PACKAGE}: EAS Submit's key is ${EMAIL}'s, and live`,
 		);
+		expect(
+			requests.filter((r) => r.method !== 'GET').map((r) => r.url),
+		).toEqual(['https://api.expo.dev/graphql', 'https://api.expo.dev/graphql']);
+	});
+
+	it('refuses to rotate the key from CI', async () => {
+		writeApp();
+
+		await expect(ensure({ source: 'file', rotateKeys: true })).rejects.toThrow(
+			PlaySetupNeedsPerson,
+		);
+	});
+
+	it('keeps the stage in the project it was set up in', async () => {
+		writeApp();
+		await ensure();
+
+		await expect(ensure({ project: 'another-project' })).rejects.toThrow(
+			GoogleProjectChanged,
+		);
+	});
+
+	it('plans, and touches nothing, on a dry run', async () => {
+		writeApp();
+
+		const { actions } = await ensure({ dryRun: true });
+
+		expect(actions.map((a) => a.change)).toEqual(['set up']);
 		expect(requests).toEqual([]);
-		expect(existsSync(join(appDir, 'eas.json'))).toBe(false);
+		expect(records.size).toBe(0);
+	});
+
+	it.for([
+		['android.package', { eas: { projectId: PROJECT_ID } }],
+		['eas.projectId', { android: { package: PACKAGE } }],
+	] as const)('needs the MobileApp to say its %s', async ([
+		missing,
+		mobile,
+	]) => {
+		writeApp({}, mobile);
+
+		const error = await ensure().catch((e: unknown) => e);
+
+		expect(error).toBeInstanceOf(MobileAppStoreIdentityMissing);
+		expect((error as MobileAppStoreIdentityMissing).missing).toBe(missing);
+		expect(requests).toEqual([]);
+	});
+});
+
+describe("the google-play provider's credentials", () => {
+	it('are none without an Expo access token', async () => {
+		const provider = createGooglePlayProvider();
+
+		expect(
+			await provider.credentials({
+				stage: 'production',
+				env: { GOOGLE_APPLICATION_CREDENTIALS: '/ci/credentials.json' },
+			}),
+		).toBeUndefined();
+	});
+
+	it('are the CI credentials file and EAS, with both', async () => {
+		const provider = createGooglePlayProvider();
+
+		const credential = await provider.credentials({
+			stage: 'production',
+			env: {
+				GOOGLE_APPLICATION_CREDENTIALS: '/ci/credentials.json',
+				EXPO_TOKEN: 'expo-token',
+			},
+			project: 'acme-play',
+		});
+
+		expect(credential?.google).toMatchObject({
+			source: 'file',
+			project: 'acme-play',
+		});
 	});
 });

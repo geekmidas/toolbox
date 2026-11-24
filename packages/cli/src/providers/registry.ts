@@ -4,6 +4,7 @@
  * one more entry here once there is a loading story for it.
  */
 
+import { googlePlayProvider } from './googlePlay/index.js';
 import { s3Provider } from './s3/index.js';
 import { sesEmailProvider } from './ses/email.js';
 import { sesProvider } from './ses/index.js';
@@ -17,6 +18,7 @@ export const BUILTIN_PROVIDERS: {
 	objects: { s3: s3Provider },
 	inbox: { ses: sesProvider },
 	email: { ses: sesEmailProvider },
+	mobile: { 'google-play': googlePlayProvider },
 };
 
 /** The provider `kind` names `name`, if gkm has one. */

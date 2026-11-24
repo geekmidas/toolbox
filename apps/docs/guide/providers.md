@@ -27,8 +27,11 @@ gkm deploy --stage production             # create it, fix drift, write the keys
 the same way.
 
 The kinds are `objects` — what `ObjectStorage` and `FileServer` produce —
-`email`, what `Email` produces, and `inbox` (see
-[Receiving email](./receiving-email.md#deployed-deploy-inbox)). `cache` takes
+`email`, what `Email` produces, `inbox` (see
+[Receiving email](./receiving-email.md#deployed-deploy-inbox)), and `mobile`,
+what `MobileApp` produces: `{ provider: 'google-play', developer }` sets each
+app up for EAS Submit to publish to Google Play (see
+[Mobile apps](./mobile.md#google-play-set-up-by-the-deploy)). `cache` takes
 the same `deploy.<kind>.<stage>` shape when its provider arrives.
 
 ## What a provider is
@@ -345,7 +348,8 @@ way for every command:
    `ProviderCredentialsMissing`.
 
 The project is `--project`, else `deploy.<kind>.<stage>.project`, else
-`<workspace>-<stage>`. The first deploy records it in the stage's state; a
+`<workspace>-<stage>` (`google-play`: `<workspace>-play`, one for every
+stage, since every stage publishes the same app). The first deploy records it in the stage's state; a
 later deploy that resolves another one stops with `GoogleProjectChanged`
 before anything is created.
 

@@ -899,8 +899,9 @@ export function isWildcardSite(
  * for it is `shop://`, not an address, and what it provides is that scheme —
  * the same on every stage.
  *
- * It ships through its own toolchain (EAS, the stores), so nothing deploys it:
- * it is an app the targets derive for, never one they run.
+ * It ships through its own toolchain (EAS, the stores), so the targets derive
+ * for it and never run it. What the deploy does make is its store side — a
+ * stage's `deploy.mobile` provider, from `android` and `eas` below.
  */
 export interface MobileAppDeclaration extends PublicDeclaration {
 	kind: 'mobile-app';
@@ -920,6 +921,16 @@ export interface MobileAppDeclaration extends PublicDeclaration {
 	 * — see {@link MobileAppStage}. Keyed by stage name.
 	 */
 	stages?: Readonly<Record<string, MobileAppStage>>;
+	/**
+	 * How Play knows it: its Android package — `com.acme.shop`. What a
+	 * stage's `deploy.mobile` provider sets it up on Google Play by.
+	 */
+	android?: { package: string };
+	/**
+	 * Its EAS project — what `eas init` linked it to. Where the store
+	 * credentials EAS Submit uses are kept.
+	 */
+	eas?: { projectId: string };
 	/** What it calls — the surfaces whose URLs it is built with. */
 	dependencies: readonly Dependency[];
 }

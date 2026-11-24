@@ -779,6 +779,23 @@ const EmailConfigSchema = z
 		}
 	});
 
+/** `deploy.mobile` — what sets each deployed stage's mobile apps up in the stores; `checkStageProvider`'s rules. */
+const MobileConfigSchema = z
+	.record(z.string(), z.unknown())
+	.superRefine((entries, ctx) => {
+		for (const [stage, value] of Object.entries(entries)) {
+			try {
+				checkStageProvider('mobile', stage, value);
+			} catch (error) {
+				ctx.addIssue({
+					code: 'custom',
+					message: error instanceof Error ? error.message : String(error),
+					path: [stage],
+				});
+			}
+		}
+	});
+
 /**
  * Deploy configuration schema.
  */
@@ -816,6 +833,7 @@ const DeployConfigSchema = z.object({
 	objects: ObjectsConfigSchema.optional(),
 	inbox: InboxConfigSchema.optional(),
 	email: EmailConfigSchema.optional(),
+	mobile: MobileConfigSchema.optional(),
 	backups: BackupsConfigSchema.optional(),
 	cdn: CdnConfigSchema.optional(),
 });
@@ -1241,6 +1259,7 @@ export const WorkspaceConfigSchema = z
 			['deploy.objects', ['deploy', 'objects'], data.deploy?.objects],
 			['deploy.inbox', ['deploy', 'inbox'], data.deploy?.inbox],
 			['deploy.email', ['deploy', 'email'], data.deploy?.email],
+			['deploy.mobile', ['deploy', 'mobile'], data.deploy?.mobile],
 			['deploy.backups', ['deploy', 'backups'], data.deploy?.backups],
 			['deploy.telemetry', ['deploy', 'telemetry'], data.deploy?.telemetry],
 			['deploy.cdn', ['deploy', 'cdn'], data.deploy?.cdn],

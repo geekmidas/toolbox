@@ -35,6 +35,8 @@ export interface ComposeAppOptions {
 	deployInbox?: Record<string, unknown>;
 	/** `deploy.email`, by stage. */
 	deployEmail?: Record<string, unknown>;
+	/** `deploy.mobile`, by stage. */
+	deployMobile?: Record<string, unknown>;
 	/** `deploy.backups`, as it is written in the config. */
 	deployBackups?: Record<string, unknown>;
 	/** `deploy.cdn`, by stage. */
@@ -73,9 +75,16 @@ export interface ComposeAppOptions {
 	webhooks?: boolean;
 	/**
 	 * A `MobileApp`, `App` in `apps/app`, that calls the API and the auth
-	 * server — with each stage's `stages` setting, where given.
+	 * server — with each stage's `stages` setting, and its `android` and
+	 * `eas`, where given.
 	 */
-	mobile?: boolean | { stages: Record<string, unknown> };
+	mobile?:
+		| boolean
+		| {
+				stages?: Record<string, unknown>;
+				android?: { package: string };
+				eas?: { projectId: string };
+		  };
 	/**
 	 * Put the site behind a `RandomPassword`, `SitePassword`, on these stages.
 	 */
@@ -200,10 +209,11 @@ export const web = new StaticSite('Web', {
 	}
 	if (options.realtime) writeRealtime(dir, name);
 	if (options.mobile) {
-		const stages =
-			typeof options.mobile === 'object'
-				? `, stages: ${JSON.stringify(options.mobile.stages)}`
-				: '';
+		const given = typeof options.mobile === 'object' ? options.mobile : {};
+		const stages = (['stages', 'android', 'eas'] as const)
+			.filter((field) => given[field] !== undefined)
+			.map((field) => `, ${field}: ${JSON.stringify(given[field])}`)
+			.join('');
 		writeFileSync(
 			join(dir, 'constructs', 'mobile.ts'),
 			`import { MobileApp } from '@geekmidas/constructs/mobile-app';
@@ -279,6 +289,7 @@ export default defineWorkspace({
     ${options.deployObjects ? `objects: ${JSON.stringify(options.deployObjects)},` : ''}
     ${options.deployInbox ? `inbox: ${JSON.stringify(options.deployInbox)},` : ''}
     ${options.deployEmail ? `email: ${JSON.stringify(options.deployEmail)},` : ''}
+    ${options.deployMobile ? `mobile: ${JSON.stringify(options.deployMobile)},` : ''}
     ${options.deployBackups ? `backups: ${JSON.stringify(options.deployBackups)},` : ''}
     ${options.deployCdn ? `cdn: ${JSON.stringify(options.deployCdn)},` : ''}
   },

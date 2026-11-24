@@ -22,8 +22,19 @@
  * ```
  *
  * Like a site it has no `.service`: it is built by its own toolchain, and
- * consumes addresses rather than connections. Nothing deploys it — EAS and the
- * stores do — so the targets derive *for* it and never run it.
+ * consumes addresses rather than connections. EAS builds it and the stores
+ * ship it, so the targets derive *for* it and never run it — but the deploy
+ * sets up its store side: with `deploy.mobile.<stage>` on `google-play`,
+ * `gkm deploy` makes what EAS Submit needs to publish it to Google Play, from
+ * its `android.package`, its `eas.projectId` and each stage's track.
+ *
+ * ```ts
+ * export const app = new MobileApp('App', {
+ *   path: 'apps/app',
+ *   android: { package: 'com.acme.shop' },
+ *   eas: { projectId: '4f1c…' },
+ * }).dependsOn([api, auth]);
+ * ```
  */
 
 import {
@@ -79,6 +90,17 @@ export interface MobileAppConfig {
 	 * ```
 	 */
 	stages?: Readonly<Record<string, MobileAppStage>>;
+	/**
+	 * How Play knows it: its Android package, `com.acme.shop` — the same one
+	 * its `app.config.ts` builds with. What `deploy.mobile` sets it up on
+	 * Google Play by.
+	 */
+	android?: { package: string };
+	/**
+	 * Its EAS project, as `eas init` linked it (`extra.eas.projectId`):
+	 * where the key EAS Submit publishes with is kept.
+	 */
+	eas?: { projectId: string };
 }
 
 export class MobileApp<TName extends string = string>
@@ -130,6 +152,8 @@ export class MobileApp<TName extends string = string>
 				},
 				...(this.config.scheme ? { scheme: this.config.scheme } : {}),
 				...(this.config.stages ? { stages: this.config.stages } : {}),
+				...(this.config.android ? { android: this.config.android } : {}),
+				...(this.config.eas ? { eas: this.config.eas } : {}),
 				dependencies: this.dependencies,
 				provides: [this.keys.scheme],
 			},
