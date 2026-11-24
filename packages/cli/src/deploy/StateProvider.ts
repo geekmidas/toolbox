@@ -148,4 +148,9 @@ export interface CreateStateStoreConfig {
 	workspaceName: string;
 	/** `deploy.namespace`, for the s3 project bucket's name. */
 	namespace?: string;
+	/**
+	 * `--profile`: the AWS profile for the stage's account. Wins over
+	 * `state.profile`, so one flag picks one account for every client.
+	 */
+	profile?: string;
 }

@@ -391,6 +391,8 @@ export interface ApplyStackDnsOptions {
 	cloudflare?: CloudflareCredential;
 	/** The provider for a domain — `createDnsProvider` by default. */
 	providerFor?: (config: DnsProviderConfig) => Promise<DnsProvider | null>;
+	/** `--profile`: the AWS profile Route 53 is reached with. */
+	profile?: string;
 	/**
 	 * Read every record written back from its provider, and throw
 	 * {@link DnsRecordsNotConfirmed} for one that does not hold its value.
@@ -505,7 +507,7 @@ async function readRecords(
 function providerResolver(
 	options: Pick<
 		ApplyStackDnsOptions,
-		'providerFor' | 'credentials' | 'hostinger' | 'cloudflare'
+		'providerFor' | 'credentials' | 'hostinger' | 'cloudflare' | 'profile'
 	>,
 ): (config: DnsProviderConfig) => Promise<DnsProvider | null> {
 	return (
@@ -513,6 +515,7 @@ function providerResolver(
 		((config: DnsProviderConfig) =>
 			createDnsProvider({
 				config: config as SchemaDnsConfig,
+				...(options.profile ? { profile: options.profile } : {}),
 				...(options.credentials ? { godaddy: options.credentials } : {}),
 				...(options.hostinger ? { hostinger: options.hostinger } : {}),
 				...(options.cloudflare ? { cloudflare: options.cloudflare } : {}),
@@ -895,6 +898,7 @@ export interface PruneStackDnsOptions
 		| 'hostinger'
 		| 'cloudflare'
 		| 'providerFor'
+		| 'profile'
 	> {
 	stage: string;
 	dns: WorkspaceDnsConfig | undefined;
@@ -1285,6 +1289,8 @@ export interface StageDnsInput {
 	lookup?: HostLookup;
 	/** The provider for a domain — `createDnsProvider` by default. */
 	providerFor?: (config: DnsProviderConfig) => Promise<DnsProvider | null>;
+	/** `--profile`: the AWS profile Route 53 is reached with. */
+	profile?: string;
 	/** GoDaddy's API, for tests: its base URL and how a 429 is waited out. */
 	godaddy?: Pick<GoDaddyOptions, 'baseUrl' | 'sleep' | 'maxAttempts'>;
 	/** The records the stage's state says gkm wrote: the stale ones are pruned. */
@@ -1365,6 +1371,7 @@ export async function stageDns(input: StageDnsInput): Promise<StageDnsResult> {
 		...(tokens.hostinger ? { hostinger: tokens.hostinger } : {}),
 		...(tokens.cloudflare ? { cloudflare: tokens.cloudflare } : {}),
 		...(input.providerFor ? { providerFor: input.providerFor } : {}),
+		...(input.profile ? { profile: input.profile } : {}),
 	};
 	// No `dns` at all: nothing to write, and every host is the person's to
 	// point — checked, without a line per host saying so.

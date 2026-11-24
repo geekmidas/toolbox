@@ -385,6 +385,7 @@ async function buildOneApp(input: {
 		markOptional: options.markOptional ?? false,
 		skipBundle: options.skipBundle ?? false,
 		stage: options.stage,
+		...(options.profile ? { profile: options.profile } : {}),
 		workspaceName: workspace.name,
 		workspace,
 	});
@@ -422,6 +423,7 @@ export interface BuildAppInput {
 	markOptional?: boolean;
 	skipBundle?: boolean;
 	stage?: string;
+	profile?: string;
 	/** Re-import changed modules — `gkm dev` rebuilding after an edit. */
 	bustCache?: boolean;
 	/** The workspace's name — telemetry's `service.namespace`. */
@@ -644,6 +646,7 @@ export async function buildApp(input: BuildAppInput): Promise<AppBuildOutput> {
 				sourcemap: false,
 				external: production.external,
 				...(input.stage ? { stage: input.stage } : {}),
+				...(input.profile ? { profile: input.profile } : {}),
 			});
 			logger.log(
 				`✅ Bundle complete: ${relative(appRoot, join(outputDir, 'dist', 'server.mjs'))}`,
@@ -913,6 +916,7 @@ export async function buildApp(input: BuildAppInput): Promise<AppBuildOutput> {
 		enableOpenApi,
 		input.skipBundle ?? false,
 		input.stage,
+		input.profile,
 	);
 
 	// Each Worker this app carries: its own entry, and — bundling — its own
@@ -948,6 +952,7 @@ export async function buildApp(input: BuildAppInput): Promise<AppBuildOutput> {
 			subscribers: hostedSubscribers,
 			bundle: Boolean(production.bundle && !input.skipBundle),
 			...(input.stage ? { stage: input.stage } : {}),
+			...(input.profile ? { profile: input.profile } : {}),
 		});
 	}
 
@@ -984,6 +989,7 @@ export async function buildApp(input: BuildAppInput): Promise<AppBuildOutput> {
 			workspaceRoot,
 			bundle: Boolean(production.bundle && !input.skipBundle),
 			...(input.stage ? { stage: input.stage } : {}),
+			...(input.profile ? { profile: input.profile } : {}),
 		});
 	}
 	if (processors.length > 0 && result.built) {
@@ -1089,6 +1095,7 @@ async function buildWorkers(input: {
 	>[];
 	bundle: boolean;
 	stage?: string;
+	profile?: string;
 }): Promise<void> {
 	const generator = new WorkerGenerator();
 	for (const worker of input.workers) {
@@ -1128,6 +1135,7 @@ async function buildWorkers(input: {
 			sourcemap: false,
 			external: context.production?.external ?? [],
 			...(input.stage ? { stage: input.stage } : {}),
+			...(input.profile ? { profile: input.profile } : {}),
 			constructs: [...crons, ...queues, ...subscribers].map((c) => c.construct),
 		});
 		logger.log(
@@ -1150,6 +1158,7 @@ async function buildProcessors(input: {
 	workspaceRoot: string;
 	bundle: boolean;
 	stage?: string;
+	profile?: string;
 }): Promise<ProcessorInfo[]> {
 	const generator = new ProcessorGenerator();
 	const infos: ProcessorInfo[] = [];
@@ -1192,6 +1201,7 @@ async function buildProcessors(input: {
 				...new Set(processors.flatMap(({ construct }) => construct.native)),
 			],
 			...(input.stage ? { stage: input.stage } : {}),
+			...(input.profile ? { profile: input.profile } : {}),
 			constructs: processors.map((p) => p.construct),
 		});
 		logger.log(
@@ -1267,6 +1277,7 @@ async function buildForTarget(
 	enableOpenApi: boolean,
 	skipBundle: boolean,
 	stage?: string,
+	profile?: string,
 ): Promise<AppBuildOutput> {
 	// What an older build wrote and nothing writes now — the per-provider trees
 	// and an app-level manifest — would otherwise sit beside the real output
@@ -1363,6 +1374,7 @@ async function buildForTarget(
 				sourcemap: false,
 				external: context.production.external,
 				stage,
+				...(profile ? { profile } : {}),
 				constructs: allConstructs,
 			});
 			masterKey = bundleResult.masterKey;

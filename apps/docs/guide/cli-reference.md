@@ -884,8 +884,8 @@ the key itself).
 
 Every `secrets:*` command reads and writes the stage's own store: for a
 deployed stage kept in S3, SSM or Secrets Manager, `secrets:set` writes there and
-`secrets:show` reads from it, with the default AWS credentials (`AWS_PROFILE`, or a deploy
-job's role). See
+`secrets:show` reads from it, with `--profile <name>` when given, else the default AWS credentials
+(`AWS_PROFILE`, or a deploy job's role). See
 [the secrets store](./dev-server.md#deployed-stages-the-secrets-store).
 
 ### State Management

@@ -54,6 +54,8 @@ export function maskStateSecrets<S extends StageState>(state: S): S {
 
 export interface StateCommandOptions {
 	stage: string;
+	/** `--profile`: the AWS profile for the stage's account. */
+	profile?: string;
 }
 
 /**
@@ -64,7 +66,7 @@ export async function statePullCommand(
 	options: StateCommandOptions,
 ): Promise<void> {
 	const { workspace } = await loadWorkspaceConfig();
-	const { local, remote } = await remoteAndLocal(workspace);
+	const { local, remote } = await remoteAndLocal(workspace, options.profile);
 
 	console.log(`Pulling state for stage: ${options.stage}...`);
 	const pulled = await copyUnderLock(
@@ -91,7 +93,7 @@ export async function statePushCommand(
 	options: StateCommandOptions,
 ): Promise<void> {
 	const { workspace } = await loadWorkspaceConfig();
-	const { local, remote } = await remoteAndLocal(workspace);
+	const { local, remote } = await remoteAndLocal(workspace, options.profile);
 
 	console.log(`Pushing state for stage: ${options.stage}...`);
 	// Under the remote stage's lock: a push while a deploy of the stage runs
@@ -129,6 +131,7 @@ export async function stateShowCommand(
 		workspaceRoot: workspace.root,
 		workspaceName: workspace.name,
 		namespace: workspace.deploy?.namespace,
+		...(options.profile ? { profile: options.profile } : {}),
 	});
 
 	const stored = await store.read(options.stage);
@@ -167,6 +170,7 @@ export async function stateUnlockCommand(
 		workspaceRoot: workspace.root,
 		workspaceName: workspace.name,
 		namespace: workspace.deploy?.namespace,
+		...(options.profile ? { profile: options.profile } : {}),
 	});
 
 	const holder = await store.forceUnlock(options.stage);
@@ -189,7 +193,7 @@ export async function stateDiffCommand(
 	options: StateCommandOptions,
 ): Promise<void> {
 	const { workspace } = await loadWorkspaceConfig();
-	const stores = await remoteAndLocal(workspace, [
+	const stores = await remoteAndLocal(workspace, options.profile, [
 		'Diff requires a remote provider to compare against.',
 	]);
 
@@ -303,6 +307,7 @@ export async function stateDiffCommand(
  */
 async function remoteAndLocal(
 	workspace: NormalizedWorkspace,
+	profile: string | undefined,
 	hint: readonly string[] = [
 		'Add a remote provider in gkm.config.ts:',
 		'  state: { provider: "ssm", region: "us-east-1" }',
@@ -321,6 +326,7 @@ async function remoteAndLocal(
 			workspaceRoot: workspace.root,
 			workspaceName: workspace.name,
 			namespace: workspace.deploy?.namespace,
+			...(profile ? { profile } : {}),
 		}),
 	};
 }
@@ -554,6 +560,7 @@ export async function stateHistoryCommand(
 		workspaceRoot: workspace.root,
 		workspaceName: workspace.name,
 		namespace: workspace.deploy?.namespace,
+		...(options.profile ? { profile: options.profile } : {}),
 	});
 
 	const stored = await store.read(options.stage);

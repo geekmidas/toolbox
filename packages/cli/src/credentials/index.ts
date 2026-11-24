@@ -312,6 +312,8 @@ export async function prepareEntryCredentials(options: {
 	cwd?: string;
 	/** The stage whose secrets to load. Default: the project's `stages.local` */
 	stage?: string;
+	/** `--profile`: the AWS profile for the stage's account. */
+	profile?: string;
 	/** Start Docker Compose services after port resolution. Default: false */
 	startDocker?: boolean;
 	/** Custom secrets JSON filename. Default: 'dev-secrets-{appName}.json' or 'dev-secrets.json' */
@@ -399,7 +401,11 @@ export async function prepareEntryCredentials(options: {
 	// The stage's own store; outside a workspace nothing names one but the file.
 	const store = stage
 		? workspace
-			? await secretsStoreFor(workspace, stage)
+			? await secretsStoreFor(
+					workspace,
+					stage,
+					options.profile ? { profile: options.profile } : {},
+				)
 			: new FileSecretsStore(secretsRoot)
 		: undefined;
 	const credentials =

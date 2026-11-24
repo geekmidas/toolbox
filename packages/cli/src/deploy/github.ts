@@ -507,7 +507,7 @@ export async function deployGithubCommand(
 		// Nothing to send: the deploy job reads the stage's store itself.
 		if (!hasSecrets) {
 			logger.log(
-				`  ⚠ The "${options.stage}" store holds no secrets yet; set them with gkm secrets:set <KEY> '…' --stage ${options.stage}${options.profile ? ` (AWS_PROFILE=${options.profile})` : ''}.`,
+				`  ⚠ The "${options.stage}" store holds no secrets yet; set them with gkm secrets:set <KEY> '…' --stage ${options.stage}${options.profile ? ` --profile ${options.profile}` : ''}.`,
 			);
 		}
 	} else if (hasKey) {

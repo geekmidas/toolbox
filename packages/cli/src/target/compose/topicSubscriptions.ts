@@ -106,6 +106,8 @@ export async function ensureTopicSubscriptions(input: {
 	secrets: Readonly<Record<string, string>>;
 	stage: string;
 	env: NodeJS.ProcessEnv;
+	/** `--profile`: the AWS profile for the stage's account. */
+	profile?: string;
 	record: (resource: ResourceInput) => Promise<void>;
 	forget: (key: string) => Promise<void>;
 	log: (line: string) => void;
@@ -193,6 +195,7 @@ export async function ensureTopicSubscriptions(input: {
 			connectionString: address.toString(),
 			stage: input.stage,
 			env: input.env,
+			...(input.profile ? { profile: input.profile } : {}),
 			provisioned: provisioned.has(topicArn),
 		});
 		const result = await reconcileHttpSubscriptions(connection, {

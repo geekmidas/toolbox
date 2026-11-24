@@ -44,6 +44,8 @@ export interface ProviderDnsOptions {
 	credentials: CredentialProvider;
 	/** The provider for a domain — `createDnsProvider` by default. */
 	providerFor?: (config: DnsProviderConfig) => Promise<DnsProvider | null>;
+	/** `--profile`: the AWS profile Route 53 is reached with. */
+	profile?: string;
 	log: (line: string) => void;
 }
 
@@ -124,6 +126,7 @@ export async function writeProviderDns(
 			...(tokens.hostinger ? { hostinger: tokens.hostinger } : {}),
 			...(tokens.cloudflare ? { cloudflare: tokens.cloudflare } : {}),
 			...(options.providerFor ? { providerFor: options.providerFor } : {}),
+			...(options.profile ? { profile: options.profile } : {}),
 		},
 	);
 

@@ -396,6 +396,8 @@ export interface BuildOptions {
 	skipBundle?: boolean;
 	/** Stage for secrets injection (e.g., 'production', 'staging') */
 	stage?: string;
+	/** `--profile`: the AWS profile for the stage's account. */
+	profile?: string;
 	/**
 	 * When true, optional environment variables (those with `.optional()` or
 	 * `.default()` in the envParser) are suffixed with `?` within each

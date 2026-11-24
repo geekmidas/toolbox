@@ -75,7 +75,7 @@ supported, and so is your own `SecretsStore`. A workspace keeps the store it
 names, and gkm never moves it by itself. To move a stage into the bucket:
 
 ```bash
-AWS_PROFILE=acme-prod gkm secrets:migrate --stage production --to s3
+gkm secrets:migrate --stage production --to s3 --profile acme-prod
 # copies, reads back and compares, then prints the next step:
 #   set secrets.store to { provider: 's3' } — and the exact command that
 #   deletes the old SSM parameter, for you to run once deploys read S3

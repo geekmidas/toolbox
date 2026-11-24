@@ -48,6 +48,14 @@ import { type UpgradeOptions, upgradeCommand } from './upgrade/index';
 
 const program = new Command();
 
+/**
+ * `--profile`, the same on every command that reaches AWS. The profile named
+ * is used on its own — over `AWS_PROFILE`, exported keys and any profile in
+ * gkm.config.ts — for every AWS client the command makes.
+ */
+const profileOption = () =>
+	new Option('--profile <profile>', "AWS profile for the stage's account");
+
 program
 	.name('gkm')
 	.description('GeekMidas backend framework CLI')
@@ -181,6 +189,7 @@ program
 			'Register the drivers for this cache backend rather than the target default',
 		).hideHelp(),
 	)
+	.addOption(profileOption())
 	.action(
 		async (options: {
 			provider?: string;
@@ -189,6 +198,7 @@ program
 			production?: boolean;
 			skipBundle?: boolean;
 			stage?: string;
+			profile?: string;
 			app?: string;
 			markOptional?: boolean;
 		}) => {
@@ -216,6 +226,7 @@ program
 					production: options.production || false,
 					skipBundle: options.skipBundle || false,
 					stage: options.stage,
+					...(options.profile ? { profile: options.profile } : {}),
 					markOptional: options.markOptional || false,
 				});
 			} catch (error) {
@@ -312,7 +323,7 @@ program
 		'--stage <stage>',
 		'A deployed compose stage to run as, through SSH tunnels to its server (default: the local stage)',
 	)
-	.option('--profile <profile>', "AWS profile for the stage's account")
+	.addOption(profileOption())
 	.option('-y, --yes', 'Run against a protected stage without asking')
 	.option(
 		'--ssh-user <user>',
@@ -347,7 +358,7 @@ program
 	)
 	.argument('[construct]', 'Only this database construct, by name')
 	.requiredOption('--stage <stage>', 'A deployed compose stage')
-	.option('--profile <profile>', "AWS profile for the stage's account")
+	.addOption(profileOption())
 	.option('-y, --yes', 'Open it on a protected stage without asking')
 	.option(
 		'--ssh-user <user>',
@@ -384,7 +395,7 @@ program
 		'--app <app>',
 		'The mobile app (default: the one here, or the only one)',
 	)
-	.option('--profile <profile>', "AWS profile for the stage's account")
+	.addOption(profileOption())
 	.option('--dry-run', 'Say what would be written, and write nothing')
 	.action(
 		async (options: {
@@ -422,7 +433,7 @@ program
 		'--message <message>',
 		"An update's message (default: the commit's subject)",
 	)
-	.option('--profile <profile>', "AWS profile for the stage's account")
+	.addOption(profileOption())
 	.option('--dry-run', 'Say what would be released, and release nothing')
 	.action(
 		async (options: {
@@ -476,7 +487,7 @@ program
 		'--stage <stage>',
 		"The stage whose values evaluate the app's Expo config (default: the protected one)",
 	)
-	.option('--profile <profile>', "AWS profile for that stage's account")
+	.addOption(profileOption())
 	.action(
 		async (options: {
 			developer?: string;
@@ -526,6 +537,7 @@ program
 		"Drop the test stage's databases the last setup created, then stop — what @geekmidas/cli/vitest runs when the suite ends",
 	)
 	.argument('[pattern]', 'Pattern to filter tests')
+	.addOption(profileOption())
 	.action(async (pattern: string | undefined, options: TestOptions) => {
 		try {
 			const globalOptions = program.opts();
@@ -746,6 +758,7 @@ program
 		'--retire-old-keys',
 		'Deployed stage: delete a rotated-out key now instead of on the next deploy',
 	)
+	.addOption(profileOption())
 	.action(async (options: ComposeOptions) => {
 		try {
 			const globalOptions = program.opts();
@@ -796,17 +809,20 @@ program
 	.description('Initialize secrets for a deployment stage')
 	.requiredOption('--stage <stage>', 'Stage name (e.g., production, staging)')
 	.option('--force', 'Overwrite existing secrets')
-	.action(async (options: { stage: string; force?: boolean }) => {
-		try {
-			const globalOptions = program.opts();
-			if (globalOptions.cwd) {
-				process.chdir(globalOptions.cwd);
+	.addOption(profileOption())
+	.action(
+		async (options: { stage: string; profile?: string; force?: boolean }) => {
+			try {
+				const globalOptions = program.opts();
+				if (globalOptions.cwd) {
+					process.chdir(globalOptions.cwd);
+				}
+				await secretsInitCommand(options);
+			} catch (error) {
+				exitWithError(error);
 			}
-			await secretsInitCommand(options);
-		} catch (error) {
-			exitWithError(error);
-		}
-	});
+		},
+	);
 
 program
 	.command('secrets:set')
@@ -814,11 +830,12 @@ program
 	.argument('<key>', 'Secret key (e.g., API_KEY)')
 	.argument('[value]', 'Secret value (reads from stdin if omitted)')
 	.requiredOption('--stage <stage>', 'Stage name')
+	.addOption(profileOption())
 	.action(
 		async (
 			key: string,
 			value: string | undefined,
-			options: { stage: string },
+			options: { stage: string; profile?: string },
 		) => {
 			try {
 				const globalOptions = program.opts();
@@ -837,7 +854,8 @@ program
 	.description('Remove a custom secret from a stage')
 	.argument('<key>', 'Secret key (e.g., API_KEY)')
 	.requiredOption('--stage <stage>', 'Stage name')
-	.action(async (key: string, options: { stage: string }) => {
+	.addOption(profileOption())
+	.action(async (key: string, options: { stage: string; profile?: string }) => {
 		try {
 			const globalOptions = program.opts();
 			if (globalOptions.cwd) {
@@ -857,8 +875,14 @@ program
 	.requiredOption('--stage <stage>', 'Stage name')
 	.option('--missing', 'Only the keys the stage has not set')
 	.option('--json', 'Print the keys as JSON and ask nothing')
+	.addOption(profileOption())
 	.action(
-		async (options: { stage: string; missing?: boolean; json?: boolean }) => {
+		async (options: {
+			stage: string;
+			profile?: string;
+			missing?: boolean;
+			json?: boolean;
+		}) => {
 			try {
 				const globalOptions = program.opts();
 				if (globalOptions.cwd) {
@@ -879,18 +903,23 @@ program
 	)
 	.argument('<construct>', 'The Encryption construct (e.g. Pii)')
 	.requiredOption('--stage <stage>', 'A deployed stage')
-	.action(async (construct: string, options: { stage: string }) => {
-		try {
-			const globalOptions = program.opts();
-			if (globalOptions.cwd) {
-				process.chdir(globalOptions.cwd);
+	.addOption(profileOption())
+	.action(
+		async (construct: string, options: { stage: string; profile?: string }) => {
+			try {
+				const globalOptions = program.opts();
+				if (globalOptions.cwd) {
+					process.chdir(globalOptions.cwd);
+				}
+				const { encryptionRotateCommand } = await import(
+					'./encryption/index.js'
+				);
+				await encryptionRotateCommand(construct, options);
+			} catch (error) {
+				exitWithError(error);
 			}
-			const { encryptionRotateCommand } = await import('./encryption/index.js');
-			await encryptionRotateCommand(construct, options);
-		} catch (error) {
-			exitWithError(error);
-		}
-	});
+		},
+	);
 
 program
 	.command('encryption:retire')
@@ -900,8 +929,13 @@ program
 	.argument('<construct>', 'The Encryption construct (e.g. Pii)')
 	.argument('<key>', 'The key to retire (e.g. k1)')
 	.requiredOption('--stage <stage>', 'A deployed stage')
+	.addOption(profileOption())
 	.action(
-		async (construct: string, key: string, options: { stage: string }) => {
+		async (
+			construct: string,
+			key: string,
+			options: { stage: string; profile?: string },
+		) => {
 			try {
 				const globalOptions = program.opts();
 				if (globalOptions.cwd) {
@@ -922,17 +956,20 @@ program
 	.description('Show secrets for a stage')
 	.requiredOption('--stage <stage>', 'Stage name')
 	.option('--reveal', 'Show actual secret values (not masked)')
-	.action(async (options: { stage: string; reveal?: boolean }) => {
-		try {
-			const globalOptions = program.opts();
-			if (globalOptions.cwd) {
-				process.chdir(globalOptions.cwd);
+	.addOption(profileOption())
+	.action(
+		async (options: { stage: string; profile?: string; reveal?: boolean }) => {
+			try {
+				const globalOptions = program.opts();
+				if (globalOptions.cwd) {
+					process.chdir(globalOptions.cwd);
+				}
+				await secretsShowCommand(options);
+			} catch (error) {
+				exitWithError(error);
 			}
-			await secretsShowCommand(options);
-		} catch (error) {
-			exitWithError(error);
-		}
-	});
+		},
+	);
 
 program
 	.command('secrets:rotate')
@@ -942,17 +979,24 @@ program
 		'--service <service>',
 		'Specific service to rotate (postgres, redis, minio, …)',
 	)
-	.action(async (options: { stage: string; service?: SecretServiceName }) => {
-		try {
-			const globalOptions = program.opts();
-			if (globalOptions.cwd) {
-				process.chdir(globalOptions.cwd);
+	.addOption(profileOption())
+	.action(
+		async (options: {
+			stage: string;
+			profile?: string;
+			service?: SecretServiceName;
+		}) => {
+			try {
+				const globalOptions = program.opts();
+				if (globalOptions.cwd) {
+					process.chdir(globalOptions.cwd);
+				}
+				await secretsRotateCommand(options);
+			} catch (error) {
+				exitWithError(error);
 			}
-			await secretsRotateCommand(options);
-		} catch (error) {
-			exitWithError(error);
-		}
-	});
+		},
+	);
 
 program
 	.command('secrets:import')
@@ -960,23 +1004,30 @@ program
 	.argument('<file>', 'JSON file path (e.g., secrets.json)')
 	.requiredOption('--stage <stage>', 'Stage name')
 	.option('--no-merge', 'Replace all custom secrets instead of merging')
-	.action(async (file: string, options: { stage: string; merge?: boolean }) => {
-		try {
-			const globalOptions = program.opts();
-			if (globalOptions.cwd) {
-				process.chdir(globalOptions.cwd);
+	.addOption(profileOption())
+	.action(
+		async (
+			file: string,
+			options: { stage: string; profile?: string; merge?: boolean },
+		) => {
+			try {
+				const globalOptions = program.opts();
+				if (globalOptions.cwd) {
+					process.chdir(globalOptions.cwd);
+				}
+				await secretsImportCommand(file, options);
+			} catch (error) {
+				exitWithError(error);
 			}
-			await secretsImportCommand(file, options);
-		} catch (error) {
-			exitWithError(error);
-		}
-	});
+		},
+	);
 
 program
 	.command('secrets:reconcile')
 	.description('Backfill missing custom secrets from workspace config')
 	.option('--stage <stage>', 'Stage name (default: stages.local)')
-	.action(async (options: { stage?: string }) => {
+	.addOption(profileOption())
+	.action(async (options: { stage?: string; profile?: string }) => {
 		try {
 			const globalOptions = program.opts();
 			if (globalOptions.cwd) {
@@ -989,7 +1040,11 @@ program
 
 			const { workspace } = await loadWorkspaceConfig();
 			const stage = options.stage ?? workspace.stages.local;
-			const store = await secretsStoreFor(workspace, stage);
+			const store = await secretsStoreFor(
+				workspace,
+				stage,
+				options.profile ? { profile: options.profile } : {},
+			);
 			const secrets = await store.read(stage);
 
 			if (!secrets) {
@@ -1034,7 +1089,7 @@ program
 		'--region <region>',
 		"The target's AWS region (default: the S3 state's for s3, else the configured store's)",
 	)
-	.option('--profile <profile>', "AWS profile for the stage's account")
+	.addOption(profileOption())
 	.option('--force', 'Replace different secrets the target already holds')
 	.action(
 		async (options: {
@@ -1105,6 +1160,7 @@ program
 		'--retire-old-keys',
 		'Deployed stage: delete a rotated-out key now instead of on the next deploy',
 	)
+	.addOption(profileOption())
 	.action(
 		async (options: {
 			target?: string;
@@ -1118,6 +1174,7 @@ program
 			skipDns?: boolean;
 			rotateKeys?: boolean;
 			retireOldKeys?: boolean;
+			profile?: string;
 		}) => {
 			const { deployCli } = await import('./deploy/cli');
 			const globalOptions = program.opts();
@@ -1136,6 +1193,7 @@ program
 				...(options.skipDns ? { skipDns: true } : {}),
 				...(options.rotateKeys ? { rotateKeys: true } : {}),
 				...(options.retireOldKeys ? { retireOldKeys: true } : {}),
+				...(options.profile ? { profile: options.profile } : {}),
 			});
 			if (code !== 0) process.exit(code);
 		},
@@ -1150,8 +1208,14 @@ program
 	.requiredOption('--stage <stage>', 'A deployed stage')
 	.option('--app <app>', 'The app to roll back')
 	.option('--atomic', 'Roll back every app that has an earlier release')
+	.addOption(profileOption())
 	.action(
-		async (options: { stage: string; app?: string; atomic?: boolean }) => {
+		async (options: {
+			stage: string;
+			app?: string;
+			atomic?: boolean;
+			profile?: string;
+		}) => {
 			try {
 				const { rollbackStage } = await import('./target/dokploy/rollback');
 				const { terminalCredentials } = await import('./deploy/terminal');
@@ -1161,6 +1225,7 @@ program
 					stage: options.stage,
 					...(options.app ? { app: options.app } : {}),
 					...(options.atomic ? { atomic: true } : {}),
+					...(options.profile ? { profile: options.profile } : {}),
 					credentials: terminalCredentials(),
 					log: (line) => console.log(line),
 				});
@@ -1198,6 +1263,7 @@ program
 	)
 	.option('--yes', 'Set the server up without asking first')
 	.option('--dry-run', 'Print the plan and the script; connect to nothing')
+	.addOption(profileOption())
 	.action(async (options) => {
 		try {
 			const globalOptions = program.opts();
@@ -1256,7 +1322,7 @@ program
 		"Let GitHub Actions deploy a stage: OIDC role in the stage's AWS account, and the GitHub environment the deploy workflow uses",
 	)
 	.requiredOption('--stage <stage>', 'A deployed stage from gkm.config.ts')
-	.option('--profile <profile>', "AWS profile for the stage's account")
+	.addOption(profileOption())
 	.option('--repo <owner/name>', 'GitHub repository (default: this one)')
 	.option(
 		'--policy-arn <arn>',
@@ -1467,7 +1533,8 @@ program
 		'--stage <stage>',
 		'Deployment stage (e.g., production, staging)',
 	)
-	.action(async (options: { stage: string }) => {
+	.addOption(profileOption())
+	.action(async (options: { stage: string; profile?: string }) => {
 		try {
 			const globalOptions = program.opts();
 			if (globalOptions.cwd) {
@@ -1486,7 +1553,8 @@ program
 		'--stage <stage>',
 		'Deployment stage (e.g., production, staging)',
 	)
-	.action(async (options: { stage: string }) => {
+	.addOption(profileOption())
+	.action(async (options: { stage: string; profile?: string }) => {
 		try {
 			const globalOptions = program.opts();
 			if (globalOptions.cwd) {
@@ -1506,17 +1574,20 @@ program
 		'Deployment stage (e.g., production, staging)',
 	)
 	.option('--json', 'Output as JSON')
-	.action(async (options: { stage: string; json?: boolean }) => {
-		try {
-			const globalOptions = program.opts();
-			if (globalOptions.cwd) {
-				process.chdir(globalOptions.cwd);
+	.addOption(profileOption())
+	.action(
+		async (options: { stage: string; profile?: string; json?: boolean }) => {
+			try {
+				const globalOptions = program.opts();
+				if (globalOptions.cwd) {
+					process.chdir(globalOptions.cwd);
+				}
+				await stateShowCommand(options);
+			} catch (error) {
+				exitWithError(error);
 			}
-			await stateShowCommand(options);
-		} catch (error) {
-			exitWithError(error);
-		}
-	});
+		},
+	);
 
 program
 	.command('state:history')
@@ -1528,17 +1599,20 @@ program
 		'Deployment stage (e.g., production, staging)',
 	)
 	.option('--json', 'Output as JSON')
-	.action(async (options: { stage: string; json?: boolean }) => {
-		try {
-			const globalOptions = program.opts();
-			if (globalOptions.cwd) {
-				process.chdir(globalOptions.cwd);
+	.addOption(profileOption())
+	.action(
+		async (options: { stage: string; profile?: string; json?: boolean }) => {
+			try {
+				const globalOptions = program.opts();
+				if (globalOptions.cwd) {
+					process.chdir(globalOptions.cwd);
+				}
+				await stateHistoryCommand(options);
+			} catch (error) {
+				exitWithError(error);
 			}
-			await stateHistoryCommand(options);
-		} catch (error) {
-			exitWithError(error);
-		}
-	});
+		},
+	);
 
 program
 	.command('state:unlock')
@@ -1547,7 +1621,8 @@ program
 		'--stage <stage>',
 		'Deployment stage (e.g., production, staging)',
 	)
-	.action(async (options: { stage: string }) => {
+	.addOption(profileOption())
+	.action(async (options: { stage: string; profile?: string }) => {
 		try {
 			const globalOptions = program.opts();
 			if (globalOptions.cwd) {
@@ -1566,7 +1641,8 @@ program
 		'--stage <stage>',
 		'Deployment stage (e.g., production, staging)',
 	)
-	.action(async (options: { stage: string }) => {
+	.addOption(profileOption())
+	.action(async (options: { stage: string; profile?: string }) => {
 		try {
 			const globalOptions = program.opts();
 			if (globalOptions.cwd) {
@@ -1584,7 +1660,7 @@ program
 		"List a compose stage's backups, newest first: when, which databases, how big — and its point-in-time restore window",
 	)
 	.requiredOption('--stage <stage>', 'Deployed stage')
-	.option('--profile <profile>', "AWS profile for the stage's account")
+	.addOption(profileOption())
 	.option('--json', 'Output as JSON')
 	.action(
 		async (options: { stage: string; profile?: string; json?: boolean }) => {
@@ -1608,15 +1684,18 @@ program
 		'--base',
 		'A base backup for point-in-time recovery (wal-g backup-push), rather than the dumps',
 	)
-	.action(async (options: { stage: string; base?: boolean }) => {
-		try {
-			const globalOptions = program.opts();
-			if (globalOptions.cwd) process.chdir(globalOptions.cwd);
-			await backupNowCommand(options);
-		} catch (error) {
-			exitWithError(error);
-		}
-	});
+	.addOption(profileOption())
+	.action(
+		async (options: { stage: string; profile?: string; base?: boolean }) => {
+			try {
+				const globalOptions = program.opts();
+				if (globalOptions.cwd) process.chdir(globalOptions.cwd);
+				await backupNowCommand(options);
+			} catch (error) {
+				exitWithError(error);
+			}
+		},
+	);
 
 program
 	.command('backup:restore')
@@ -1645,7 +1724,7 @@ program
 		'--into <name>',
 		'With --to: copy each database beside the live one, as <name>_<database>, instead of replacing it',
 	)
-	.option('--profile <profile>', "AWS profile for the stage's account")
+	.addOption(profileOption())
 	.option('-y, --yes', 'Restore without asking')
 	.action(
 		async (options: {

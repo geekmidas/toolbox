@@ -962,7 +962,7 @@ the command that would.
 ```bash
 # 1. Copy prod from the configured store (here SSM) into the project bucket,
 #    from your laptop's credentials for the stage's account
-AWS_PROFILE=acme-prod gkm secrets:migrate --stage prod --to s3
+gkm secrets:migrate --stage prod --to s3 --profile acme-prod
 #   ✓ Copied the secrets for stage "prod" from ssm to s3
 #     Verified: 14 keys read back from s3, equal.
 #     Next: set secrets.store to { provider: 's3' } in gkm.config.ts …
@@ -973,7 +973,7 @@ AWS_PROFILE=acme-prod gkm secrets:migrate --stage prod --to s3
 #    secrets: { store: { provider: 's3' } }
 
 # 3. Check that commands now read it, deploy, then run the printed delete
-AWS_PROFILE=acme-prod gkm secrets:show --stage prod
+gkm secrets:show --stage prod --profile acme-prod
 ```
 
 The command is safe to repeat. If the target already holds the same secrets, it
@@ -1232,7 +1232,8 @@ pnpm run deploy:staging
    a surface that never answers 2xx fails the deploy with `SurfacesUnhealthy`.
 
 The AWS credentials come from the deploy's `CredentialProvider` (kind `aws`).
-From the environment that is `AWS_PROFILE` when set — alone, over any exported
+`gkm deploy --profile <name>` answers it with that profile, alone. Otherwise,
+from the environment, it is `AWS_PROFILE` when set — alone, over any exported
 keys, so leftover staging keys cannot redirect a production deploy — otherwise
 `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`/`AWS_SESSION_TOKEN`, which is what
 the scaffolded workflow's `aws-actions/configure-aws-credentials` step exports.
@@ -1445,7 +1446,7 @@ secrets:set` writes there, and the deploy reads there with the role the job
 assumed — no key on GitHub, and no pull or push step:
 
 ```bash
-AWS_PROFILE=acme-prod gkm secrets:set POLAR_CREDENTIALS '{…}' --stage prod
+gkm secrets:set POLAR_CREDENTIALS '{…}' --stage prod --profile acme-prod
 ```
 
 [`gkm deploy:github`](./cli-reference.md#gkm-deploy-github) creates GitHub's

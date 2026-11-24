@@ -77,6 +77,11 @@ export interface ComposeDestroyOptions {
 	secrets?: boolean;
 	/** Print what would be deleted; delete nothing, ask nothing. */
 	dryRun?: boolean;
+	/**
+	 * `--profile`: the AWS profile for the stage's account — its secrets,
+	 * state, AWS resources and Route 53 records.
+	 */
+	profile?: string;
 }
 
 export interface ComposeDestroyDeps {
@@ -189,6 +194,8 @@ const VALUE_TYPES = new Set(['url', 'email-from']);
 export async function composeStackRef(
 	workspace: NormalizedWorkspace,
 	stage: string,
+	/** `--profile`: the AWS profile for the stage's account. */
+	profile?: string,
 ): Promise<{
 	ref: StackRef;
 	dir: string;
@@ -201,8 +208,11 @@ export async function composeStackRef(
 				stage,
 				local,
 				config: workspace.deploy?.compose?.server,
-				custom: (await (await secretsStoreFor(workspace, stage)).read(stage))
-					?.custom,
+				custom: (
+					await (
+						await secretsStoreFor(workspace, stage, profile ? { profile } : {})
+					).read(stage)
+				)?.custom,
 			});
 	const override = stackOverrideFile(workspace.root, stage);
 	const dir = join(workspace.root, stackDir(stage));
@@ -243,6 +253,7 @@ export async function composeDestroyCommand(
 			workspaceRoot: workspace.root,
 			workspaceName: workspace.name,
 			namespace: workspace.deploy?.namespace,
+			...(options.profile ? { profile: options.profile } : {}),
 		}));
 	// Held throughout: a deploy of the stage while it is torn down would
 	// make what this is deleting.
@@ -251,7 +262,7 @@ export async function composeDestroyCommand(
 		: await state.lock(stage, { operation: 'destroy' });
 	try {
 		const steps = await plan(workspace, stage, options, deps, state, env);
-		const { ref } = await composeStackRef(workspace, stage);
+		const { ref } = await composeStackRef(workspace, stage, options.profile);
 
 		log(
 			`\n🧨 ${options.dryRun ? 'Would delete' : 'This deletes'} stage '${stage}' of ${workspace.name} for good:\n`,
@@ -313,7 +324,11 @@ async function plan(
 	const records = Object.values(resources);
 
 	// ── The stack: containers, volumes, its routes on the edge ─────────────
-	const { ref, dir, server } = await composeStackRef(workspace, stage);
+	const { ref, dir, server } = await composeStackRef(
+		workspace,
+		stage,
+		options.profile,
+	);
 	const docker = deps.docker ?? dockerCompose;
 	steps.push({
 		label: `${server ? `on ${sshTarget(server)}: ` : ''}stack ${ref.project} — its containers, its volumes and their data, its routes on ${EDGE_PROJECT}`,
@@ -342,6 +357,7 @@ async function plan(
 				awsProvisioningCredentials({
 					stage,
 					env,
+					...(options.profile ? { profile: options.profile } : {}),
 					...(deps.home ? { home: deps.home } : {}),
 				}))
 		)();
@@ -404,6 +420,7 @@ async function plan(
 					...(tokens.hostinger ? { hostinger: tokens.hostinger } : {}),
 					...(tokens.cloudflare ? { cloudflare: tokens.cloudflare } : {}),
 					...(deps.dnsProviderFor ? { providerFor: deps.dnsProviderFor } : {}),
+					...(options.profile ? { profile: options.profile } : {}),
 				});
 			},
 		});
@@ -429,6 +446,7 @@ async function plan(
 	if (options.secrets) {
 		const store = await secretsStoreFor(workspace, stage, {
 			...(deps.home ? { home: deps.home } : {}),
+			...(options.profile ? { profile: options.profile } : {}),
 		});
 		if (!store.delete) throw new SecretsStoreCannotDelete(stage, store.name);
 		steps.push({

@@ -90,6 +90,12 @@ export interface DeployContext {
 	buildOnly?: boolean;
 	/** The CLI's home, for the stage's keys. Defaults to `GKM_HOME`. */
 	home?: string;
+	/**
+	 * `--profile`: the AWS profile for the stage's account — its secrets,
+	 * state, providers, DNS and SNS, over `AWS_PROFILE`, exported keys and
+	 * any profile in `gkm.config.ts`.
+	 */
+	profile?: string;
 	/** Where spawned processes' output goes. Defaults to the terminal. */
 	childOutput?: 'inherit' | 'stderr' | 'ignore';
 	/** The host's own targets, which win over every other by the same name. */
@@ -367,6 +373,7 @@ async function provisionResources(
 			...(request.rotateKeys ? { rotateKeys: true } : {}),
 			...(request.retireOldKeys ? { retireOldKeys: true } : {}),
 			...(ctx.home ? { home: ctx.home } : {}),
+			...(ctx.profile ? { profile: ctx.profile } : {}),
 			credentials: ctx.credentials,
 			log: (line) => phaseCtx.logger.info(line),
 		});
@@ -609,9 +616,11 @@ async function prepare(
 		workspaceRoot: workspace.root,
 		workspaceName: workspace.name,
 		namespace: workspace.deploy?.namespace,
+		...(ctx.profile ? { profile: ctx.profile } : {}),
 	});
 	const secrets = await deploySecrets(workspace, stage, redactor, {
 		...(ctx.home ? { home: ctx.home } : {}),
+		...(ctx.profile ? { profile: ctx.profile } : {}),
 	});
 
 	const line =
@@ -643,6 +652,7 @@ async function prepare(
 		allowDevServices,
 		...(request.skipDns ? { skipDns: true } : {}),
 		credentials: ctx.credentials,
+		...(ctx.profile ? { profile: ctx.profile } : {}),
 		state: store,
 		secrets,
 		logger,

@@ -977,7 +977,7 @@ export async function createStateStore(
 		return SSMStateStore.create({
 			workspaceName,
 			region: ssm.region,
-			profile: ssm.profile,
+			profile: options.profile ?? ssm.profile,
 		});
 	}
 
@@ -991,7 +991,7 @@ export async function createStateStore(
 			...(options.namespace ? { namespace: options.namespace } : {}),
 			prefix: s3.prefix,
 			region: s3.region,
-			profile: s3.profile,
+			profile: options.profile ?? s3.profile,
 		});
 	}
 

@@ -50,6 +50,11 @@ export interface CreateDnsProviderOptions {
 	/** DNS config from workspace */
 	config: DnsConfig;
 	/**
+	 * `--profile`: the AWS profile Route 53 is reached with. Wins over the
+	 * entry's own `profile`, so one flag picks one account.
+	 */
+	profile?: string;
+	/**
 	 * The GoDaddy provider's options. Its token is the one given, or else the
 	 * one stored or in the environment (`env`, the CLI's `home`), read the
 	 * first time the API is called.
@@ -111,7 +116,7 @@ export async function createDnsProvider(
 		const route53Config = config as Route53DnsConfig;
 		return new Route53Provider({
 			region: route53Config.region,
-			profile: route53Config.profile,
+			profile: options.profile ?? route53Config.profile,
 			hostedZoneId: route53Config.hostedZoneId,
 		});
 	}

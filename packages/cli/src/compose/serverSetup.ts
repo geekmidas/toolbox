@@ -48,6 +48,8 @@ import { ADMIN_SCRIPT, SERVER_SCRIPT } from './serverScript';
 export interface ComposeServerSetupOptions {
 	/** The deployed stage whose server this is. */
 	stage: string;
+	/** `--profile`: the AWS profile for the stage's account. */
+	profile?: string;
 	/**
 	 * The server's sudo user. Absent, the user `ssh` logs in to the server as
 	 * by default (`~/.ssh/config`, else this machine's) — asked for only when
@@ -364,8 +366,15 @@ export async function composeServerCommand(
 		stage,
 		local: false,
 		config: workspace.deploy?.compose?.server,
-		custom: (await (await secretsStoreFor(workspace, stage)).read(stage))
-			?.custom,
+		custom: (
+			await (
+				await secretsStoreFor(
+					workspace,
+					stage,
+					options.profile ? { profile: options.profile } : {},
+				)
+			).read(stage)
+		)?.custom,
 	})!;
 
 	// Whether this server was set up before, by whom and when.
@@ -376,6 +385,7 @@ export async function composeServerCommand(
 			workspaceRoot: workspace.root,
 			workspaceName: workspace.name,
 			namespace: workspace.deploy?.namespace,
+			...(options.profile ? { profile: options.profile } : {}),
 		}));
 	const record = (await state.read(stage))?.resources[SERVER_RECORD];
 	const done =

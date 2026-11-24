@@ -67,6 +67,8 @@ export class NoKeyringYet extends GkmError {
 
 export interface EncryptionCommandOptions {
 	stage: string;
+	/** `--profile`: the AWS profile for the stage's account. */
+	profile?: string;
 }
 
 /** Where a command reads and writes; the real ones unless a test says. */
@@ -110,7 +112,7 @@ export async function encryptionRetireCommand(
 
 async function updateKeyring(
 	construct: string,
-	{ stage }: EncryptionCommandOptions,
+	{ stage, profile }: EncryptionCommandOptions,
 	context: EncryptionCommandContext,
 	update: (id: string, url: string) => string,
 ): Promise<string> {
@@ -123,7 +125,9 @@ async function updateKeyring(
 	assertDeployedStage(workspace.stages, stage);
 	if (providerOf(workspace) === 'aws') throw new KmsRotatesItself(id);
 
-	const store = context.store ?? (await secretsStoreFor(workspace, stage));
+	const store =
+		context.store ??
+		(await secretsStoreFor(workspace, stage, profile ? { profile } : {}));
 	const key = providedKeyFor(id, 'encryption', 'url');
 	const secrets = await store.read(stage);
 	const url = secrets?.custom[key];

@@ -1038,6 +1038,7 @@ async function stageHostsDns(
 			...(wildcard ? { wildcard } : {}),
 			...(proxied?.length ? { proxied } : {}),
 			credentials: ctx.credentials,
+			...(ctx.profile ? { profile: ctx.profile } : {}),
 			log,
 			lookup: deps.lookup ?? systemLookup,
 			...(ctx.dryRun ? { dryRun: true } : {}),
@@ -1342,7 +1343,10 @@ async function edgeAcmeKey(
 		requiredServerAddress(stage, domain, run.secrets?.custom)?.ipv4 ??
 		run.server?.host ??
 		'local';
-	const clients = await (deps.acmeClients ?? defaultAcmeClients)(route53);
+	// `--profile` picks the account over the entry's own profile.
+	const clients = await (deps.acmeClients ?? defaultAcmeClients)(
+		ctx.profile ? { ...route53, profile: ctx.profile } : route53,
+	);
 	await ensureEdgeAcmeKey(deps.docker, {
 		clients,
 		edge,
@@ -1500,6 +1504,7 @@ async function subscribeTopics(
 		secrets: run.secrets?.custom ?? {},
 		stage: ctx.stage,
 		env: deps.env,
+		...(ctx.profile ? { profile: ctx.profile } : {}),
 		record: async (resource) => {
 			await ctx.state.putResource(ctx.stage, resource);
 			applied(ctx, run, {
@@ -2494,6 +2499,7 @@ async function confirmSubscriptions(
 		secrets: run.secrets?.custom ?? {},
 		resources: stored?.resources,
 		env: deps.env,
+		...(ctx.profile ? { profile: ctx.profile } : {}),
 		log: (line) => ctx.logger.info(line),
 		record: async (record) => {
 			const { updatedAt: _, updatedBy: __, ...input } = record;

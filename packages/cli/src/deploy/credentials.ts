@@ -207,6 +207,11 @@ export interface StoredCredentialsOptions {
 	 * to `GKM_HOME`, else `~/.gkm`.
 	 */
 	home?: string;
+	/**
+	 * `--profile`: the AWS profile to answer `aws` with, over `AWS_PROFILE`
+	 * and exported keys.
+	 */
+	profile?: string;
 }
 
 /**
@@ -218,7 +223,8 @@ export interface StoredCredentialsOptions {
  *   Each half is read on its own: a token is a secret and belongs in the
  *   environment, an endpoint is configuration and belongs in the config.
  * - Registry: `DOCKER_REGISTRY_USERNAME` / `DOCKER_REGISTRY_PASSWORD`.
- * - AWS: `AWS_PROFILE` when it is set, and then nothing else; otherwise
+ * - AWS: `--profile` (`options.profile`), else `AWS_PROFILE`, when either is
+ *   set, and then nothing else; otherwise
  *   `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` / `AWS_SESSION_TOKEN`. The
  *   profile winning is `secretsStoreFor`'s rule: a profile is a choice of
  *   account someone made, exported keys may be left over from another.
@@ -290,9 +296,8 @@ export function storedCredentials(
 				case 'aws': {
 					const region = env.AWS_REGION ?? env.AWS_DEFAULT_REGION;
 					const where = region ? { region } : {};
-					if (env.AWS_PROFILE) {
-						return { profile: env.AWS_PROFILE, ...where } as never;
-					}
+					const profile = options.profile ?? env.AWS_PROFILE;
+					if (profile) return { profile, ...where } as never;
 					const accessKeyId = env.AWS_ACCESS_KEY_ID;
 					const secretAccessKey = env.AWS_SECRET_ACCESS_KEY;
 					if (!accessKeyId || !secretAccessKey) return undefined;

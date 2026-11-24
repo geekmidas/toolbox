@@ -121,10 +121,9 @@ export class StageSecretsUnreadable extends GkmError {
 		const access = input.access ?? 'read';
 		const reason = input.reason ?? 'no-credentials';
 		const where = AWS_STORES[store] ?? `the '${store}' store`;
-		// How to name the account: the command's --profile, where it takes
-		// one, or the SDK's own variable.
-		const named =
-			'--profile <profile> where the command takes it, or AWS_PROFILE=<profile>';
+		// How to name the account: every command that reaches AWS takes
+		// --profile; the SDK's own variable works too.
+		const named = '--profile <profile>, or AWS_PROFILE=<profile>';
 		const lacking =
 			reason === 'expired'
 				? profile

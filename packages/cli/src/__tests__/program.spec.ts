@@ -3,6 +3,7 @@ import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { LOCALSTACK_URL } from '../../../testkit/test/ports';
 
 const bin = join(import.meta.dirname, '..', '..', 'bin', 'gkm.mjs');
 
@@ -112,3 +113,135 @@ describe(
 		});
 	},
 );
+
+/** Every command that can reach AWS: each one is told the account by flag. */
+const AWS_COMMANDS = [
+	'build',
+	'test',
+	'compose',
+	'compose:server',
+	'deploy',
+	'deploy:rollback',
+	'deploy:github',
+	'deploy:google-play',
+	'exec',
+	'db:tunnel',
+	'eas:sync',
+	'publish',
+	'secrets:init',
+	'secrets:set',
+	'secrets:unset',
+	'secrets:add',
+	'secrets:show',
+	'secrets:rotate',
+	'secrets:import',
+	'secrets:reconcile',
+	'secrets:migrate',
+	'encryption:rotate',
+	'encryption:retire',
+	'state:pull',
+	'state:push',
+	'state:show',
+	'state:history',
+	'state:unlock',
+	'state:diff',
+	'backup:list',
+	'backup:now',
+	'backup:restore',
+];
+
+describe('--profile', { timeout: PROCESS_TIMEOUT }, () => {
+	it.concurrent.for(AWS_COMMANDS)('is an option of %s', (command) => {
+		const help = execFileSync(process.execPath, [bin, command, '--help'], {
+			encoding: 'utf-8',
+		});
+
+		expect(help).toContain('--profile <profile>');
+	});
+
+	/**
+	 * Against the AWS emulator: the shell names a profile that does not
+	 * exist and exports no keys, so only the flag's profile can reach the
+	 * stage's SSM store.
+	 */
+	describe('on a secrets command', () => {
+		let dir: string;
+
+		beforeEach(() => {
+			dir = realpathSync(mkdtempSync(join(tmpdir(), 'gkm-profile-')));
+			const project = `profile-${Date.now()}-${Math.round(Math.random() * 1e6)}`;
+			writeFileSync(
+				join(dir, 'gkm.config.ts'),
+				`export default {
+  name: '${project}',
+  stages: { local: 'dev', deployed: ['prod'] },
+  secrets: { store: { provider: 'ssm', region: 'us-east-1' } },
+};
+`,
+			);
+			writeFileSync(
+				join(dir, 'credentials'),
+				'[stage-account]\naws_access_key_id = test\naws_secret_access_key = test\n',
+			);
+			writeFileSync(join(dir, 'aws-config'), '');
+		});
+
+		afterEach(() => rmSync(dir, { recursive: true, force: true }));
+
+		const gkm = (args: string[]) => {
+			const clean = Object.fromEntries(
+				Object.entries(process.env).filter(([key]) => !key.startsWith('AWS_')),
+			);
+			return spawnSync(process.execPath, [bin, ...args], {
+				cwd: dir,
+				encoding: 'utf-8',
+				env: {
+					...clean,
+					GKM_HOME: join(dir, '.gkm-home'),
+					GKM_DEBUG: '',
+					AWS_CONFIG_FILE: join(dir, 'aws-config'),
+					AWS_SHARED_CREDENTIALS_FILE: join(dir, 'credentials'),
+					AWS_EC2_METADATA_DISABLED: 'true',
+					AWS_ENDPOINT_URL: LOCALSTACK_URL,
+					AWS_PROFILE: 'not-this-account',
+				},
+			});
+		};
+
+		it('reads and writes the stage through the named profile', () => {
+			const profile = ['--profile', 'stage-account'];
+			const init = gkm(['secrets:init', '--stage', 'prod', ...profile]);
+			const set = gkm([
+				'secrets:set',
+				'STRIPE_KEY',
+				'sk_live_profile',
+				'--stage',
+				'prod',
+				'--profile',
+				'stage-account',
+			]);
+			const shown = gkm([
+				'secrets:show',
+				'--stage',
+				'prod',
+				'--reveal',
+				'--profile',
+				'stage-account',
+			]);
+
+			expect({
+				init: init.status,
+				set: set.status,
+				shown: shown.status,
+			}).toEqual({ init: 0, set: 0, shown: 0 });
+			expect(shown.stdout).toContain('sk_live_profile');
+		});
+
+		it('fails without it, on the profile the shell named', () => {
+			const shown = gkm(['secrets:show', '--stage', 'prod']);
+
+			expect(shown.status).toBe(1);
+			expect(shown.stderr).toContain('not-this-account');
+		});
+	});
+});

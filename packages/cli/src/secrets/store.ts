@@ -98,9 +98,11 @@ export type SecretsStoreConfig =
 
 export interface SecretsStoreOptions {
 	/**
-	 * The AWS profile for the stage's account. Only that profile is used —
-	 * never AWS_* from the environment — so a store cannot quietly land in
-	 * whichever account the shell was exported for.
+	 * The AWS profile for the stage's account (`--profile`). Given, only that
+	 * profile is used — exported `AWS_*` keys and `AWS_PROFILE` are ignored —
+	 * so a store cannot quietly land in whichever account the shell was
+	 * exported for. Absent, the SDK's default chain answers, which does read
+	 * `AWS_PROFILE` and exported keys.
 	 */
 	profile?: string;
 	/**
