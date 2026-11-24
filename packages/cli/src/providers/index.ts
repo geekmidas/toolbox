@@ -315,12 +315,17 @@ export async function provisionStage(
 		? journalState(journal)
 		: await readOnlyState(options.state, stage);
 
-	const writeSecrets = async (values: Record<string, string>) => {
+	const writeSecrets = async (values: Record<string, string | null>) => {
 		if (dryRun) return;
 		const stored = (await options.secrets.read()) ?? initStageSecrets(stage);
+		const custom: Record<string, string> = { ...stored.custom };
+		for (const [key, value] of Object.entries(values)) {
+			if (value === null) delete custom[key];
+			else custom[key] = value;
+		}
 		const next = {
 			...stored,
-			custom: { ...stored.custom, ...values },
+			custom,
 			updatedAt: new Date().toISOString(),
 		};
 		await options.secrets.write(next);
@@ -471,6 +476,8 @@ function journalState(journal: DeployJournal): ProvisionState {
 		record: (key) => journal.record(key),
 		pending: (entry) => journal.pending(entry),
 		ready: (entry, id) => journal.ready(entry, id),
+		records: () => journal.records(),
+		forget: (key) => journal.forget(key),
 		lastDeployedAt: journal.existed ? journal.state.lastDeployedAt : undefined,
 	};
 }
@@ -485,6 +492,8 @@ async function readOnlyState(
 		record: (key) => stored?.resources[key],
 		pending: async () => {},
 		ready: async () => {},
+		records: () => stored?.resources ?? {},
+		forget: async () => {},
 		...(stored ? { lastDeployedAt: stored.state.lastDeployedAt } : {}),
 	};
 }

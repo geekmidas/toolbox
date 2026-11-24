@@ -49,6 +49,8 @@ import {
 	EDGE_TOKEN_KEY,
 	inboxDomain,
 	isWildcardSite,
+	MAPS_ROLES,
+	mapsRoleOf,
 	providedKeyFor,
 	provisionOrder,
 	type SiteDeclaration,
@@ -128,6 +130,11 @@ import {
 	type LocalCredentials,
 	postgresSuperuser,
 } from '../reconcile/localCredentials.js';
+import {
+	mapsHolders,
+	mapsValue,
+	storedMapsKey,
+} from '../reconcile/mapsKeys.js';
 import {
 	minioWebhookEnv,
 	type ObjectWebhook,
@@ -1178,9 +1185,20 @@ export function composeStack(input: StackInput): ComposeStack {
 				resource,
 			);
 		}
+		// Every key a `Maps` construct hands out is its own, whichever role.
+		if (resource.kind === 'maps') {
+			for (const role of MAPS_ROLES) {
+				owners.set(providedKeyFor(resource.id, resource.kind, role), resource);
+			}
+		}
 	}
 
 	const domain = workspace.domains?.[stage];
+
+	// Who holds which Maps key: what each caller's own is read for.
+	const mapsHeld = new Set(
+		mapsHolders(manifest).map((h) => `${h.maps}:${h.role}:${h.caller}`),
+	);
 
 	// Where the stage's telemetry goes, when a process uses a `Telemetry`
 	// node: the local stage always to OpenObserve, a deployed one where
@@ -1566,6 +1584,27 @@ export function composeStack(input: StackInput): ComposeStack {
 				if (!services.minio.includes(owner.id)) return undefined;
 			}
 			return outside[key];
+		}
+
+		// A Maps key is its caller's own: the one the stage keeps for it, under
+		// the role's name it reads.
+		const mapsRole =
+			owner?.kind === 'maps' ? mapsRoleOf(owner.id, key) : undefined;
+		if (owner && mapsRole) {
+			const holder = { maps: owner.id, role: mapsRole, caller: app.id };
+			// A phone's key for a platform its app does not declare: none.
+			if (!mapsHeld.has(`${owner.id}:${mapsRole}:${app.id}`)) {
+				return undefined;
+			}
+			const value = mapsValue(custom, holder, local);
+			if (value === undefined) {
+				throw new StageSecretMissing(
+					app.name,
+					storedMapsKey(holder, local),
+					stage,
+				);
+			}
+			return value;
 		}
 
 		// Supplied by somebody: a third party's credentials, and — deployed —

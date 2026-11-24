@@ -109,6 +109,7 @@ import {
 	processorEnvKeys,
 	workerEnvKeys,
 } from '../../reconcile/apps.js';
+import { appCaller, callerSecrets } from '../../reconcile/mapsKeys.js';
 import { backendsOf, constructGlobs } from '../../reconcile/workspace.js';
 import type { RunOptions } from '../../run';
 import { initStageSecrets } from '../../secrets/storage.js';
@@ -537,6 +538,21 @@ export async function validateDokploy(
 	};
 }
 
+/**
+ * The stage's secrets as the process `caller` reads them: its own Maps keys
+ * under their roles' names, and no other caller's.
+ */
+function secretsOf(
+	manifest: ConstructManifest,
+	stageSecrets: StageSecrets,
+	caller: string | undefined,
+): StageSecrets {
+	return {
+		...stageSecrets,
+		custom: callerSecrets(manifest, caller, stageSecrets.custom ?? {}, false),
+	};
+}
+
 /** What the preflight found: the stage's secrets and what each app reads. */
 interface Preflight {
 	stageSecrets: StageSecrets;
@@ -590,9 +606,12 @@ async function preflight({
 	// Sniff environment variables for all apps
 	const sniffedApps = await sniffAllApps(workspace.apps, workspace.root);
 
-	// Prepare encrypted secrets for backend apps
+	// Prepare encrypted secrets for backend apps — each holding its own Maps
+	// keys under their roles' names.
 	const encryptedSecrets = stageSecrets
-		? prepareSecretsForAllApps(stageSecrets, sniffedApps)
+		? prepareSecretsForAllApps(stageSecrets, sniffedApps, (appName) =>
+				secretsOf(manifest, stageSecrets, appCaller(manifest, appName)),
+			)
 		: new Map<string, EncryptedAppSecrets>();
 
 	// Report on secrets preparation
@@ -1289,7 +1308,11 @@ export async function releaseDokploy(run: DokployRun): Promise<void> {
 					state,
 					appHostname: backendHost,
 					frontendUrls,
-					userSecrets: stageSecrets ?? undefined,
+					userSecrets: secretsOf(
+						run.manifest,
+						stageSecrets,
+						appCaller(run.manifest, appName),
+					),
 					masterKey: appSecrets?.masterKey,
 					dependencyUrls,
 				};
@@ -1428,11 +1451,14 @@ export async function releaseDokploy(run: DokployRun): Promise<void> {
 				// them embedded, encrypted, as a backend's are; the declared
 				// URLs among them as its environment.
 				const keys = [...(workerEnvKeys(run.manifest, worker.id) ?? [])].sort();
-				const secrets = prepareSecretsForApp(stageSecrets, {
-					appName: worker.name,
-					requiredEnvVars: keys,
-					optionalEnvVars: [],
-				});
+				const secrets = prepareSecretsForApp(
+					secretsOf(run.manifest, stageSecrets, worker.id),
+					{
+						appName: worker.name,
+						requiredEnvVars: keys,
+						optionalEnvVars: [],
+					},
+				);
 				const credentials =
 					secrets.secretCount > 0
 						? {
@@ -1548,11 +1574,14 @@ export async function releaseDokploy(run: DokployRun): Promise<void> {
 				const keys = [
 					...(processorEnvKeys(run.manifest, unit.id) ?? []),
 				].sort();
-				const secrets = prepareSecretsForApp(stageSecrets, {
-					appName: unit.name,
-					requiredEnvVars: keys,
-					optionalEnvVars: [],
-				});
+				const secrets = prepareSecretsForApp(
+					secretsOf(run.manifest, stageSecrets, unit.id),
+					{
+						appName: unit.name,
+						requiredEnvVars: keys,
+						optionalEnvVars: [],
+					},
+				);
 				const credentials =
 					secrets.secretCount > 0
 						? {
@@ -1682,7 +1711,11 @@ export async function releaseDokploy(run: DokployRun): Promise<void> {
 					state,
 					appHostname: frontendHost,
 					frontendUrls: [],
-					userSecrets: stageSecrets ?? undefined,
+					userSecrets: secretsOf(
+						run.manifest,
+						stageSecrets,
+						appCaller(run.manifest, appName),
+					),
 					dependencyUrls,
 				};
 

@@ -119,6 +119,10 @@ export interface ProvisionState {
 	pending(entry: StateEntry): Promise<void>;
 	/** Exists, as `id`. */
 	ready(entry: StateEntry, id: string): Promise<void>;
+	/** Every record, by key — what an earlier run made, to find what is stale. */
+	records(): Readonly<Record<string, ResourceRecord>>;
+	/** Gone: its record is removed. */
+	forget(key: string): Promise<void>;
 	/** When the stage was last deployed, for a rotation to know it was. */
 	readonly lastDeployedAt?: string;
 }
@@ -159,10 +163,11 @@ export interface EnsureContext<C extends ProviderConfig, K> {
 	change(action: ProvisionAction, apply: () => Promise<void>): Promise<void>;
 	/**
 	 * Writes keys into the stage's secrets now — not at the end of the run, so
-	 * a secret the account shows only once is kept the moment it exists. A dry
-	 * run writes nothing.
+	 * a secret the account shows only once is kept the moment it exists. A
+	 * key given `null` is removed: a key the provider wrote for something it
+	 * has since deleted. A dry run writes nothing.
 	 */
-	writeSecrets(values: Record<string, string>): Promise<void>;
+	writeSecrets(values: Record<string, string | null>): Promise<void>;
 	/**
 	 * Writes DNS records through the stage's DNS providers (`dns`), as the
 	 * deploy's own DNS step does — what a certificate's validation record and

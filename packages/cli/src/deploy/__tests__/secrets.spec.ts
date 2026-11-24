@@ -233,6 +233,24 @@ describe('prepareSecretsForAllApps', () => {
 
 		expect(apiKey).not.toBe(authKey);
 	});
+
+	it("encrypts each app's own view of the stage's secrets", () => {
+		const sniffedApps = new Map<string, SniffedEnvironment>([
+			['api', { appName: 'api', requiredEnvVars: ['MAPS_API_KEY'] }],
+			['jobs', { appName: 'jobs', requiredEnvVars: ['MAPS_API_KEY'] }],
+		]);
+		const own: Record<string, string> = { api: 'api-own', jobs: 'jobs-own' };
+
+		const results = prepareSecretsForAllApps(secrets, sniffedApps, (app) => ({
+			...secrets,
+			custom: { MAPS_API_KEY: own[app]! },
+		}));
+
+		expect({
+			api: results.get('api')?.secretCount,
+			jobs: results.get('jobs')?.secretCount,
+		}).toEqual({ api: 1, jobs: 1 });
+	});
 });
 
 describe('generateSecretsReport', () => {

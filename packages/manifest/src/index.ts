@@ -90,7 +90,6 @@ export {
 	imageOrigins,
 	imageOriginsFor,
 	isDerived,
-	mapsCallers,
 	PUBLIC_PREFIX,
 	PUBLIC_STAGE_KEYS,
 	type PublicValue,
@@ -144,9 +143,11 @@ export {
 	receiptRecipients,
 } from './inbox';
 export {
+	isMapsCallerKey,
 	MAPS_ROLES,
 	type MapsRole,
-	mapsKeysFor,
+	mapsKeyOf,
+	mapsRoleOf,
 	mapsRolesFor,
 } from './maps';
 export {

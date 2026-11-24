@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ConstructManifest, PublicDeclaration } from '../declaration';
-import { mapsCallers, publicEnvFor } from '../derive';
-import { mapsKeysFor, mapsRolesFor } from '../maps';
+import { publicEnvFor } from '../derive';
+import { isMapsCallerKey, mapsKeyOf, mapsRoleOf, mapsRolesFor } from '../maps';
 
 const edge = { target: 'Maps', kind: 'maps' } as const;
 const site = {
@@ -41,20 +41,32 @@ describe("who holds a Maps construct's keys", () => {
 		expect(mapsRolesFor(kind)).toEqual(roles);
 	});
 
-	it('names the keys after the construct', () => {
-		expect(mapsKeysFor('Places', 'mobile-app')).toEqual([
-			'PLACES_ANDROID_KEY',
-			'PLACES_IOS_KEY',
-		]);
+	it("keeps each caller's own key under the role's name and the caller's", () => {
+		expect(mapsKeyOf('Maps', 'browserKey', 'Web')).toBe(
+			'MAPS_BROWSER_KEY__WEB',
+		);
+		expect(mapsKeyOf('StoreMaps', 'apiKey', 'AdminApi')).toBe(
+			'STORE_MAPS_API_KEY__ADMIN_API',
+		);
 	});
 
-	it('reads each role off the graph, with its callers', () => {
-		expect(mapsCallers(manifest, 'Maps')).toEqual({
-			apiKey: ['Geocode'],
-			browserKey: ['Web'],
-			androidKey: ['App'],
-			iosKey: ['App'],
-		});
+	it.for([
+		['MAPS_ANDROID_KEY', 'androidKey'],
+		['MAPS_API_KEY', 'apiKey'],
+		['MAPS_BROWSER_KEY__WEB', undefined],
+		['ORDERS_URL', undefined],
+	] as const)('reads %s as the role %s', ([key, role]) => {
+		expect(mapsRoleOf('Maps', key)).toBe(role);
+	});
+
+	it.for([
+		['MAPS_BROWSER_KEY__WEB', true],
+		['MAPS_API_KEY__JOBS', true],
+		['MAPS_API_KEY', false],
+		['OTHER_API_KEY__WEB', false],
+		['STRIPE__KEY', false],
+	] as const)('%s is a caller key: %s', ([key, expected]) => {
+		expect(isMapsCallerKey(manifest, key)).toBe(expected);
 	});
 
 	it("inlines a site's browser key, and no other", () => {

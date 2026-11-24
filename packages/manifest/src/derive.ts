@@ -170,28 +170,6 @@ export function dependentsOf(
 }
 
 /**
- * The keys of the `Maps` construct `id` its callers hold, by role — the
- * graph read backwards, as an API's trusted origins are: a server process
- * that depends on it is why there is a server key, a site why there is a
- * browser key, a mobile app why there are an Android and an iOS key. Each
- * role lists its callers, sorted; a role nobody holds is absent.
- */
-export function mapsCallers(
-	manifest: ConstructManifest,
-	id: ConstructId,
-): Partial<Record<MapsRole, string[]>> {
-	const callers: Partial<Record<MapsRole, string[]>> = {};
-	for (const caller of dependentsOf(manifest, id)) {
-		const kind = manifest[caller]?.kind;
-		if (!kind) continue;
-		for (const role of mapsRolesFor(kind)) {
-			callers[role] = [...(callers[role] ?? []), caller];
-		}
-	}
-	return callers;
-}
-
-/**
  * How each site variant names a value it ships to the browser.
  *
  * The prefix *is* the framework's contract — `VITE_`, `NEXT_PUBLIC_` and

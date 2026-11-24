@@ -69,6 +69,12 @@ export interface EasApi {
 	keys(accountName: string): Promise<EasGoogleKey[]>;
 	deleteKey(id: string): Promise<void>;
 	/**
+	 * The SHA-1 of each keystore EAS signs the package's builds with — what an
+	 * Android Maps key is restricted to beside Play's signing certificate.
+	 * Only the fingerprints: never the keystore or its passwords.
+	 */
+	keystoreSha1s(projectId: string, packageName: string): Promise<string[]>;
+	/**
 	 * The newest finished Android store build of the project, and where its
 	 * `.aab` is downloaded from — what a new app's first upload is.
 	 */
@@ -284,6 +290,53 @@ export function easApi(
 			return keys;
 		},
 
+		async keystoreSha1s(projectId, packageName) {
+			const data = await call<{
+				app: {
+					byId: {
+						androidAppCredentials: {
+							androidAppBuildCredentialsList: {
+								androidKeystore: {
+									sha1CertificateFingerprint: string | null;
+								} | null;
+							}[];
+						}[];
+					};
+				};
+			}>(
+				'AndroidKeystoreFingerprintsQuery',
+				`query AndroidKeystoreFingerprintsQuery(
+  $appId: String!
+  $applicationIdentifier: String
+) {
+  app {
+    byId(appId: $appId) {
+      id
+      androidAppCredentials(
+        filter: { applicationIdentifier: $applicationIdentifier, legacyOnly: false }
+      ) {
+        id
+        androidAppBuildCredentialsList {
+          id
+          androidKeystore { id sha1CertificateFingerprint }
+        }
+      }
+    }
+  }
+}`,
+				{ appId: projectId, applicationIdentifier: packageName },
+			);
+			const fingerprints = data.app.byId.androidAppCredentials.flatMap(
+				(credentials) =>
+					credentials.androidAppBuildCredentialsList.flatMap((build) =>
+						build.androidKeystore?.sha1CertificateFingerprint
+							? [build.androidKeystore.sha1CertificateFingerprint]
+							: [],
+					),
+			);
+			return [...new Set(fingerprints.map(sha1Fingerprint))].sort();
+		},
+
 		async latestStoreBuild(projectId) {
 			const data = await call<{
 				app: {
@@ -338,4 +391,13 @@ export function easApi(
 			);
 		},
 	};
+}
+
+/**
+ * A certificate's SHA-1 the way Google takes it: uppercase hex, a colon
+ * between each byte — whether EAS wrote the colons or not.
+ */
+export function sha1Fingerprint(value: string): string {
+	const hex = value.replace(/:/g, '').toUpperCase();
+	return hex.match(/.{2}/g)?.join(':') ?? hex;
 }

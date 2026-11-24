@@ -24,6 +24,7 @@ import {
 	dependentsOf,
 	EDGE_TOKEN_KEY,
 	imageOriginsFor,
+	isMapsCallerKey,
 	isPublicDeclaration,
 	providedKeyFor,
 	provisionOrder,
@@ -481,6 +482,9 @@ export function processEnvKeys(
 
 	const owned = constructKeys(manifest);
 	for (const key of stageKeys) {
+		// A caller's own Maps key is that caller's, handed to it under the
+		// role's name — never a stage key every process reads.
+		if (isMapsCallerKey(manifest, key)) continue;
 		if (!owned.has(key) && !isStackKey(key)) keys.add(key);
 	}
 	return keys;

@@ -1,6 +1,6 @@
 /**
- * The `google` provider for maps: each `Maps` construct's keys, made in a
- * Google Cloud project.
+ * The `google` provider for maps: a key for each caller of each `Maps`
+ * construct, made in a Google Cloud project.
  *
  * `deploy.maps.<stage> = { provider: 'google', project?, android? }` has the
  * deploy:
@@ -12,18 +12,21 @@
  * - turn on the APIs the construct names, and the API Keys API;
  * - stop unless billing is linked: Maps serves no project without it, and
  *   linking a billing account is a person's decision, never gkm's;
- * - for each kind of caller the graph has (`mapsCallers`) find or create its
- *   key — the server's, restricted to the APIs; the sites', to their hosts as
- *   referrers too; a mobile app's, to its Android package and signing
- *   certificates, or to its iOS bundle id — and write it into the stage's
- *   secrets as `<ID>_API_KEY`, `<ID>_BROWSER_KEY`, `<ID>_ANDROID_KEY`,
- *   `<ID>_IOS_KEY`. A key's restrictions follow the graph on every deploy:
- *   add a site, and its host is allowed.
+ * - for each process that holds a key (`mapsHolders`) find or create its own,
+ *   restricted to the declared APIs and to that process alone — a server's to
+ *   the stage's server address where it has one, a site's to its host, a
+ *   mobile app's to its Android package and signing certificates or its iOS
+ *   bundle id — and write it into the stage's secrets as the caller's own
+ *   (`MAPS_BROWSER_KEY__WEB`), which the caller reads as `MAPS_BROWSER_KEY`.
+ *   A key's restrictions follow the graph on every deploy.
  *
  * A key the stage's secrets hold that gkm did not make is used as it is, and
- * nothing is made for it. `--rotate-keys` makes each key a successor; the old
- * one is deleted by the first deploy after the stage has run with the new
- * one, or at once with `--retire-old-keys` — as every other provider's keys.
+ * nothing is made for it: a caller's own, or the role's name — one key for
+ * every caller. `--rotate-keys` makes each key a successor; the old one is
+ * deleted by the first deploy after the stage has run with the new one, or
+ * at once with `--retire-old-keys` — as every other provider's keys. A key
+ * whose caller left the graph, and one made for every caller of a kind
+ * before each had its own, are retired the same way.
  */
 
 import {
@@ -32,12 +35,29 @@ import {
 	type MapsApi,
 	type MapsDeclaration,
 	type MapsRole,
-	mapsCallers,
 	providedKeyFor,
 } from '@geekmidas/manifest';
 import { appHostOn } from '../../../compose/stack.js';
+import {
+	SERVER_IPV4_KEY,
+	SERVER_IPV6_KEY,
+} from '../../../compose/dnsConfig.js';
 import { GkmError } from '../../../errors';
+import {
+	type MapsHolder,
+	mapsHolders,
+	mapsValue,
+	storedMapsKey,
+} from '../../../reconcile/mapsKeys.js';
 import { NoDomainForStage } from '../../../target/dokploy/domain.js';
+import { appKey } from '../../../workspace/derive.js';
+import { stageProvider } from '../../config.js';
+import { deploysWithCompose } from '../../dns.js';
+import {
+	type EasApi,
+	easApi,
+	sha1Fingerprint,
+} from '../../googlePlay/easApi.js';
 import type {
 	EnsureContext,
 	ResourceProvider,
@@ -177,15 +197,41 @@ export class MapsSiteHasNoHost extends GkmError {
 export class MapsRotationInProgress extends GkmError {
 	constructor(
 		readonly maps: string,
+		readonly caller: string,
 		readonly role: MapsRole,
 		readonly stage: string,
 	) {
 		super(
-			`'${maps}' already has a ${ROLE_LABEL[role]} key rotating on '${stage}': ` +
+			`'${maps}' already has ${caller}'s ${ROLE_LABEL[role]} key rotating on '${stage}': ` +
 				`deploy '${stage}' once with the new key, or pass --retire-old-keys, ` +
 				'before rotating again.',
 		);
 		this.name = 'MapsRotationInProgress';
+	}
+}
+
+/**
+ * A mobile app holds an Android key, and the stage names no certificate its
+ * builds are signed with. Google restricts an Android key by package *and*
+ * certificate, so a key restricted by neither is anyone's who unpacks the app.
+ */
+export class MapsAndroidKeyUnsigned extends GkmError {
+	constructor(
+		readonly maps: string,
+		readonly app: string,
+		readonly stage: string,
+		/** The stage ships the app through Google Play, which re-signs it. */
+		readonly play: boolean,
+	) {
+		super(
+			`${app}'s Android key for '${maps}' on '${stage}' is restricted to the ` +
+				'certificates its builds are signed with, and the stage names ' +
+				(play ? "none of Play's: Play re-signs what it installs. " : 'none. ') +
+				'Copy the SHA-1 from Play Console → Test and release → App integrity → ' +
+				`App signing key certificate into deploy.maps.${stage}.android.sha1` +
+				(play ? '.' : ", or set EXPO_TOKEN for the EAS keystore's to be read."),
+		);
+		this.name = 'MapsAndroidKeyUnsigned';
 	}
 }
 
@@ -216,16 +262,6 @@ export function mapsConstructs(manifest: ConstructManifest): MapsDeclaration[] {
 		.sort((a, b) => a.id.localeCompare(b.id));
 }
 
-/** The keys the stage must hold for `maps`: one per role its callers hold. */
-export function mapsKeys(
-	manifest: ConstructManifest,
-	maps: Pick<MapsDeclaration, 'id'>,
-): string[] {
-	return (Object.keys(mapsCallers(manifest, maps.id)) as MapsRole[])
-		.sort()
-		.map((role) => providedKeyFor(maps.id, 'maps', role));
-}
-
 // ---------------------------------------------------------------------------
 // Keys
 // ---------------------------------------------------------------------------
@@ -238,6 +274,7 @@ export interface KeyRestrictions {
 		allowedApplications: { packageName: string; sha1Fingerprint: string }[];
 	};
 	iosKeyRestrictions?: { allowedBundleIds: string[] };
+	serverKeyRestrictions?: { allowedIps: string[] };
 }
 
 /** An API key, as the API Keys API answers. */
@@ -297,6 +334,7 @@ function sameRestrictions(
 				.map((app) => `${app.packageName}/${app.sha1Fingerprint.toUpperCase()}`)
 				.sort(),
 			ios: [...(r?.iosKeyRestrictions?.allowedBundleIds ?? [])].sort(),
+			server: [...(r?.serverKeyRestrictions?.allowedIps ?? [])].sort(),
 		});
 	return canonical(a) === canonical(b);
 }
@@ -348,128 +386,176 @@ export interface GoogleMapsDeps {
 	now(): number;
 	/** Between two looks at an operation. */
 	intervalMs?: number;
+	/**
+	 * EAS, to read the SHA-1 of the keystores a mobile app's builds are signed
+	 * with — `undefined` without an `EXPO_TOKEN`, and then only the stage's
+	 * configured certificates restrict its Android key.
+	 */
+	eas?: () => EasApi | undefined;
 }
 
 type Ctx = EnsureContext<GoogleMapsConfig, GoogleCredential>;
 
-/** The state entry a key is recorded under. */
-export function keyEntryKey(maps: string, role: MapsRole): string {
-	return `maps-key:${maps}:${ROLE_LABEL[role]}`;
+/** The state entry a caller's key is recorded under. */
+export function keyEntryKey(
+	maps: string,
+	role: MapsRole,
+	caller: string,
+): string {
+	return `maps-key:${maps}:${ROLE_LABEL[role]}:${caller}`;
+}
+
+/** The prefix every key the provider records is under. */
+const KEY_ENTRY = 'maps-key:';
+
+/** What a recorded key was made for: a caller's, or a role's for every caller. */
+function recordedFor(
+	key: string,
+): { maps: string; role: MapsRole; caller?: string } | undefined {
+	const [, maps, label, caller] = key.split(':');
+	const role = (Object.keys(ROLE_LABEL) as MapsRole[]).find(
+		(r) => ROLE_LABEL[r] === label,
+	);
+	if (!maps || !role) return undefined;
+	return { maps, role, ...(caller ? { caller } : {}) };
 }
 
 /**
- * The referrers a browser key allows: each calling site's host on the stage,
- * as the stack answers it (`appHostOn`) — the local edge's name locally.
+ * The referrer a site's browser key allows: its host on the stage, as the
+ * stack answers it (`appHostOn`) — the local edge's name locally.
  */
-function referrers(ctx: Ctx, maps: string, sites: readonly string[]): string[] {
-	const allowed = new Set<string>();
-	const unresolved: string[] = [];
-	for (const id of sites) {
-		try {
-			const host = appHostOn(ctx.workspace, ctx.manifest, ctx.stage, id);
-			if (host) allowed.add(`https://${host}/*`);
-			else unresolved.push(id);
-		} catch (error) {
-			if (!(error instanceof NoDomainForStage)) throw error;
-			unresolved.push(id);
-		}
+function referrer(ctx: Ctx, maps: string, site: string): string {
+	try {
+		const host = appHostOn(ctx.workspace, ctx.manifest, ctx.stage, site);
+		if (host) return `https://${host}/*`;
+	} catch (error) {
+		if (!(error instanceof NoDomainForStage)) throw error;
 	}
-	if (unresolved.length > 0) {
-		throw new MapsSiteHasNoHost(maps, ctx.stage, unresolved);
-	}
-	return [...allowed].sort();
-}
-
-/** Each calling mobile app's identity, as its `MobileApp` declares it. */
-function mobileIdentities(
-	ctx: Ctx,
-	apps: readonly string[],
-): { packages: string[]; bundleIds: string[] } {
-	const packages = new Set<string>();
-	const bundleIds = new Set<string>();
-	for (const id of apps) {
-		const declaration = ctx.manifest[id];
-		if (declaration?.kind !== 'mobile-app') continue;
-		if (declaration.android) packages.add(declaration.android.package);
-		if (declaration.ios) bundleIds.add(declaration.ios.bundleIdentifier);
-	}
-	return { packages: [...packages].sort(), bundleIds: [...bundleIds].sort() };
-}
-
-/** What each key the construct needs is restricted to. Absent: no key. */
-function restrictionsFor(
-	ctx: Ctx,
-	maps: MapsDeclaration,
-): Partial<Record<MapsRole, KeyRestrictions>> {
-	const callers = mapsCallers(ctx.manifest, maps.id);
-	const wanted: Partial<Record<MapsRole, KeyRestrictions>> = {};
-	const targets = (role: MapsRole) =>
-		servicesFor(maps.apis, role).map((service) => ({ service }));
-
-	if (callers.apiKey) {
-		if (targets('apiKey').length === 0) {
-			throw new MapsServerKeyCallsNothing(maps.id, callers.apiKey);
-		}
-		wanted.apiKey = { apiTargets: targets('apiKey') };
-	}
-	if (callers.browserKey) {
-		wanted.browserKey = {
-			apiTargets: targets('browserKey'),
-			browserKeyRestrictions: {
-				allowedReferrers: referrers(ctx, maps.id, callers.browserKey),
-			},
-		};
-	}
-	const mobile = [
-		...new Set([...(callers.androidKey ?? []), ...(callers.iosKey ?? [])]),
-	];
-	if (mobile.length > 0) {
-		const { packages, bundleIds } = mobileIdentities(ctx, mobile);
-		if (packages.length > 0) {
-			const sha1 = ctx.config.android?.sha1 ?? [];
-			if (sha1.length === 0) {
-				ctx.log(
-					`   ${maps.id}: no deploy.maps.${ctx.stage}.android.sha1 — the Android key is restricted to its APIs alone. Add the signing certificates' SHA-1 (Play Console → App integrity) to restrict it to ${packages.join(', ')}`,
-				);
-			}
-			wanted.androidKey = {
-				apiTargets: targets('androidKey'),
-				...(sha1.length > 0
-					? {
-							androidKeyRestrictions: {
-								allowedApplications: packages.flatMap((packageName) =>
-									sha1.map((sha1Fingerprint) => ({
-										packageName,
-										sha1Fingerprint,
-									})),
-								),
-							},
-						}
-					: {}),
-			};
-		} else {
-			ctx.log(
-				`   ${maps.id}: ${mobile.join(', ')} ${mobile.length === 1 ? 'has' : 'have'} no android.package on ${mobile.length === 1 ? 'its' : 'their'} MobileApp — no Android key is made`,
-			);
-		}
-		if (bundleIds.length > 0) {
-			wanted.iosKey = {
-				apiTargets: targets('iosKey'),
-				iosKeyRestrictions: { allowedBundleIds: bundleIds },
-			};
-		} else {
-			ctx.log(
-				`   ${maps.id}: ${mobile.join(', ')} ${mobile.length === 1 ? 'has' : 'have'} no ios.bundleIdentifier on ${mobile.length === 1 ? 'its' : 'their'} MobileApp — no iOS key is made`,
-			);
-		}
-	}
-	return wanted;
+	throw new MapsSiteHasNoHost(maps, ctx.stage, [site]);
 }
 
 /**
- * One key: adopted when the stage set it by hand, its restrictions kept in
- * step with the graph, made when it is missing, rotated when asked — and the
- * rotated-out one deleted once the stage has run with its successor.
+ * The SHA-1s an Android key is restricted to for `app`: the stage's
+ * configured ones — Play's app-signing certificate — and each keystore EAS
+ * signs its builds with.
+ *
+ * @throws {MapsAndroidKeyUnsigned} when there are none, or when the stage
+ *   ships the app through Play and names none of Play's.
+ */
+async function signingCertificates(
+	ctx: Ctx,
+	deps: GoogleMapsDeps,
+	maps: string,
+	app: string,
+	identity: { package: string; projectId?: string },
+): Promise<string[]> {
+	const configured = (ctx.config.android?.sha1 ?? []).map(sha1Fingerprint);
+	const eas = identity.projectId ? (deps.eas ?? defaultEas)() : undefined;
+	const fromEas =
+		eas && identity.projectId
+			? await eas.keystoreSha1s(identity.projectId, identity.package)
+			: [];
+	const mobile = stageProvider(ctx.workspace, 'mobile', ctx.stage);
+	const play = mobile.mode === 'provider' && mobile.name === 'google-play';
+	if (configured.length === 0 && (play || fromEas.length === 0)) {
+		throw new MapsAndroidKeyUnsigned(maps, app, ctx.stage, play);
+	}
+	return [...new Set([...configured, ...fromEas])].sort();
+}
+
+/** EAS with the environment's `EXPO_TOKEN`, where there is one. */
+function defaultEas(): EasApi | undefined {
+	return process.env.EXPO_TOKEN ? easApi(process.env.EXPO_TOKEN) : undefined;
+}
+
+/**
+ * The addresses a server key is restricted to: the stage's server's, on a
+ * stage that runs on one. Elsewhere — a function with no fixed outbound
+ * address — none, and the key is restricted to its APIs alone.
+ */
+function serverAddresses(ctx: Ctx): string[] {
+	if (!deploysWithCompose(ctx.workspace)) return [];
+	return [ctx.secrets[SERVER_IPV4_KEY], ctx.secrets[SERVER_IPV6_KEY]].filter(
+		(address): address is string => Boolean(address),
+	);
+}
+
+/**
+ * What `holder`'s key is restricted to: the declared APIs it can call, and
+ * the one caller that holds it.
+ */
+async function restrictionsOf(
+	ctx: Ctx,
+	deps: GoogleMapsDeps,
+	maps: MapsDeclaration,
+	holder: MapsHolder,
+): Promise<KeyRestrictions> {
+	const apiTargets = servicesFor(maps.apis, holder.role).map((service) => ({
+		service,
+	}));
+	const app = ctx.manifest[holder.caller];
+	switch (holder.role) {
+		case 'apiKey': {
+			const allowedIps = serverAddresses(ctx);
+			return allowedIps.length > 0
+				? { apiTargets, serverKeyRestrictions: { allowedIps } }
+				: { apiTargets };
+		}
+		case 'browserKey':
+			return {
+				apiTargets,
+				browserKeyRestrictions: {
+					allowedReferrers: [referrer(ctx, maps.id, holder.caller)],
+				},
+			};
+		case 'androidKey': {
+			const android = app?.kind === 'mobile-app' ? app.android : undefined;
+			const projectId =
+				app?.kind === 'mobile-app' ? app.eas?.projectId : undefined;
+			const packageName = android?.package ?? '';
+			const sha1s = await signingCertificates(
+				ctx,
+				deps,
+				maps.id,
+				holder.caller,
+				{ package: packageName, ...(projectId ? { projectId } : {}) },
+			);
+			return {
+				apiTargets,
+				androidKeyRestrictions: {
+					allowedApplications: sha1s.map((sha1Fingerprint) => ({
+						packageName,
+						sha1Fingerprint,
+					})),
+				},
+			};
+		}
+		case 'iosKey': {
+			const ios = app?.kind === 'mobile-app' ? app.ios : undefined;
+			return {
+				apiTargets,
+				iosKeyRestrictions: {
+					allowedBundleIds: ios ? [ios.bundleIdentifier] : [],
+				},
+			};
+		}
+	}
+}
+
+/** The id a new key is made under: unique, as a deleted id is held for 30 days. */
+function newKeyId(deps: GoogleMapsDeps, holder: MapsHolder): string {
+	const suffix = deps.now().toString(36);
+	const base =
+		`${kebabCase(holder.maps)}-${kebabCase(holder.caller)}-${ROLE_LABEL[holder.role]}`
+			.slice(0, 62 - suffix.length)
+			.replace(/-+$/, '');
+	return `${base}-${suffix}`;
+}
+
+/**
+ * One caller's key: adopted when the stage set it by hand, its restrictions
+ * kept in step with the graph, made when it is missing, rotated when asked —
+ * and the rotated-out one deleted once the stage has run with its successor.
  */
 async function ensureKey(
 	ctx: Ctx,
@@ -477,22 +563,36 @@ async function ensureKey(
 	client: GoogleClient,
 	input: {
 		project: string;
-		maps: string;
-		role: MapsRole;
+		holder: MapsHolder;
 		restrictions: KeyRestrictions;
 	},
 ): Promise<void> {
-	const { project, maps, role, restrictions } = input;
-	const secret = providedKeyFor(maps, 'maps', role);
-	const entryKey = keyEntryKey(maps, role);
+	const { project, holder, restrictions } = input;
+	const { maps, role, caller } = holder;
+	const secret = storedMapsKey(holder, false);
+	const entryKey = keyEntryKey(maps, role, caller);
 	const record = ctx.state.record(entryKey);
 	const held = ctx.secrets[secret];
 
-	if (!record && held !== undefined) {
-		ctx.log(
-			`   ${maps}: ${secret} is set in the stage's secrets — its callers use that, and no key is made for it`,
+	if (!record) {
+		if (held !== undefined) {
+			ctx.log(
+				`   ${maps}: ${secret} is set in the stage's secrets — ${caller} uses that, and no key is made for it`,
+			);
+			return;
+		}
+		// The role's name set by hand — and not by an earlier provider run,
+		// which recorded it — is one key every caller reads.
+		const shared = providedKeyFor(maps, 'maps', role);
+		const sharedRecord = ctx.state.record(
+			`${KEY_ENTRY}${maps}:${ROLE_LABEL[role]}`,
 		);
-		return;
+		if (ctx.secrets[shared] !== undefined && !sharedRecord) {
+			ctx.log(
+				`   ${maps}: ${shared} is set in the stage's secrets — ${caller} uses that, and no key is made for it`,
+			);
+			return;
+		}
 	}
 
 	let current = record?.status === 'ready' ? record.id : undefined;
@@ -509,14 +609,10 @@ async function ensureKey(
 		type: 'maps-key',
 		data: { project, ...data },
 	});
-	const label = `${ROLE_LABEL[role]} key`;
+	const label = `${caller}'s ${ROLE_LABEL[role]} key`;
 
 	if (previous && current) {
-		const deployed =
-			rotatedAt !== undefined &&
-			ctx.state.lastDeployedAt !== undefined &&
-			ctx.state.lastDeployedAt > rotatedAt;
-		if (ctx.retireOldKeys || deployed) {
+		if (ctx.retireOldKeys || hasRunSince(ctx, rotatedAt)) {
 			const old = previous;
 			const keep = current;
 			await ctx.change(
@@ -560,11 +656,7 @@ async function ensureKey(
 						{ restrictions },
 					);
 					if (!operation.done) {
-						await operationResult(client, operation, {
-							...(deps.intervalMs !== undefined
-								? { intervalMs: deps.intervalMs }
-								: {}),
-						});
+						await operationResult(client, operation, intervalOf(deps));
 					}
 				},
 			);
@@ -572,7 +664,7 @@ async function ensureKey(
 		return;
 	}
 	if (ctx.rotateKeys && previous) {
-		throw new MapsRotationInProgress(maps, role, ctx.stage);
+		throw new MapsRotationInProgress(maps, caller, role, ctx.stage);
 	}
 
 	const outgoing = valid ? current : undefined;
@@ -581,10 +673,7 @@ async function ensureKey(
 		: ctx.rotateKeys
 			? `rotate: make a new ${label}`
 			: `make a new ${label} (the secrets no longer hold the recorded one)`;
-	const keyId =
-		`${kebabCase(maps)}-${ROLE_LABEL[role]}-${deps.now().toString(36)}`
-			.slice(0, 63)
-			.replace(/-+$/, '');
+	const keyId = newKeyId(deps, holder);
 	await ctx.change(
 		{
 			construct: maps,
@@ -597,18 +686,16 @@ async function ensureKey(
 				'POST',
 				`${API_KEYS}/${keysParent(project)}/keys?keyId=${keyId}`,
 				{
-					displayName: `gkm ${ctx.stage} ${maps} ${ROLE_LABEL[role]}`.slice(
-						0,
-						63,
-					),
+					displayName:
+						`${maps}/${caller} ${ROLE_LABEL[role]} ${ctx.stage}`.slice(0, 63),
 					restrictions,
 				},
 			);
-			const created = await operationResult<ApiKey>(client, operation, {
-				...(deps.intervalMs !== undefined
-					? { intervalMs: deps.intervalMs }
-					: {}),
-			});
+			const created = await operationResult<ApiKey>(
+				client,
+				operation,
+				intervalOf(deps),
+			);
 			// Into the stage's secrets before the record says it is ready: a key
 			// the secrets do not hold is a key the next deploy replaces.
 			await ctx.writeSecrets({
@@ -621,6 +708,91 @@ async function ensureKey(
 			);
 		},
 	);
+}
+
+/** Whether the stage has been deployed since `at`. */
+function hasRunSince(ctx: Ctx, at: string | undefined): boolean {
+	return (
+		at !== undefined &&
+		ctx.state.lastDeployedAt !== undefined &&
+		ctx.state.lastDeployedAt > at
+	);
+}
+
+function intervalOf(deps: GoogleMapsDeps): { intervalMs?: number } {
+	return deps.intervalMs !== undefined ? { intervalMs: deps.intervalMs } : {};
+}
+
+/**
+ * Each key the provider made that no caller holds now — one whose caller
+ * left the graph, and one made for every caller of a kind before each had
+ * its own: marked retired the first time it is seen, and deleted — from
+ * Google, the state and the stage's secrets — once the stage has run without
+ * it, or at once with `--retire-old-keys`.
+ */
+async function retireStaleKeys(
+	ctx: Ctx,
+	deps: GoogleMapsDeps,
+	client: GoogleClient,
+	wanted: ReadonlySet<string>,
+): Promise<void> {
+	const stale = Object.entries(ctx.state.records())
+		.filter(([key]) => key.startsWith(KEY_ENTRY) && !wanted.has(key))
+		.sort(([a], [b]) => a.localeCompare(b));
+	for (const [key, record] of stale) {
+		const made = recordedFor(key);
+		if (!made) continue;
+		const whose = made.caller
+			? `${made.caller}'s ${ROLE_LABEL[made.role]} key`
+			: `shared ${ROLE_LABEL[made.role]} key`;
+		const retiredAt =
+			typeof record.data?.retiredAt === 'string'
+				? record.data.retiredAt
+				: undefined;
+		if (!ctx.retireOldKeys && !hasRunSince(ctx, retiredAt)) {
+			if (retiredAt === undefined && record.id && !ctx.dryRun) {
+				await ctx.state.ready(
+					{
+						key,
+						type: 'maps-key',
+						data: {
+							...record.data,
+							retiredAt: new Date(deps.now()).toISOString(),
+						},
+					},
+					record.id,
+				);
+			}
+			ctx.log(
+				`   ${made.maps}: the ${whose} is no longer held; the first deploy after this one deletes it (or pass --retire-old-keys)`,
+			);
+			continue;
+		}
+		const secret = made.caller
+			? storedMapsKey(
+					{ maps: made.maps, role: made.role, caller: made.caller },
+					false,
+				)
+			: providedKeyFor(made.maps, 'maps', made.role);
+		const keys = [
+			record.id,
+			typeof record.data?.previous === 'string'
+				? record.data.previous
+				: undefined,
+		].filter((id): id is string => Boolean(id));
+		await ctx.change(
+			{
+				construct: made.maps,
+				resource: keys[0] ?? key,
+				change: `delete the ${whose}, which nothing holds`,
+			},
+			async () => {
+				for (const id of keys) await deleteKey(client, id);
+				await ctx.writeSecrets({ [secret]: null });
+				await ctx.state.forget(key);
+			},
+		);
+	}
 }
 
 /** Whether `project` exists, for the signed-in principal to see. */
@@ -672,10 +844,11 @@ export function createGoogleMapsProvider(
 	deps: GoogleMapsDeps,
 ): ResourceProvider<GoogleMapsConfig, GoogleCredential> {
 	async function ensure(ctx: Ctx): Promise<void> {
-		const constructs = mapsConstructs(ctx.manifest).filter(
-			(maps) => Object.keys(mapsCallers(ctx.manifest, maps.id)).length > 0,
+		const holders = mapsHolders(ctx.manifest);
+		const stale = Object.keys(ctx.state.records()).some((key) =>
+			key.startsWith(KEY_ENTRY),
 		);
-		if (constructs.length === 0) return;
+		if (holders.length === 0 && !stale) return;
 
 		const project = googleProject({
 			flag: ctx.credential.project,
@@ -722,20 +895,43 @@ export function createGoogleMapsProvider(
 		}
 		const client = googleClient(token, project);
 
-		const wanted = new Map<
-			string,
-			Partial<Record<MapsRole, KeyRestrictions>>
-		>();
-		for (const maps of constructs) {
-			wanted.set(maps.id, restrictionsFor(ctx, maps));
+		const declarations = new Map(
+			mapsConstructs(ctx.manifest).map((maps) => [maps.id, maps]),
+		);
+		const wanted: { holder: MapsHolder; restrictions: KeyRestrictions }[] = [];
+		for (const holder of holders) {
+			const maps = declarations.get(holder.maps)!;
+			if (
+				holder.role === 'apiKey' &&
+				servicesFor(maps.apis, 'apiKey').length === 0
+			) {
+				throw new MapsServerKeyCallsNothing(
+					maps.id,
+					holders
+						.filter((h) => h.maps === maps.id && h.role === 'apiKey')
+						.map((h) => h.caller),
+				);
+			}
+			wanted.push({
+				holder,
+				restrictions: await restrictionsOf(ctx, deps, maps, holder),
+			});
+		}
+		if (
+			wanted.some(({ holder }) => holder.role === 'apiKey') &&
+			serverAddresses(ctx).length === 0
+		) {
+			ctx.log(
+				deploysWithCompose(ctx.workspace)
+					? `   maps: '${ctx.stage}' has no ${SERVER_IPV4_KEY} yet — server keys are restricted to their APIs alone until it does`
+					: `   maps: '${ctx.stage}' runs on no server with a fixed address — server keys are restricted to their APIs alone`,
+			);
 		}
 		const services = [
 			...new Set([
 				...PROVIDER_SERVICES,
-				...[...wanted.values()].flatMap((roles) =>
-					Object.values(roles).flatMap((r) =>
-						r.apiTargets.map((t) => t.service),
-					),
+				...wanted.flatMap(({ restrictions }) =>
+					restrictions.apiTargets.map((t) => t.service),
 				),
 			]),
 		].sort();
@@ -777,34 +973,26 @@ export function createGoogleMapsProvider(
 		);
 		if (!billing.billingEnabled) throw new MapsBillingDisabled(project);
 
-		for (const maps of constructs) {
-			const roles = wanted.get(maps.id) ?? {};
-			for (const role of Object.keys(roles).sort() as MapsRole[]) {
-				await ensureKey(ctx, deps, client, {
-					project,
-					maps: maps.id,
-					role,
-					restrictions: roles[role]!,
-				});
-			}
+		for (const { holder, restrictions } of wanted) {
+			await ensureKey(ctx, deps, client, { project, holder, restrictions });
 		}
+		await retireStaleKeys(
+			ctx,
+			deps,
+			client,
+			new Set(
+				wanted.map(({ holder }) =>
+					keyEntryKey(holder.maps, holder.role, holder.caller),
+				),
+			),
+		);
 	}
 
 	async function verify(ctx: VerifyContext<GoogleMapsConfig>): Promise<void> {
 		for (const maps of mapsConstructs(ctx.manifest)) {
-			// A phone's key is made only for a platform its MobileApp declares,
-			// so one the state does not record is not missing.
-			const made = (role: MapsRole) =>
-				(role !== 'androidKey' && role !== 'iosKey') ||
-				ctx.resources === undefined ||
-				ctx.resources[keyEntryKey(maps.id, role)] !== undefined;
-			const missing = (
-				Object.keys(mapsCallers(ctx.manifest, maps.id)) as MapsRole[]
-			)
-				.sort()
-				.filter(made)
-				.map((role) => providedKeyFor(maps.id, 'maps', role))
-				.filter((key) => ctx.secrets[key] === undefined);
+			const missing = mapsHolders(ctx.manifest, maps.id)
+				.filter((holder) => mapsValue(ctx.secrets, holder, false) === undefined)
+				.map((holder) => storedMapsKey(holder, false));
 			if (missing.length > 0) {
 				throw new MapsNotProvisioned(ctx.stage, maps.id, missing);
 			}
@@ -819,8 +1007,8 @@ export function createGoogleMapsProvider(
 		provisioning: GOOGLE_MAPS_PROVISIONING,
 		credentials: (lookup) => googleProvisioningCredentials(lookup),
 		runtimeKeys(manifest) {
-			return mapsConstructs(manifest).flatMap((maps) =>
-				mapsKeys(manifest, maps),
+			return mapsHolders(manifest).map((holder) =>
+				storedMapsKey(holder, false),
 			);
 		},
 		ensure,

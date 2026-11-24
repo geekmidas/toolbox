@@ -291,12 +291,12 @@ export type MapsApi =
  * Maps — tiles, places, geocoding, routes — called with API keys.
  *
  * The APIs are structural: which ones the app calls is a fact about its code.
- * Who holds a key is read off the graph, never written down: each kind of
- * caller gets its own key, restricted to these APIs and to what it is — a
- * server process a server key, the stage's sites one restricted to their
- * hosts, a mobile app one per platform restricted to its package and bundle
- * id (`mapsRolesFor`). A key a browser holds is never one a phone or a server
- * holds.
+ * Who holds a key is read off the graph, never written down: each caller
+ * gets a key of its own, restricted to these APIs and to it alone — a server
+ * process a server key, a site one restricted to its host, a mobile app one
+ * per platform restricted to its package and bundle id (`mapsRolesFor`).
+ * Every caller reads it under the role's name; the stage keeps each caller's
+ * apart (`mapsKeyOf`).
  */
 export interface MapsDeclaration extends Node {
 	kind: 'maps';
@@ -1403,10 +1403,10 @@ export interface ProvidesByKind {
 		publisherConnectionString: string;
 	};
 	/**
-	 * One key per kind of caller, each restricted to it: a server process's
-	 * (`apiKey`), the stage's sites' (`browserKey`, by referrer), a mobile
-	 * app's on Android and on iOS. Only the roles its callers need are
-	 * created, and each caller is handed only its own (`mapsRolesFor`).
+	 * The name each caller reads its own key by: a server process's
+	 * (`apiKey`), a site's (`browserKey`, by referrer), a mobile app's on
+	 * Android and on iOS. Each caller holds a key of its own under its role's
+	 * name (`mapsRolesFor`, `mapsKeyOf`).
 	 */
 	maps: {
 		apiKey: string;
