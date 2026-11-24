@@ -32,6 +32,11 @@ import {
 	WILDCARD_SUBDOMAIN,
 } from '@geekmidas/manifest';
 import { GkmError } from '../errors';
+import {
+	DECLARATION_KINDS,
+	LOCAL_PROVIDER_RULES,
+	PROVIDER_KINDS,
+} from '../providers/types.js';
 import { usesTelemetry } from '../telemetry/edges.js';
 import {
 	type CacheBackend,
@@ -46,6 +51,18 @@ import { fakeKey, type PlannedFake } from './containers';
 import type { LocalFake } from './fakes';
 import { EDGE_KINDS } from './routes';
 
+/** The container each provider kind with a local stand-in runs as. */
+function localStandIns(): Partial<Record<DeclarationKind, string>> {
+	const containers: Partial<Record<DeclarationKind, string>> = {};
+	for (const kind of PROVIDER_KINDS) {
+		const rule = LOCAL_PROVIDER_RULES[kind];
+		if (rule.mode === 'stand-in') {
+			containers[DECLARATION_KINDS[kind]] = rule.container;
+		}
+	}
+	return containers;
+}
+
 /**
  * Which container serves a kind.
  *
@@ -57,7 +74,12 @@ const CONTAINERS: Partial<Record<DeclarationKind, string>> = {
 	database: 'postgres',
 	'database-reader': 'postgres',
 	'database-schema': 'postgres',
-	objects: 'minio',
+	// A bucket's and mail's containers are their local stand-ins, declared
+	// once in `LOCAL_PROVIDER_RULES` beside the rule that a local stage
+	// names no provider for them. Every mail backend speaks SMTP, so locally
+	// there is one answer whichever is selected, and an inbox receives the
+	// way mail is sent: into Mailpit, whose webhook hands `gkm dev` each one.
+	...localStandIns(),
 	// The server is not the bucket. Its own container is the local edge, which
 	// is what lets it answer on a *host* rather than on a path under MinIO —
 	// the shape it has deployed, and the one MinIO's virtual-host mode cannot
@@ -66,13 +88,6 @@ const CONTAINERS: Partial<Record<DeclarationKind, string>> = {
 	// MinIO still runs: it is implied by the bucket this server is declared
 	// over, which is a parent it always has.
 	'file-server': 'caddy',
-	// Every mail backend speaks SMTP, so locally there is one answer whichever
-	// one is selected — which is the same reason the declaration has no
-	// `provider` field.
-	email: 'mailpit',
-	// Locally mail is received the way it is sent: into Mailpit, whose
-	// webhook hands `gkm dev` each message an inbox receives at.
-	inbox: 'mailpit',
 	// A WebSocket surface answers on its app's port like a REST one, but its
 	// publisher is Redis pub/sub: an endpoint in another process reaches a
 	// socket through it, so it runs wherever the surface is declared.
