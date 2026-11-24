@@ -1,5 +1,7 @@
 # @geekmidas/manifest
 
+## 10.0.0-alpha.193
+
 ## 10.0.0-alpha.192
 
 ### Minor Changes

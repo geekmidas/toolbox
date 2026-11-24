@@ -45,6 +45,7 @@
     "auth-migrations-no-server",
     "auth-pending-migration",
     "aws-handlers-reached-drivers",
+    "aws-profile-everywhere",
     "aws-websocket-adaptor",
     "backup-restore-from",
     "branch-from-the-surface",
