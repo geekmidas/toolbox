@@ -213,6 +213,7 @@
     "logger-node-env",
     "logger-otel-bridge",
     "logger-url-credentials",
+    "maps-client",
     "maps-construct",
     "maps-key-per-caller",
     "memory-adapter-conformance",

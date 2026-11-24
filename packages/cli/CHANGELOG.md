@@ -1,5 +1,50 @@
 # @geekmidas/cli
 
+## 10.0.0-alpha.200
+
+### Minor Changes
+
+- [#563](https://github.com/geekmidas/toolbox/pull/563) [`c72af42`](https://github.com/geekmidas/toolbox/commit/c72af42695f85f65232a8593cacedbc3aeffb811) Thanks [@geekmidas](https://github.com/geekmidas)! - A `Maps` hands a server process a client, a test a fake, and a phone its native config
+
+  **A typed client.** `services.maps` was a bare key. It is now a client for
+  the web services the construct declares: `geocode` and `reverseGeocode`
+  (`geocoding`), `searchPlaces` and `placeDetails` (Places API (New)),
+  `computeRoutes` (Routes API) and `staticMapUrl` (`static-maps`). Only the
+  declared APIs exist on its type, so a call the key is not restricted to does
+  not build. A refused call throws `MapsRequestFailed`, each call is traced like
+  an `ExternalApi`'s, and `apiKey` is still there for anything not covered.
+
+  **A fake under `gkm test`.** The test stage hands a `Maps` a fake key, and
+  Google's Maps hosts are answered in-process by a built-in, deterministic fake
+  (`@geekmidas/constructs/maps/fake`). A project can replace it with
+  `mapsFake(handler)` at `test/fakes/<id>.ts`. `gkm dev --fake` does not fake
+  Maps.
+
+  **Native config for a phone.** `react-native-maps` reads its keys from native
+  config, not JavaScript. The config plugin `@geekmidas/constructs/maps/expo`
+  puts the `EXPO_PUBLIC_` keys there, and `gkm eas:sync` refuses, with
+  `MapsKeysNotInNativeConfig`, an app that depends on a `Maps` and never hands
+  them over.
+
+  `gkm init` writes a mobile app's `android.package` and `ios.bundleIdentifier`
+  on its `MobileApp`.
+
+### Patch Changes
+
+- Updated dependencies [[`c72af42`](https://github.com/geekmidas/toolbox/commit/c72af42695f85f65232a8593cacedbc3aeffb811)]:
+  - @geekmidas/constructs@10.0.0-alpha.200
+  - @geekmidas/cache@10.0.0-alpha.200
+  - @geekmidas/db@10.0.0-alpha.200
+  - @geekmidas/edge@10.0.0-alpha.200
+  - @geekmidas/envkit@10.0.0-alpha.200
+  - @geekmidas/errors@10.0.0-alpha.200
+  - @geekmidas/logger@10.0.0-alpha.200
+  - @geekmidas/manifest@10.0.0-alpha.200
+  - @geekmidas/schema@10.0.0-alpha.200
+  - @geekmidas/services@10.0.0-alpha.200
+  - @geekmidas/storage@10.0.0-alpha.200
+  - @geekmidas/telescope@10.0.0-alpha.200
+
 ## 10.0.0-alpha.199
 
 ### Minor Changes

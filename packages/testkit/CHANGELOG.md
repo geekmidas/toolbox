@@ -1,5 +1,15 @@
 # @geekmidas/testkit
 
+## 10.0.0-alpha.200
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/emailkit@10.0.0-alpha.200
+  - @geekmidas/envkit@10.0.0-alpha.200
+  - @geekmidas/logger@10.0.0-alpha.200
+  - @geekmidas/services@10.0.0-alpha.200
+
 ## 10.0.0-alpha.199
 
 ### Patch Changes
