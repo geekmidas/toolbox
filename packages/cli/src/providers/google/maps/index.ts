@@ -37,11 +37,11 @@ import {
 	type MapsRole,
 	providedKeyFor,
 } from '@geekmidas/manifest';
-import { appHostOn } from '../../../compose/stack.js';
 import {
 	SERVER_IPV4_KEY,
 	SERVER_IPV6_KEY,
 } from '../../../compose/dnsConfig.js';
+import { appHostOn } from '../../../compose/stack.js';
 import { GkmError } from '../../../errors';
 import {
 	type MapsHolder,
@@ -50,7 +50,6 @@ import {
 	storedMapsKey,
 } from '../../../reconcile/mapsKeys.js';
 import { NoDomainForStage } from '../../../target/dokploy/domain.js';
-import { appKey } from '../../../workspace/derive.js';
 import { stageProvider } from '../../config.js';
 import { deploysWithCompose } from '../../dns.js';
 import {
