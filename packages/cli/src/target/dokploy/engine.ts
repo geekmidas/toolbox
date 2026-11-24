@@ -549,7 +549,7 @@ function secretsOf(
 ): StageSecrets {
 	return {
 		...stageSecrets,
-		custom: callerSecrets(manifest, caller, stageSecrets.custom ?? {}, false),
+		custom: callerSecrets(manifest, caller, stageSecrets.custom ?? {}),
 	};
 }
 

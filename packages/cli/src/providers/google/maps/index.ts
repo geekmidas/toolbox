@@ -569,7 +569,7 @@ async function ensureKey(
 ): Promise<void> {
 	const { project, holder, restrictions } = input;
 	const { maps, role, caller } = holder;
-	const secret = storedMapsKey(holder, false);
+	const secret = storedMapsKey(holder);
 	const entryKey = keyEntryKey(maps, role, caller);
 	const record = ctx.state.record(entryKey);
 	const held = ctx.secrets[secret];
@@ -769,10 +769,7 @@ async function retireStaleKeys(
 			continue;
 		}
 		const secret = made.caller
-			? storedMapsKey(
-					{ maps: made.maps, role: made.role, caller: made.caller },
-					false,
-				)
+			? storedMapsKey({ maps: made.maps, role: made.role, caller: made.caller })
 			: providedKeyFor(made.maps, 'maps', made.role);
 		const keys = [
 			record.id,
@@ -991,8 +988,8 @@ export function createGoogleMapsProvider(
 	async function verify(ctx: VerifyContext<GoogleMapsConfig>): Promise<void> {
 		for (const maps of mapsConstructs(ctx.manifest)) {
 			const missing = mapsHolders(ctx.manifest, maps.id)
-				.filter((holder) => mapsValue(ctx.secrets, holder, false) === undefined)
-				.map((holder) => storedMapsKey(holder, false));
+				.filter((holder) => mapsValue(ctx.secrets, holder) === undefined)
+				.map((holder) => storedMapsKey(holder));
 			if (missing.length > 0) {
 				throw new MapsNotProvisioned(ctx.stage, maps.id, missing);
 			}
@@ -1007,9 +1004,7 @@ export function createGoogleMapsProvider(
 		provisioning: GOOGLE_MAPS_PROVISIONING,
 		credentials: (lookup) => googleProvisioningCredentials(lookup),
 		runtimeKeys(manifest) {
-			return mapsHolders(manifest).map((holder) =>
-				storedMapsKey(holder, false),
-			);
+			return mapsHolders(manifest).map((holder) => storedMapsKey(holder));
 		},
 		ensure,
 		verify,

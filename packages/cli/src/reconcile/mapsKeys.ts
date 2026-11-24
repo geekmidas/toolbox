@@ -8,15 +8,14 @@
  * it is handed (`appEnvKeys`, `workerEnvKeys`, `processorEnvKeys`), so a key
  * is made for exactly the processes that read one.
  *
- * Every holder reads its key under the role's name (`MAPS_API_KEY`). Where
- * the value comes from:
+ * Every holder reads its key under the role's name (`MAPS_API_KEY`). The
+ * value is, on every stage alike — local included, which `gkm provision`
+ * makes keys for like any other:
  *
- * - **A local stage**: the role's name in its secrets, set by hand and read
- *   by every caller alike — there is no Google project making keys for it.
- * - **A deployed stage**: the caller's own key (`mapsKeyOf`,
- *   `MAPS_BROWSER_KEY_WEB`), which the google provider makes and restricts
- *   to that caller; and, where the stage holds none, the role's name — one key
- *   set by hand for every caller, on a stage with no provider.
+ * - the caller's own key (`mapsKeyOf`, `MAPS_BROWSER_KEY_WEB`), which the
+ *   google provider makes and restricts to that caller;
+ * - and, where the stage holds none, the role's name — one key set by hand
+ *   for every caller, on a stage with no provider.
  */
 
 import {
@@ -30,6 +29,8 @@ import {
 } from '@geekmidas/manifest';
 import { appKey } from '../workspace/derive.js';
 import { appEnvKeys, processorEnvKeys, workerEnvKeys } from './apps.js';
+
+export { appCaller } from './apps.js';
 
 /** One process holding one key of one `Maps` construct. */
 export interface MapsHolder {
@@ -136,17 +137,11 @@ export function mapsHolders(
 	);
 }
 
-/**
- * Where the stage keeps `holder`'s key: the role's name on a local stage,
- * the caller's own key on a deployed one.
- */
+/** Where the stage keeps `holder`'s own key: `MAPS_BROWSER_KEY_WEB`. */
 export function storedMapsKey(
 	holder: Pick<MapsHolder, 'maps' | 'role' | 'caller'>,
-	local: boolean,
 ): string {
-	return local
-		? providedKeyFor(holder.maps, 'maps', holder.role)
-		: mapsKeyOf(holder.maps, holder.role, holder.caller);
+	return mapsKeyOf(holder.maps, holder.role, holder.caller);
 }
 
 /**
@@ -157,10 +152,9 @@ export function storedMapsKey(
 export function mapsValue(
 	stored: Readonly<Record<string, string>>,
 	holder: Pick<MapsHolder, 'maps' | 'role' | 'caller'>,
-	local: boolean,
 ): string | undefined {
 	return (
-		stored[storedMapsKey(holder, local)] ??
+		stored[storedMapsKey(holder)] ??
 		stored[providedKeyFor(holder.maps, 'maps', holder.role)]
 	);
 }
@@ -174,7 +168,6 @@ export function callerSecrets(
 	manifest: ConstructManifest,
 	caller: string | undefined,
 	stored: Readonly<Record<string, string>>,
-	local: boolean,
 ): Record<string, string> {
 	const secrets = Object.fromEntries(
 		Object.entries(stored).filter(([key]) => !isMapsCallerKey(manifest, key)),
@@ -182,23 +175,8 @@ export function callerSecrets(
 	if (caller === undefined) return secrets;
 	for (const holder of mapsHolders(manifest)) {
 		if (holder.caller !== caller) continue;
-		const value = mapsValue(stored, holder, local);
+		const value = mapsValue(stored, holder);
 		if (value !== undefined) secrets[holder.key] = value;
 	}
 	return secrets;
-}
-
-/** The construct an app of the workspace is, by its name: `api` → `Api`. */
-export function appCaller(
-	manifest: ConstructManifest,
-	appName: string,
-): string | undefined {
-	return Object.entries(manifest).find(
-		([id, declaration]) =>
-			(declaration.kind === 'rest-api' ||
-				declaration.kind === 'websocket-api' ||
-				declaration.kind === 'site' ||
-				declaration.kind === 'mobile-app') &&
-			appKey(id) === appName,
-	)?.[0];
 }

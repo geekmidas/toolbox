@@ -1596,13 +1596,9 @@ export function composeStack(input: StackInput): ComposeStack {
 			if (!mapsHeld.has(`${owner.id}:${mapsRole}:${app.id}`)) {
 				return undefined;
 			}
-			const value = mapsValue(custom, holder, local);
+			const value = mapsValue(custom, holder);
 			if (value === undefined) {
-				throw new StageSecretMissing(
-					app.name,
-					storedMapsKey(holder, local),
-					stage,
-				);
+				throw new StageSecretMissing(app.name, storedMapsKey(holder), stage);
 			}
 			return value;
 		}

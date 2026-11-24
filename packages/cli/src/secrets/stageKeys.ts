@@ -107,7 +107,7 @@ export function workspaceStageKeys(
 		if (perCaller) {
 			maps.push({
 				id: holder.maps,
-				key: storedMapsKey(holder, false),
+				key: storedMapsKey(holder),
 				holder: HOLDER[holder.role],
 				apps: [app],
 			});
