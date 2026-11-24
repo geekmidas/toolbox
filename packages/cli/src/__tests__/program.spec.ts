@@ -123,7 +123,6 @@ const AWS_COMMANDS = [
 	'deploy',
 	'deploy:rollback',
 	'deploy:github',
-	'deploy:google-play',
 	'exec',
 	'db:tunnel',
 	'eas:sync',

@@ -9,12 +9,19 @@ import type { StageProviderNotes } from '../deploy/devServices.js';
 import { GkmError } from '../errors';
 import type { NormalizedWorkspace } from '../workspace/types.js';
 import { provisioningOf, stageProvider } from './config.js';
-import { PROVIDER_KINDS, type ProviderKind } from './types.js';
+import {
+	DECLARATION_KINDS,
+	PROVIDER_KINDS,
+	type ProviderKind,
+} from './types.js';
 
-/** The constructs of a kind: `objects` is every bucket. */
+/**
+ * The constructs of a kind: `objects` is every bucket, `mobile` every
+ * mobile app.
+ */
 export function constructsOf(manifest: ConstructManifest, kind: ProviderKind) {
 	return Object.entries(manifest)
-		.filter(([, d]) => d.kind === kind)
+		.filter(([, d]) => d.kind === DECLARATION_KINDS[kind])
 		.map(([id]) => id)
 		.sort();
 }

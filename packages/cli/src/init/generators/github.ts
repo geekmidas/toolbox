@@ -549,7 +549,8 @@ ${registryLogin()}
       # Everything, from here: the stage's resources and DNS records, its
       # databases migrated through an SSH tunnel, and exactly the pushed
       # images run on the server's Docker. The DNS token is a secret on the
-      # stage's environment, and never leaves the runner.
+      # stage's environment, and never leaves the runner; so is EXPO_TOKEN,
+      # which a stage whose mobile app is on Google Play checks EAS with.
       - name: Deploy
         run: |
           args=(--stage "$STAGE" --tag "$SHA")
@@ -561,6 +562,7 @@ ${registryLogin()}
           GODADDY_API_TOKEN: \${{ secrets.GODADDY_API_TOKEN }}
           HOSTINGER_API_TOKEN: \${{ secrets.HOSTINGER_API_TOKEN }}
           CLOUDFLARE_API_TOKEN: \${{ secrets.CLOUDFLARE_API_TOKEN }}
+          EXPO_TOKEN: \${{ secrets.EXPO_TOKEN }}
 `;
 }
 
@@ -613,7 +615,8 @@ function targetDeploy(options: TemplateOptions): string {
 
 	// The deploy writes each app's DNS records through the provider in
 	// gkm.config.ts's \`dns\`; its token is a secret on the stage's
-	// environment (empty, and unused, without one).
+	// environment (empty, and unused, without one) — as is EXPO_TOKEN, which
+	// a stage whose mobile app is on Google Play checks EAS with.
 	const deployEnv = sst
 		? ''
 		: `
@@ -621,7 +624,8 @@ function targetDeploy(options: TemplateOptions): string {
           DOKPLOY_ENDPOINT: \${{ vars.DOKPLOY_ENDPOINT }}
           GODADDY_API_TOKEN: \${{ secrets.GODADDY_API_TOKEN }}
           HOSTINGER_API_TOKEN: \${{ secrets.HOSTINGER_API_TOKEN }}
-          CLOUDFLARE_API_TOKEN: \${{ secrets.CLOUDFLARE_API_TOKEN }}`;
+          CLOUDFLARE_API_TOKEN: \${{ secrets.CLOUDFLARE_API_TOKEN }}
+          EXPO_TOKEN: \${{ secrets.EXPO_TOKEN }}`;
 
 	return `${deployHeader(false)}
 jobs:

@@ -7,6 +7,10 @@
  */
 
 import { GkmError } from '../errors';
+import {
+	checkGooglePlayConfig,
+	GOOGLE_PLAY_PROVISIONING,
+} from './googlePlay/config.js';
 import { checkS3Config, S3_PROVISIONING } from './s3/config.js';
 import {
 	checkSesConfig,
@@ -29,6 +33,7 @@ const CHECKS: {
 	objects: { s3: checkS3Config },
 	inbox: { ses: checkSesConfig },
 	email: { ses: checkSesEmailConfig },
+	mobile: { 'google-play': checkGooglePlayConfig },
 };
 
 /** How each provider's provisioning credentials are supplied, by kind and name. */
@@ -40,6 +45,7 @@ const PROVISIONING: {
 	objects: { s3: S3_PROVISIONING },
 	inbox: { ses: SES_PROVISIONING },
 	email: { ses: SES_PROVISIONING },
+	mobile: { 'google-play': GOOGLE_PLAY_PROVISIONING },
 };
 
 /** How `name`'s provisioning credentials are supplied, for messages. */

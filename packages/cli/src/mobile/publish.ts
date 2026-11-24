@@ -19,12 +19,19 @@
  *
  * `--build` or `--update` decides instead. An update with no store build to
  * receive it reaches nobody, so `--update` without one is refused.
+ *
+ * On a stage whose deploy sets the app up on Google Play
+ * (`deploy.mobile.<stage>` is `google-play`), an Android store build is only
+ * started once EAS holds the key to submit it with: without one EAS would
+ * build it and fail at the end, so gkm says to deploy the stage instead.
  */
 
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { GkmError } from '../errors';
+import { type EasApi, easApi } from '../providers/googlePlay/easApi.js';
+import { storeIdentities } from '../providers/googlePlay/index.js';
 import {
 	type EasCli,
 	type EasPlatform,
@@ -49,6 +56,23 @@ export class NoStoreBuildForUpdate extends GkmError {
 				`gkm publish --stage ${stage} --platform ${platform} --build.`,
 		);
 		this.name = 'NoStoreBuildForUpdate';
+	}
+}
+
+/** An Android build for Play, and EAS holds no key to submit it with. */
+export class PlaySubmitKeyMissing extends GkmError {
+	constructor(
+		readonly app: string,
+		readonly stage: string,
+		readonly packageName: string,
+	) {
+		super(
+			`EAS holds no Google Play key to submit ${packageName} with, so a store ` +
+				`build of '${app}' would be built and never submitted. Deploy the stage ` +
+				`from a terminal, signed in as a Play Console admin — gkm deploy --stage ` +
+				`${stage} — which sets it up (deploy.mobile.${stage} is google-play).`,
+		);
+		this.name = 'PlaySubmitKeyMissing';
 	}
 }
 
@@ -90,6 +114,8 @@ export interface PlatformRelease {
 export async function publish(
 	options: PublishOptions,
 	eas?: EasCli,
+	/** EAS's API, where the Play key is checked. */
+	easGraphql?: () => EasApi,
 ): Promise<PlatformRelease[]> {
 	const synced = await easSync(options, eas);
 	const cli = eas ?? easCli(synced.root, synced.values);
@@ -155,6 +181,9 @@ export async function publish(
 			`📦 ${platform}: a store build of '${profile}', ${where} (${why})${options.dryRun ? ' (dry run)' : ''}`,
 		);
 		if (options.dryRun) continue;
+		if (platform === 'android' && synced.play) {
+			await assertPlaySubmitKey(synced, easGraphql ?? (() => easApi()));
+		}
 		await cli.build(dir, {
 			platform,
 			profile,
@@ -163,6 +192,34 @@ export async function publish(
 		});
 	}
 	return releases;
+}
+
+/**
+ * EAS holds a key to submit the app to Play with.
+ *
+ * @throws {PlaySubmitKeyMissing}, {MobileAppStoreIdentityMissing}
+ */
+async function assertPlaySubmitKey(
+	synced: Awaited<ReturnType<typeof easSync>>,
+	api: () => EasApi,
+): Promise<void> {
+	const [identity] = storeIdentities(
+		{ [synced.declaration.id]: synced.declaration },
+		synced.stage.stage,
+	);
+	const eas = api();
+	const project = await eas.project(identity!.projectId);
+	const credentials = await eas.androidCredentials(
+		{ projectId: identity!.projectId, fullName: project.fullName },
+		identity!.packageName,
+	);
+	if (!credentials.submissionsKey) {
+		throw new PlaySubmitKeyMissing(
+			synced.app,
+			synced.stage.stage,
+			identity!.packageName,
+		);
+	}
 }
 
 /** The current commit's subject, for an update's message. */

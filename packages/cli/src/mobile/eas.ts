@@ -25,6 +25,7 @@ import type {
 } from '@geekmidas/manifest';
 import { GkmError } from '../errors';
 import { loadStage } from '../exec/stage.js';
+import { stageProvider } from '../providers/config.js';
 import { appKey } from '../workspace/derive.js';
 import { easWorkflow, easWorkflowPath } from './easWorkflow.js';
 import { type MobileStage, mobileStage } from './stage.js';
@@ -402,6 +403,14 @@ export interface EasSyncResult {
 	easJsonChanged: boolean;
 	/** The stage's EAS workflow, relative to the app, and whether it changed. */
 	workflow: { path: string; changed: boolean };
+	/** The app, as it is declared. */
+	declaration: MobileAppDeclaration;
+	/**
+	 * Whether the stage's deploy sets the app up on Google Play
+	 * (`deploy.mobile.<stage>` is `google-play`) — and so whether a store
+	 * build submitted to Play needs the key that deploy keeps in EAS.
+	 */
+	play: boolean;
 }
 
 /**
@@ -433,6 +442,9 @@ export async function easSync(
 		: {};
 	const after = withStageProfiles(before, stage);
 	const easJsonChanged = JSON.stringify(before) !== JSON.stringify(after);
+
+	const choice = stageProvider(workspace, 'mobile', options.stage);
+	const play = choice.mode === 'provider' && choice.name === 'google-play';
 
 	const workflowPath = easWorkflowPath(stage.stage);
 	const workflowFile = join(dir, workflowPath);
@@ -470,6 +482,8 @@ export async function easSync(
 			values,
 			easJsonChanged,
 			workflow,
+			declaration,
+			play,
 		};
 	}
 
@@ -498,5 +512,7 @@ export async function easSync(
 		values,
 		easJsonChanged,
 		workflow,
+		declaration,
+		play,
 	};
 }

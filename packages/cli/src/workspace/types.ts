@@ -3,6 +3,7 @@ import type { ConstructManifest } from '@geekmidas/manifest';
 import type { StageCdnConfig } from '../compose/cdnConfig.js';
 import type { DnsRecordsMode } from '../compose/dnsConfig.js';
 import type { AwsRegion, StateConfig } from '../deploy/StateProvider.js';
+import type { GooglePlayConfig } from '../providers/googlePlay/config.js';
 import type {
 	SesEmailConfig,
 	SesInboxConfig,
@@ -383,6 +384,25 @@ export type StageInboxConfig = 'external' | SesInboxConfig | false;
 export type StageEmailConfig = 'external' | SesEmailConfig | false;
 
 /**
+ * What sets one deployed stage's mobile apps up in the stores —
+ * `deploy.mobile`, by stage:
+ *
+ * - `{ provider: 'google-play', developer }` — the deploy makes what EAS
+ *   Submit needs to publish each `MobileApp` to Google Play, from its
+ *   `android.package` and `eas.projectId`: a service account in a Google
+ *   Cloud project, its access to the app in Play Console, its key in EAS,
+ *   and the store listing kept beside the app (`store/play/`).
+ * - `'external'` — the default: EAS's submit credentials are yours to set.
+ * - `false` — the stage ships no mobile app; a `MobileApp` on it is refused.
+ *
+ * @example
+ * ```ts
+ * mobile: { production: { provider: 'google-play', developer: '5551234567' } }
+ * ```
+ */
+export type StageMobileConfig = 'external' | GooglePlayConfig | false;
+
+/**
  * One deployed compose stage's backups — `deploy.backups`, by stage.
  *
  * A stage that runs Postgres is backed up whether it names one or not: every
@@ -583,6 +603,11 @@ export interface DeployConfig<S extends string = string> {
 	 * produces. See {@link StageEmailConfig}.
 	 */
 	email?: StageMap<S, StageEmailConfig>;
+	/**
+	 * What sets each deployed stage's mobile apps up in the stores — the
+	 * `mobile-app` kind `MobileApp` produces. See {@link StageMobileConfig}.
+	 */
+	mobile?: StageMap<S, StageMobileConfig>;
 	/**
 	 * When each deployed compose stage's databases are backed up, and how
 	 * long a backup is kept — see {@link StageBackupsConfig}.

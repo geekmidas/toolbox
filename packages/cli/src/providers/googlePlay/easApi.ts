@@ -1,8 +1,9 @@
 /**
- * EAS, as `gkm deploy:google-play` reaches it: the GraphQL API eas-cli itself
- * calls, with an `EXPO_TOKEN` — to upload a Google service account key and
- * assign it to the app's Android credentials for EAS Submit, which is what
- * `eas credentials` does interactively.
+ * EAS, as the `google-play` provider reaches it: the GraphQL API eas-cli
+ * itself calls, with an `EXPO_TOKEN` — to upload a Google service account
+ * key and assign it to the app's Android credentials for EAS Submit, which
+ * is what `eas credentials` does interactively, and to find the store build
+ * a new app's first upload is.
  *
  * The documents are eas-cli's own (24.x), each selecting only what gkm reads:
  * eas-cli's credentials fragment also brings back the app's keystore and its
@@ -17,7 +18,7 @@ export const EAS_GRAPHQL = 'https://api.expo.dev/graphql';
 export class ExpoTokenMissing extends GkmError {
 	constructor() {
 		super(
-			'gkm uploads the key to EAS with an access token, and EXPO_TOKEN is not ' +
+			'gkm keeps the key EAS Submit uses with an access token, and EXPO_TOKEN is not ' +
 				'set. Create one at https://expo.dev/settings/access-tokens and export ' +
 				'it as EXPO_TOKEN.',
 		);
@@ -63,10 +64,17 @@ export interface EasApi {
 		json: Record<string, unknown>,
 	): Promise<EasGoogleKey>;
 	/** Make a key the one EAS Submit uses for the credentials. */
-	useForSubmissions(credentialsId: string, keyId: string): Promise<void>;
+	assignForSubmissions(credentialsId: string, keyId: string): Promise<void>;
 	/** Every key on the account. */
 	keys(accountName: string): Promise<EasGoogleKey[]>;
 	deleteKey(id: string): Promise<void>;
+	/**
+	 * The newest finished Android store build of the project, and where its
+	 * `.aab` is downloaded from — what a new app's first upload is.
+	 */
+	latestStoreBuild(
+		projectId: string,
+	): Promise<{ id: string; url: string } | undefined>;
 }
 
 export function easApi(
@@ -216,7 +224,7 @@ export function easApi(
 			return data.googleServiceAccountKey.createGoogleServiceAccountKey;
 		},
 
-		async useForSubmissions(credentialsId, keyId) {
+		async assignForSubmissions(credentialsId, keyId) {
 			await call(
 				'SetGoogleServiceAccountKeyForSubmissionsMutation',
 				`mutation SetGoogleServiceAccountKeyForSubmissionsMutation(
@@ -274,6 +282,50 @@ export function easApi(
 				after = page.pageInfo.hasNextPage ? page.pageInfo.endCursor : null;
 			} while (after);
 			return keys;
+		},
+
+		async latestStoreBuild(projectId) {
+			const data = await call<{
+				app: {
+					byId: {
+						builds: {
+							id: string;
+							artifacts: { buildUrl: string | null } | null;
+						}[];
+					};
+				};
+			}>(
+				'ViewBuildsOnAppQuery',
+				`query ViewBuildsOnAppQuery(
+  $appId: String!
+  $offset: Int!
+  $limit: Int!
+  $filter: BuildFilter
+) {
+  app {
+    byId(appId: $appId) {
+      id
+      builds(offset: $offset, limit: $limit, filter: $filter) {
+        id
+        artifacts { buildUrl }
+      }
+    }
+  }
+}`,
+				{
+					appId: projectId,
+					offset: 0,
+					limit: 1,
+					filter: {
+						platform: 'ANDROID',
+						status: 'FINISHED',
+						distribution: 'STORE',
+					},
+				},
+			);
+			const build = data.app.byId.builds[0];
+			const url = build?.artifacts?.buildUrl;
+			return build && url ? { id: build.id, url } : undefined;
 		},
 
 		async deleteKey(id) {

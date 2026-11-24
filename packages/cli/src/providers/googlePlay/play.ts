@@ -4,6 +4,7 @@
  * check that the new key can act on the app.
  */
 
+import { createHash } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { extname, join } from 'node:path';
 import type { PlayTrack } from '@geekmidas/manifest';
@@ -12,13 +13,13 @@ import {
 	GoogleApiError,
 	type GoogleClient,
 	googleClient,
-} from '../../providers/google/client.js';
+} from '../google/client.js';
 import {
 	GoogleTokenExchangeFailed,
 	type ServiceAccountJson,
 	serviceAccountToken,
-} from '../../providers/google/credentialsFile.js';
-import { ANDROID_PUBLISHER_SCOPE } from '../../providers/google/gcloud.js';
+} from '../google/credentialsFile.js';
+import { ANDROID_PUBLISHER_SCOPE } from '../google/gcloud.js';
 
 export type { ServiceAccountJson };
 
@@ -39,11 +40,22 @@ export class PlayAppMissing extends GkmError {
 		super(
 			`Play Console has no app '${packageName}', and Play has no API that ` +
 				`creates one. Create it at https://play.google.com/console/developers/` +
-				`${developer}/create-new-app, with ${packageName} as its package, then ` +
-				'run this again.',
+				`${developer}/create-new-app: ${createAppSteps(packageName)}`,
 		);
 		this.name = 'PlayAppMissing';
 	}
+}
+
+/**
+ * What Play Console's "Create app" asks, answered: the package is not asked
+ * there — the first upload sets it — so it is said here to be the one.
+ */
+export function createAppSteps(packageName: string): string {
+	return (
+		'name it as the store should show it, pick its default language, ' +
+		'App, and Free or Paid, accept the declarations, then upload a first ' +
+		`build of ${packageName} to the Internal testing track.`
+	);
 }
 
 /** The new key could not open an edit on the app. */
@@ -54,7 +66,7 @@ export class PlayKeyUnverified extends GkmError {
 	) {
 		super(
 			`The new key for ${email} could not open an edit on the app (${detail}). ` +
-				'Its access can take a few minutes to reach Play: run this again shortly.',
+				'Its access can take a few minutes to reach Play: deploy again shortly.',
 		);
 		this.name = 'PlayKeyUnverified';
 	}
@@ -278,6 +290,25 @@ export function readPlayStore(appDir: string): PlayStore | undefined {
 
 	const dataSafety = text(join(root, 'data-safety.csv'));
 	return { listings, ...(dataSafety ? { dataSafety } : {}) };
+}
+
+/**
+ * What the listing kept beside the app comes to, as one digest — every
+ * text, every image's bytes, the data safety form. A deploy pushes the
+ * listing when this differs from the one it last pushed.
+ */
+export function playStoreDigest(store: PlayStore): string {
+	const hash = createHash('sha256');
+	for (const listing of store.listings) {
+		const { images, ...text } = listing;
+		hash.update(JSON.stringify(text));
+		for (const [type, files] of Object.entries(images)) {
+			hash.update(type);
+			for (const file of files ?? []) hash.update(readFileSync(file));
+		}
+	}
+	hash.update(store.dataSafety ?? '');
+	return hash.digest('hex').slice(0, 16);
 }
 
 /**
