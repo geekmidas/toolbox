@@ -1,5 +1,33 @@
 # @geekmidas/cli
 
+## 10.0.0-alpha.196
+
+### Minor Changes
+
+- [#559](https://github.com/geekmidas/toolbox/pull/559) [`dfbdd8d`](https://github.com/geekmidas/toolbox/commit/dfbdd8d844e0bb302ee7a7d5ea5744d7dc057bfb) Thanks [@geekmidas](https://github.com/geekmidas)! - `Maps`: a construct whose keys are restricted by what calls it, made by the deploy in a Google Cloud project
+
+  - ✨ **`new Maps('Maps', { apis: ['maps', 'places'] })`** from `@geekmidas/constructs/maps`. `apis` is what the app calls — `maps`, `static-maps`, `places`, `geocoding`, `routes` — and every key is restricted to them.
+  - **A key per kind of caller, read off the graph.** A server process that depends on it holds `MAPS_API_KEY` (`services.maps.apiKey`); a site `MAPS_BROWSER_KEY`, inlined under its bundle prefix; a mobile app `MAPS_ANDROID_KEY` and `MAPS_IOS_KEY`. Each caller is handed only its own (`mapsRolesFor`, `mapsCallers` in `@geekmidas/manifest`).
+  - **`deploy.maps.<stage> = { provider: 'google', project?, android? }`.** Every deploy finds or creates the project, turns on the APIs, stops with `MapsBillingDisabled` when no billing account is linked (gkm never links one), and makes each key: the browser key restricted to the calling sites' hosts, the Android key to the `MobileApp`'s `android.package` and the stage's `android.sha1` certificates, the iOS key to its `ios.bundleIdentifier`. Restrictions follow the graph on every deploy; `--rotate-keys` rotates them like every provider's keys. A key the stage set by hand is used as it is.
+  - **`MobileApp` declares `ios: { bundleIdentifier }`** beside `android: { package }`: the construct is where a deploy reads an app's identity, so no Expo config is evaluated to find it.
+  - `stageClouds` reports Google for a stage whose maps are made there.
+
+### Patch Changes
+
+- Updated dependencies [[`dfbdd8d`](https://github.com/geekmidas/toolbox/commit/dfbdd8d844e0bb302ee7a7d5ea5744d7dc057bfb)]:
+  - @geekmidas/constructs@10.0.0-alpha.196
+  - @geekmidas/manifest@10.0.0-alpha.196
+  - @geekmidas/edge@10.0.0-alpha.196
+  - @geekmidas/cache@10.0.0-alpha.196
+  - @geekmidas/db@10.0.0-alpha.196
+  - @geekmidas/envkit@10.0.0-alpha.196
+  - @geekmidas/errors@10.0.0-alpha.196
+  - @geekmidas/logger@10.0.0-alpha.196
+  - @geekmidas/schema@10.0.0-alpha.196
+  - @geekmidas/services@10.0.0-alpha.196
+  - @geekmidas/storage@10.0.0-alpha.196
+  - @geekmidas/telescope@10.0.0-alpha.196
+
 ## 10.0.0-alpha.195
 
 ### Minor Changes

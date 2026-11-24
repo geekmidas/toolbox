@@ -211,6 +211,7 @@
     "logger-node-env",
     "logger-otel-bridge",
     "logger-url-credentials",
+    "maps-construct",
     "memory-adapter-conformance",
     "minio-image",
     "minio-object-events",
