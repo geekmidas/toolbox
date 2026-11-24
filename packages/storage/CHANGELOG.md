@@ -1,5 +1,12 @@
 # @geekmidas/storage
 
+## 10.0.0-alpha.194
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/cache@10.0.0-alpha.194
+
 ## 10.0.0-alpha.193
 
 ### Patch Changes

@@ -225,6 +225,7 @@
     "no-hand-rolled-services",
     "no-rabbitmq-url",
     "object-events",
+    "one-google-sign-in",
     "one-manifest",
     "openapi-document-fixes",
     "optional-peers-audit",
