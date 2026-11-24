@@ -293,7 +293,9 @@ export function createSstTarget(
 
 		async build(ctx, run) {
 			ctx.logger.info('\n📦 Building the manifest SST deploys');
-			// No credential: the build runs the project's code and needs none.
+			// No credential: the build runs the project's code. A profile reaches
+			// it as a name on the command line, which the build reads the stage's
+			// secrets with; keys never do.
 			await exec(ctx, run, buildCommand(ctx, run), {
 				env: { ...run.sandbox.env },
 				timeoutMs: BUILD_TIMEOUT_MS,
@@ -392,6 +394,11 @@ export function createSstTarget(
 	});
 }
 
+/**
+ * `gkm build` for the stage. It reads the stage's secrets store, so a profile
+ * credential is passed on as `--profile` — a name, not keys: the sandbox
+ * hands the project's code no `AWS_*`, and keys stay out of it.
+ */
 function buildCommand(
 	ctx: DeployPhaseContext<unknown>,
 	run: SstRun,
@@ -402,6 +409,7 @@ function buildCommand(
 		'aws',
 		'--stage',
 		ctx.stage,
+		...('profile' in run.aws ? ['--profile', run.aws.profile] : []),
 	]);
 }
 

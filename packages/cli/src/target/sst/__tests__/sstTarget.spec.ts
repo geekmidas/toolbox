@@ -305,6 +305,34 @@ describe('the sst target', () => {
 		expect(sst.env.AWS_PROFILE).toBe('shop-prod');
 	}, 60_000);
 
+	it('builds with the profile by name, and hands the build no keys', async () => {
+		const sandbox = new RecordingSandbox(root, () => ({}));
+
+		await run(sandbox, {
+			credentials: awsProvider({ profile: 'shop-prod' }),
+		});
+
+		const build = sandbox.execs.find((exec) => exec.args[1] === 'gkm')!;
+		expect({
+			command: [build.command, ...build.args],
+			aws: Object.keys(build.env).filter((name) => name.startsWith('AWS_')),
+		}).toEqual({
+			command: [
+				'pnpm',
+				'exec',
+				'gkm',
+				'build',
+				'--provider',
+				'aws',
+				'--stage',
+				STAGE,
+				'--profile',
+				'shop-prod',
+			],
+			aws: [],
+		});
+	}, 60_000);
+
 	it('fails verify, naming each surface that does not answer', async () => {
 		server = await listen({ '/health': 503, '/': 200 });
 		const url = baseUrl(server);
