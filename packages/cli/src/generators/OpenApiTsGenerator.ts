@@ -11,15 +11,15 @@ import {
 	printTelemetryDefault,
 } from './clientTelemetry.js';
 import {
-	type ProblemResponsesInfo,
-	problemResponsesOf,
-	withProblemResponses,
-} from './problemResponses.js';
-import {
 	declaredResponseSchemas,
 	printResponses,
 	type ResponsesInfo,
 } from './openApiResponses.js';
+import {
+	type ProblemResponsesInfo,
+	problemResponsesOf,
+	withProblemResponses,
+} from './problemResponses.js';
 import { generateWebhookTypes } from './webhookTypes.js';
 
 export type { ClientTelemetryDefault } from './clientTelemetry.js';
