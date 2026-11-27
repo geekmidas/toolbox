@@ -364,9 +364,16 @@ export class HonoEndpoint<
 			validators.push(async (c: Context, next: () => Promise<void>) => {
 				let raw: unknown;
 				try {
-					raw = await readRequestBody(c.req, c.req.header('content-type'), {
-						untyped: 'empty',
-					});
+					const contentType = c.req.header('content-type');
+					// A request that sent no body, to an endpoint whose body is
+					// optional, is handed none — `{}` would be validated as a body
+					// and refused for the fields it lacks.
+					raw =
+						!contentType && (await endpoint.isBodyOptional())
+							? undefined
+							: await readRequestBody(c.req, contentType, {
+									untyped: 'empty',
+								});
 				} catch (error) {
 					if (!isHttpError(error)) throw error;
 					c.header('X-Request-ID', requestIdOf(c));

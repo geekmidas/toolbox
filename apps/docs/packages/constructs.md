@@ -3067,3 +3067,21 @@ const schema = await Endpoint.buildOpenApiSchema(
 ```
 
 The Hono adapter automatically serves OpenAPI docs at `/docs` (configurable).
+
+The document — and the client `gkm openapi` generates — describes what each
+endpoint does, from what the endpoint already declares. What follows is what
+each part is written from.
+
+### Optional request bodies
+
+A body whose schema accepts `undefined` may be left out. The document says
+`requestBody.required: false`, the generated client lets the caller omit
+`body`, and a request that sends none reaches the handler as `undefined`
+rather than being refused for the fields an empty object lacks.
+
+```typescript
+export const touch = router
+  .patch('/sessions/:id')
+  .body(z.object({ note: z.string() }).optional())
+  .handle(async ({ body }) => touchSession(body?.note));
+```

@@ -232,6 +232,26 @@ export class Endpoint<
 		>;
 	}
 
+	private bodyOptional?: Promise<boolean>;
+
+	/**
+	 * Whether the request may leave its body out — the `.body()` schema accepts
+	 * `undefined`, as `z.object({…}).optional()` does. Asked of the schema
+	 * itself, so an optional body is declared once, the way the handler reads
+	 * it, and the document and the adaptors agree with the type.
+	 */
+	isBodyOptional(): Promise<boolean> {
+		const schema = this.input?.body as StandardSchemaV1 | undefined;
+		if (!schema) return Promise.resolve(true);
+		this.bodyOptional ??= Promise.resolve(
+			schema['~standard'].validate(undefined),
+		).then(
+			(result) => !result.issues,
+			() => false,
+		);
+		return this.bodyOptional;
+	}
+
 	static isSuccessStatus(status: number): boolean {
 		return status >= 200 && status < 300;
 	}
@@ -538,7 +558,7 @@ export class Endpoint<
 				);
 				if (bodySchema) {
 					operation.requestBody = {
-						required: true,
+						required: !(await this.isBodyOptional()),
 						content: {
 							'application/json': {
 								schema: bodySchema,

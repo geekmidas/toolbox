@@ -37,16 +37,36 @@ export type ExtractRequestBody<
 	Paths,
 	Route extends OpenAPIRoutes<Paths>,
 	Method extends ExtractMethod<Paths, Route>,
-> = Paths[Route][Method] extends { requestBody?: infer RB }
+> = RequestBodyOf<
+	Paths[Route][Method],
+	// `requestBody?:` is a body the endpoint does not require
+	// (`required: false`): the caller may leave it out. Asked here, before the
+	// operation is matched — inside that match it reads as required.
+	'requestBody' extends keyof Paths[Route][Method]
+		? IsOptionalKey<Paths[Route][Method], 'requestBody'>
+		: false
+>;
+
+type RequestBodyOf<Op, Optional extends boolean> = Op extends {
+	requestBody?: infer RB;
+}
 	? // An absent body is declared `requestBody?: never`, which reads as
 		// `undefined` — and `undefined` matches `{ content?: … }` with `B`
 		// inferred as `unknown`, so a GET accepted any body at all.
 		[NonNullable<RB>] extends [never]
 		? never
 		: NonNullable<RB> extends { content?: { 'application/json'?: infer B } }
-			? B
+			? Optional extends true
+				? B | undefined
+				: B
 			: never
 	: never;
+
+/**
+ * Whether `K` is an optional key of `T`. Asked of `T` itself: `infer` on
+ * `{ k?: infer X }` reads an optional key's type without its `undefined`.
+ */
+type IsOptionalKey<T, K extends keyof T> = {} extends Pick<T, K> ? true : false;
 
 export type ExtractResponse<
 	Paths,
@@ -166,8 +186,12 @@ export type FilteredRequestConfig<
 type BuildRequestConfig<TParams, TQuery, TBody> = SimplifyIntersection<
 	// params: required if not never
 	([TParams] extends [never] ? {} : { params: TParams }) &
-		// body: required if not never
-		([TBody] extends [never] ? {} : { body: TBody }) &
+		// body: required if not never, unless it may be left out
+		([TBody] extends [never]
+			? {}
+			: undefined extends TBody
+				? { body?: TBody }
+				: { body: TBody }) &
 		// query: required when it has a required key, optional otherwise
 		([TQuery] extends [never]
 			? {}
@@ -191,6 +215,13 @@ type HasRequiredQuery<TQuery> = [TQuery] extends [never]
 		? false
 		: true;
 
+/** Whether a body is one the caller must send. */
+type HasRequiredBody<TBody> = [TBody] extends [never]
+	? false
+	: undefined extends TBody
+		? false
+		: true;
+
 /**
  * Check if the config object is required (has any required fields)
  */
@@ -201,7 +232,9 @@ export type IsConfigRequired<
 	? Route extends OpenAPIRoutes<Paths>
 		? Lowercase<Method> extends ExtractMethod<Paths, Route>
 			? ExtractPathParams<Paths, Route> extends never
-				? ExtractRequestBody<Paths, Route, Lowercase<Method>> extends never
+				? HasRequiredBody<
+						ExtractRequestBody<Paths, Route, Lowercase<Method>>
+					> extends false
 					? HasRequiredQuery<
 							ExtractQueryParams<Paths, Route, Lowercase<Method>>
 						>

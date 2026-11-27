@@ -75,6 +75,8 @@ interface EndpointInfo {
 	tags?: string[];
 	operationId?: string;
 	responseType: string;
+	/** Whether the request may leave its body out. */
+	bodyOptional: boolean;
 }
 
 interface SecuritySchemeInfo {
@@ -135,31 +137,37 @@ export class OpenApiTsGenerator {
 	private async extractEndpointInfos(
 		endpoints: Endpoint<any, any, any, any, any, any>[],
 	): Promise<EndpointInfo[]> {
-		return endpoints.map((ep) => {
-			const route = ep.route.replace(/:(\w+)/g, '{$1}');
-			const method = ep.method.toUpperCase();
+		return Promise.all(
+			endpoints.map(async (ep) => {
+				const route = ep.route.replace(/:(\w+)/g, '{$1}');
+				const method = ep.method.toUpperCase();
 
-			// Get security scheme from authorizer (if available)
-			// This is the preferred way - the scheme is stored directly on the authorizer
-			const securityScheme = ep.authorizer?.securityScheme as
-				| SecuritySchemeObject
-				| undefined;
+				// Get security scheme from authorizer (if available)
+				// This is the preferred way - the scheme is stored directly on the authorizer
+				const securityScheme = ep.authorizer?.securityScheme as
+					| SecuritySchemeObject
+					| undefined;
 
-			return {
-				endpoint: `${method} ${route}`,
-				route,
-				method,
-				authorizerName: ep.authorizer?.name ?? null,
-				authorizerType: ep.authorizer?.type ?? null,
-				securityScheme: securityScheme ?? null,
-				input: ep.input,
-				output: ep.outputSchema,
-				description: ep.description,
-				tags: ep.tags,
-				operationId: ep.operationId,
-				responseType: ep.responseType ?? 'application/json',
-			};
-		});
+				return {
+					endpoint: `${method} ${route}`,
+					route,
+					method,
+					authorizerName: ep.authorizer?.name ?? null,
+					authorizerType: ep.authorizer?.type ?? null,
+					securityScheme: securityScheme ?? null,
+					input: ep.input,
+					output: ep.outputSchema,
+					description: ep.description,
+					tags: ep.tags,
+					operationId: ep.operationId,
+					responseType: ep.responseType ?? 'application/json',
+					bodyOptional:
+						typeof ep.isBodyOptional === 'function'
+							? await ep.isBodyOptional()
+							: false,
+				};
+			}),
+		);
 	}
 
 	private collectSecuritySchemes(
@@ -625,7 +633,10 @@ export class OpenApiTsGenerator {
 				info.input.body,
 				`${baseName}Input`,
 			);
-			parts.push(`requestBody: {
+			// An optional body is an optional key, as openapi-typescript writes
+			// `required: false` — which is what lets the client leave it out.
+			const key = info.bodyOptional ? 'requestBody?' : 'requestBody';
+			parts.push(`${key}: {
         content: {
           'application/json': ${bodyName};
         };

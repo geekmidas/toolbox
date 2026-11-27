@@ -55,33 +55,52 @@ type InferOperationParameters<TInput extends EndpointSchemas> = TInput extends {
 	: {};
 
 /**
+ * The request body: a required key when the schema needs one, an optional
+ * key when it accepts `undefined` (`z.object({…}).optional()`), as the
+ * document writes `required: false`.
+ */
+type InferRequestBody<TInput extends EndpointSchemas> = TInput extends {
+	body: infer B;
+}
+	? undefined extends InferStandardSchemaInput<B>
+		? {
+				requestBody?: {
+					content: {
+						'application/json': Exclude<InferStandardSchemaInput<B>, undefined>;
+					};
+				};
+			}
+		: {
+				requestBody: {
+					content: {
+						// What the client sends, before parsing — the same reasoning as
+						// the query above. For a schema that coerces nothing these two
+						// are the same type, so this costs nothing and is right when it
+						// matters.
+						'application/json': InferStandardSchemaInput<B>;
+					};
+				};
+			}
+	: { requestBody?: never };
+
+/**
  * Infers the operation object compatible with TypedFetcher
  */
 type InferOperation<
 	TInput extends EndpointSchemas,
 	TOutput extends StandardSchemaV1 | undefined,
-> = InferOperationParameters<TInput> & {
-	requestBody?: TInput extends { body: infer B }
-		? {
-				content: {
-					// What the client sends, before parsing — the same reasoning as
-					// the query above. For a schema that coerces nothing these two
-					// are the same type, so this costs nothing and is right when it
-					// matters.
-					'application/json': InferStandardSchemaInput<B>;
-				};
-			}
-		: never;
-	responses: {
-		200: {
-			content: TOutput extends StandardSchemaV1
-				? {
-						'application/json': InferStandardSchema<TOutput>;
-					}
-				: never;
+> = InferOperationParameters<TInput> &
+	InferRequestBody<TInput> & {
+		responses: {
+			200: {
+				content: TOutput extends StandardSchemaV1
+					? {
+							'application/json': InferStandardSchema<TOutput>;
+						}
+					: never;
+			};
 		};
 	};
-};
 
 /**
  * Infers the TypedFetcher-compatible paths structure from a single endpoint
