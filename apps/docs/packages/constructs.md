@@ -3093,7 +3093,6 @@ export const listCharges = router
   .get('/v1/charges')
   .summary('List charges')          // the line a reference lists it under
   .description('Oldest first.')     // the text beneath
-  .tags(['payments'])
   .deprecated()                     // `deprecated: true`, `@deprecated` in the client
   .extensions({ 'x-internal': true })
   .handle(async () => listAll());
@@ -3102,26 +3101,54 @@ export const listCharges = router
 `.extensions()` takes `x-` keys only and merges across calls; any other key
 throws `NotAnExtension`, since OpenAPI defines it and the endpoint writes it.
 
-### What the API says about itself
+### Tags
 
-The `RestApi`'s `openapi` option is what its document says about the API as a
-whole. Untitled, a document is titled after the surface's id.
+A tag groups endpoints into a section of the API reference. It is a branch,
+like `.database()`: endpoints built from it carry it, its description is
+written once, and it chains — a second `.tag()` adds a second tag.
+
+```typescript
+// endpoints/router.ts
+export const payments = api.tag('payments', 'Taking money');
+export const refunds = api.database(database).tag('refunds', 'Giving it back');
+
+// endpoints/charges.ts
+export const charge = payments
+  .post('/charges')
+  .tag('beta', 'Not yet stable')   // and on the endpoint itself
+  .handle(async () => …);
+```
+
+`.tags(['a', 'b'])` adds several by name. The document lists every tag once,
+in the order the endpoints first name it, with the description any of them
+gave it.
+
+### Contact, licence and servers
+
+A document is titled after its surface's id. Its `info.contact` and
+`info.license` are the `RestApi`'s:
 
 ```typescript
 export const api = new RestApi('Api', {
   path: 'apps/api',
   defaultAuthorizer: 'none',
-  openapi: {
-    title: 'Payments API',
-    version: '2.1.0',
-    tags: [
-      { name: 'payments', description: 'Taking money' },
-      { name: 'refunds', description: 'Giving it back' },
-    ],
-  },
+  contact: { name: 'Platform', email: 'platform@example.com' },
+  license: { name: 'Apache-2.0', identifier: 'Apache-2.0' },
 });
 ```
 
-Tags are listed in the order declared, then any tag an endpoint names that
-was not declared, by name. `gkm openapi` titles the generated client from the
-same option before the workspace's `openapi` config.
+Its `servers` are derived from the workspace: one per stage in `domains`, at
+the surface's label (its `subdomain`, or its id kebab-cased) under that
+stage's domain, described by the stage's name.
+
+```typescript
+// gkm.config.ts — domains: { staging: 'staging.myapp.com', production: 'myapp.com' }
+// gives the Api surface:
+//   servers: [
+//     { url: 'https://api.staging.myapp.com', description: 'staging' },
+//     { url: 'https://api.myapp.com', description: 'production' },
+//   ]
+```
+
+The document served at `/__docs` and the generated client's `apiInfo` both
+carry the contact, licence and servers.

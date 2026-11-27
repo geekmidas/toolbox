@@ -11,6 +11,7 @@ import type { ClientTelemetryDefault } from './generators/clientTelemetry.js';
 import { telemetryArgs } from './generators/clientTelemetry.js';
 import { EndpointGenerator } from './generators/EndpointGenerator.js';
 import { OpenApiTsGenerator } from './generators/OpenApiTsGenerator.js';
+import { surfaceServers } from './openapiServers.js';
 
 export { parseTelemetryFlag } from './generators/clientTelemetry.js';
 
@@ -18,6 +19,7 @@ import type { GkmConfig, OpenApiConfig, Routes } from './types.js';
 import { appKey } from './workspace/derive.js';
 import { appConstructGlobs } from './workspace/index.js';
 import type {
+	DomainsConfig,
 	NormalizedAppConfig,
 	NormalizedWorkspace,
 } from './workspace/types.js';
@@ -105,6 +107,7 @@ export async function generateOpenApiFrom(
 		bustCache?: boolean;
 		root?: string;
 		telemetry?: ClientTelemetryDefault;
+		domains?: DomainsConfig;
 	} = {},
 ): Promise<OpenApiResult | null> {
 	const loaded = await new EndpointGenerator().load(
@@ -148,6 +151,12 @@ export async function generateOpenApi(
 		 * `Telemetry` construct, which decides it for the clients it imports.
 		 */
 		telemetry?: ClientTelemetryDefault;
+		/**
+		 * Each deployed stage's base domain — the workspace's `domains` — from
+		 * which each client's `apiInfo.servers` are derived, when its surface
+		 * lists none of its own.
+		 */
+		domains?: DomainsConfig;
 	} = {},
 ): Promise<OpenApiResult | null> {
 	const root = options.root ?? process.cwd();
@@ -194,18 +203,21 @@ export async function generateOpenApi(
 
 		await mkdir(dirname(outputPath), { recursive: true });
 
-		// What the surface says about itself — the RestApi's `openapi` — wins
-		// over the workspace-wide config, which is the same for every surface.
-		const document = surfaceEndpoints.find(
-			(endpoint) => endpoint.surface?.openapi,
-		)?.surface?.openapi;
+		// The contact and licence the RestApi was given, and the host it
+		// answers on under each stage's domain.
+		const surface = surfaceEndpoints.find(
+			(endpoint) => endpoint.surface,
+		)?.surface;
 
 		const tsContent = await tsGenerator.generate(surfaceEndpoints, {
 			// The surface's own name, so a spec says which API it describes
 			// rather than repeating one title across all of them.
-			title: document?.title ?? openApiConfig.title ?? surfaceId,
-			version: document?.version ?? openApiConfig.version!,
-			description: document?.description ?? openApiConfig.description!,
+			title: openApiConfig.title ?? surfaceId,
+			version: openApiConfig.version!,
+			description: openApiConfig.description!,
+			...(surface?.contact ? { contact: surface.contact } : {}),
+			...(surface?.license ? { license: surface.license } : {}),
+			servers: surfaceServers(surface ?? { id: surfaceId }, options.domains),
 			...(options.telemetry !== undefined
 				? { telemetry: options.telemetry }
 				: {}),
@@ -246,6 +258,9 @@ export async function openapiCommand(
 			const result = await generateOpenApiFrom(config.constructs, {
 				openapi: config.openapi,
 				root: loadedConfig.workspace.root,
+				...(loadedConfig.workspace.domains
+					? { domains: loadedConfig.workspace.domains }
+					: {}),
 				...(options.telemetry !== undefined
 					? { telemetry: options.telemetry }
 					: {}),
@@ -404,6 +419,7 @@ async function generateOpenApiForApp(
 		openapi: app.openapi ?? { enabled: true },
 		silent,
 		root: workspace.root,
+		...(workspace.domains ? { domains: workspace.domains } : {}),
 		...(telemetry !== undefined ? { telemetry } : {}),
 	});
 }

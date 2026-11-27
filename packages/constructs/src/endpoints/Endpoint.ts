@@ -108,6 +108,8 @@ export class Endpoint<
 	description?: string;
 	/** Optional tags for OpenAPI documentation */
 	tags?: string[];
+	/** What each of its tags is, where one was described — `.tag(name, description)` */
+	tagDescriptions?: Record<string, string>;
 	/** A one-line summary of what it does, for the API reference */
 	summary?: string;
 	/** Whether callers should stop using it — `deprecated: true` in the document */
@@ -197,36 +199,51 @@ export class Endpoint<
 		options?: OpenApiSchemaOptions,
 	) {
 		return buildOpenApiSchema(endpoints, {
-			...Endpoint.surfaceDocument(endpoints),
+			...Endpoint.surfaceInfo(endpoints),
+			tags: Endpoint.documentTags(endpoints),
 			...definedOnly(options ?? {}),
 		});
 	}
 
 	/**
-	 * What the endpoints' surfaces say about the API — the `RestApi`'s
-	 * `openapi` option. One surface's, titled after it unless it says
-	 * otherwise; several surfaces' tags are listed together, and what only
-	 * one API can have (a title, servers) is left to the caller.
+	 * What the endpoints' surface says about the API: titled after it, with
+	 * the contact and licence it was given. Nothing when the endpoints come
+	 * from several surfaces, which no one document's `info` can describe.
 	 */
-	static surfaceDocument(
+	static surfaceInfo(
 		endpoints: Endpoint<any, any, any, any, any, any>[],
 	): OpenApiSchemaOptions {
-		const surfaces = [
-			...new Map(
-				endpoints
-					.map((endpoint) => endpoint.surface)
-					.filter(Boolean)
-					.map((surface) => [surface.id, surface] as const),
-			).values(),
-		];
+		const surfaces = new Map(
+			endpoints
+				.map((endpoint) => endpoint.surface)
+				.filter(Boolean)
+				.map((surface) => [surface.id, surface] as const),
+		);
+		if (surfaces.size !== 1) return {};
 
-		if (surfaces.length === 1) {
-			const [surface] = surfaces;
-			return { title: surface!.id, ...surface!.openapi };
+		const [surface] = surfaces.values();
+		return {
+			title: surface!.id,
+			...(surface!.contact ? { contact: surface!.contact } : {}),
+			...(surface!.license ? { license: surface!.license } : {}),
+		};
+	}
+
+	/**
+	 * The document's tags, in the order the endpoints first name them, each
+	 * with the description any endpoint gave it.
+	 */
+	static documentTags(
+		endpoints: Endpoint<any, any, any, any, any, any>[],
+	): EndpointTag[] {
+		let tags: EndpointTag[] = [];
+		for (const endpoint of endpoints) {
+			for (const name of endpoint.tags ?? []) {
+				const description = endpoint.tagDescriptions?.[name];
+				tags = withTag(tags, description ? { name, description } : { name });
+			}
 		}
-
-		const tags = surfaces.flatMap((surface) => surface.openapi?.tags ?? []);
-		return tags.length > 0 ? { tags } : {};
+		return tags;
 	}
 
 	/**
@@ -751,7 +768,18 @@ export class Endpoint<
 		this.route = route;
 		this.method = method;
 		this.description = description;
-		this.tags = tags;
+		if (tags) {
+			this.tags = tags.map((tag) => (typeof tag === 'string' ? tag : tag.name));
+			const described = tags.filter(
+				(tag): tag is EndpointTag & { description: string } =>
+					typeof tag !== 'string' && Boolean(tag.description),
+			);
+			if (described.length) {
+				this.tagDescriptions = Object.fromEntries(
+					described.map((tag) => [tag.name, tag.description]),
+				);
+			}
+		}
 		if (summary) this.summary = summary;
 		if (deprecated) this.deprecated = deprecated;
 		if (extensions) this.extensions = extensions;
@@ -871,16 +899,35 @@ export interface EndpointSurface {
 	 * `RestApi.auth()`, which session callbacks read from as `auth`.
 	 */
 	auth?: Authenticator;
-	/** What its OpenAPI document says about the API as a whole. */
-	openapi?: SurfaceDocument;
+	/**
+	 * The label it answers on under a stage's domain, when it is not its id
+	 * kebab-cased — what its document's `servers` are derived from.
+	 */
+	subdomain?: string;
+	/** Who to contact about the API — its document's `info.contact`. */
+	contact?: OpenAPIV3_1.ContactObject;
+	/** The licence the API is offered under — its document's `info.license`. */
+	license?: OpenAPIV3_1.LicenseObject;
+}
+
+/** A tag an endpoint is grouped under, and what the group is. */
+export interface EndpointTag {
+	name: string;
+	description?: string;
 }
 
 /**
- * What a surface's OpenAPI document says about the API as a whole — the
- * `RestApi`'s `openapi` option. Everything about an operation is read off
- * its endpoint instead.
+ * `tags` with `tag` added — once: naming a tag again keeps its place, and
+ * takes a description it did not have.
  */
-export type SurfaceDocument = OpenApiSchemaOptions;
+export function withTag(tags: EndpointTag[], tag: EndpointTag): EndpointTag[] {
+	const existing = tags.find((t) => t.name === tag.name);
+	if (!existing) {
+		return [...tags, tag.description ? tag : { name: tag.name }];
+	}
+	if (!tag.description || existing.description) return tags;
+	return tags.map((t) => (t.name === tag.name ? { ...t, ...tag } : t));
+}
 
 /**
  * Configuration options for creating an Endpoint instance.
@@ -932,8 +979,8 @@ export interface EndpointOptions<
 		| undefined;
 	/** Optional description for documentation */
 	description: string | undefined;
-	/** Optional tags for OpenAPI documentation */
-	tags?: string[];
+	/** Its tags — names, or names with what each is */
+	tags?: (string | EndpointTag)[];
 	/** A one-line summary for the API reference */
 	summary?: string;
 	/** Whether the endpoint is deprecated */

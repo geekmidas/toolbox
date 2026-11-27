@@ -6,21 +6,10 @@ import { NotAnExtension } from '../EndpointBuilder';
 
 /**
  * What an operation says about itself beyond its inputs and outputs — a
- * summary, whether it is deprecated, vendor extensions — and what the
- * surface says once for all of them: tag descriptions and their order.
+ * summary, whether it is deprecated, vendor extensions, the tags it is
+ * grouped under and what each tag is.
  */
-const api = new RestApi('Payments', {
-	path: '.',
-	defaultAuthorizer: 'none',
-	openapi: {
-		title: 'Payments API',
-		version: '2.1.0',
-		tags: [
-			{ name: 'payments', description: 'Taking money' },
-			{ name: 'refunds', description: 'Giving it back' },
-		],
-	},
-});
+const api = new RestApi('Payments', { path: '.', defaultAuthorizer: 'none' });
 
 describe('operation metadata', () => {
 	it('documents a summary, deprecation and vendor extensions', async () => {
@@ -63,37 +52,78 @@ describe('operation metadata', () => {
 		).toThrow(NotAnExtension);
 	});
 
-	it('lists the surface’s tags with descriptions, in its order, then any undeclared', async () => {
-		const refund = api
-			.post('/refunds')
-			.tags(['refunds'])
-			.handle(async () => ({}));
-		const charge = api
-			.post('/charges')
-			.tags(['payments', 'cards'])
-			.handle(async () => ({}));
+	it('groups a branch’s endpoints under its tag, described once', async () => {
+		const payments = api.tag('payments', 'Taking money');
+		const refunds = api.tag('refunds', 'Giving it back');
 
-		const doc = await Endpoint.buildOpenApiSchema([refund, charge]);
+		const charge = payments.post('/charges').handle(async () => ({}));
+		const refund = refunds.post('/refunds').handle(async () => ({}));
 
+		const doc = await Endpoint.buildOpenApiSchema([charge, refund]);
+
+		expect((doc.paths['/charges'] as any).post.tags).toEqual(['payments']);
 		expect(doc.tags).toEqual([
 			{ name: 'payments', description: 'Taking money' },
 			{ name: 'refunds', description: 'Giving it back' },
-			{ name: 'cards' },
 		]);
 	});
 
-	it('titles the document from the surface, unless the caller says otherwise', async () => {
-		const list = api.get('/charges').handle(async () => []);
-		const plain = new RestApi('Plain', { path: '.', defaultAuthorizer: 'none' })
-			.get('/x')
+	it('chains tags, from the branch and the endpoint alike', async () => {
+		const payments = api.tag('payments', 'Taking money').tag('cards');
+
+		const charge = payments
+			.post('/charges')
+			.tag('beta', 'Not yet stable')
+			.tags(['internal'])
 			.handle(async () => ({}));
 
-		expect((await Endpoint.buildOpenApiSchema([list])).info).toMatchObject({
-			title: 'Payments API',
-			version: '2.1.0',
-		});
-		expect((await Endpoint.buildOpenApiSchema([plain])).info.title).toBe(
-			'Plain',
+		const doc = await Endpoint.buildOpenApiSchema([charge]);
+
+		expect((doc.paths['/charges'] as any).post.tags).toEqual([
+			'payments',
+			'cards',
+			'beta',
+			'internal',
+		]);
+		expect(doc.tags).toEqual([
+			{ name: 'payments', description: 'Taking money' },
+			{ name: 'cards' },
+			{ name: 'beta', description: 'Not yet stable' },
+			{ name: 'internal' },
+		]);
+	});
+
+	it('lists a tag once, with the description any endpoint gave it', async () => {
+		const list = api
+			.get('/charges')
+			.tags(['payments'])
+			.handle(async () => []);
+		const charge = api
+			.tag('payments', 'Taking money')
+			.post('/charges')
+			.handle(async () => ({}));
+
+		const doc = await Endpoint.buildOpenApiSchema([list, charge]);
+
+		expect(doc.tags).toEqual([
+			{ name: 'payments', description: 'Taking money' },
+		]);
+	});
+
+	it('leaves the branch it came from untagged', async () => {
+		api.tag('payments');
+		const health = api.get('/health').handle(async () => ({}));
+
+		expect(
+			(await Endpoint.buildOpenApiSchema([health])).paths['/health'],
+		).not.toHaveProperty('get.tags');
+	});
+
+	it('titles the document after the surface, unless the caller says otherwise', async () => {
+		const list = api.get('/charges').handle(async () => []);
+
+		expect((await Endpoint.buildOpenApiSchema([list])).info.title).toBe(
+			'Payments',
 		);
 		expect(
 			(await Endpoint.buildOpenApiSchema([list], { title: 'Override' })).info

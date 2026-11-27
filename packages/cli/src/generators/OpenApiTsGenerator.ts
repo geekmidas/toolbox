@@ -17,6 +17,11 @@ export interface OpenApiTsOptions {
 	title?: string;
 	version?: string;
 	description?: string;
+	summary?: string;
+	contact?: { name?: string; url?: string; email?: string };
+	license?: { name: string; identifier?: string; url?: string };
+	/** Where the API is reached, stage by stage. */
+	servers?: { url: string; description?: string }[];
 	/**
 	 * Trace propagation in the generated `createApi`, off by default. The
 	 * site's edge to a `Telemetry` construct is what turns it on.
@@ -106,6 +111,15 @@ export class OpenApiTsGenerator {
 			description,
 			telemetry = false,
 		} = options;
+		const info = {
+			title,
+			...(options.summary ? { summary: options.summary } : {}),
+			version,
+			...(description ? { description } : {}),
+			...(options.contact ? { contact: options.contact } : {}),
+			...(options.license ? { license: options.license } : {}),
+			...(options.servers?.length ? { servers: options.servers } : {}),
+		};
 		const telemetryDefault = printTelemetryDefault(telemetry);
 
 		// Extract endpoint info
@@ -125,9 +139,7 @@ export class OpenApiTsGenerator {
 
 		// Build the final TypeScript module
 		return this.buildModule({
-			title,
-			version,
-			description,
+			info,
 			securitySchemes,
 			endpointAuth,
 			schemaInterfaces,
@@ -676,9 +688,7 @@ export class OpenApiTsGenerator {
 	}
 
 	private buildModule(params: {
-		title: string;
-		version: string;
-		description?: string;
+		info: Record<string, unknown>;
 		securitySchemes: SecuritySchemeInfo[];
 		endpointAuth: Record<string, string | null>;
 		schemaInterfaces: string;
@@ -686,9 +696,7 @@ export class OpenApiTsGenerator {
 		telemetryDefault: string;
 	}): string {
 		const {
-			title,
-			version,
-			description,
+			info,
 			securitySchemes,
 			endpointAuth,
 			schemaInterfaces,
@@ -865,10 +873,11 @@ interface SecuritySchemeObject {
 // API Info
 // ============================================================
 
-export const apiInfo = {
-  title: '${title}',
-  version: '${version}',${description ? `\n  description: '${description.replace(/'/g, "\\'")}',` : ''}
-} as const;
+/**
+ * What the API says about itself — its title and version, who to contact,
+ * its licence, and \`servers\`: where it is reached, one per stage.
+ */
+export const apiInfo = ${JSON.stringify(info, null, 2)} as const;
 
 // ============================================================
 // Security Schemes

@@ -2,6 +2,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join, relative } from 'node:path';
 import { Endpoint } from '@geekmidas/constructs/endpoints';
 import type { BuildContext } from '../build/types';
+import { type OpenApiServer, surfaceServers } from '../openapiServers';
 import type { RouteInfo } from '../types';
 import { driversOf, type StorageDrivers } from './drivers';
 import {
@@ -150,6 +151,20 @@ import { trustsOrigin } from '@geekmidas/constructs/endpoints';`,
 	};
 }
 
+/**
+ * Where the surface these endpoints are served from is reached, stage by
+ * stage — its document's \`servers\`. None when the workspace names no
+ * domains, or the endpoints name no surface.
+ */
+function servedFrom(
+	endpoints: GeneratedConstruct<Endpoint<any, any, any, any, any, any>>[],
+	domains: BuildContext['domains'],
+): OpenApiServer[] {
+	const surface = endpoints.find(({ construct }) => construct.surface)
+		?.construct.surface;
+	return surface ? surfaceServers(surface, domains) : [];
+}
+
 export class EndpointGenerator extends ConstructGenerator<
 	Endpoint<any, any, any, any, any, any, any, any, any, any, any, any>,
 	RouteInfo[]
@@ -193,7 +208,11 @@ export class EndpointGenerator extends ConstructGenerator<
 
 		if (target === 'server') {
 			// Generate endpoints.ts and app.ts
-			await this.generateEndpointsFile(outputDir, constructs);
+			await this.generateEndpointsFile(
+				outputDir,
+				constructs,
+				servedFrom(constructs, context.domains),
+			);
 			const appFile = await this.generateAppFile(outputDir, context);
 
 			routes.push({
@@ -269,6 +288,7 @@ export class EndpointGenerator extends ConstructGenerator<
 		endpoints: GeneratedConstruct<
 			Endpoint<any, any, any, any, any, any, any, any, any, any, any, any>
 		>[],
+		servers: OpenApiServer[] = [],
 	): Promise<string> {
 		const endpointsFileName = 'endpoints.ts';
 		const endpointsPath = join(outputDir, endpointsFileName);
@@ -324,8 +344,10 @@ export async function setupEndpoints(
 
   // The document's title, contact, tags and servers are the surface's own —
   // its \`openapi\` option — so none are written here.
+  // \`servers\` are each stage's URL, from the workspace's \`domains\` — a
+  // surface that lists its own overrides them.
   const openApiOptions: any = enableOpenApi
-    ? { docsPath: '/__docs' }
+    ? { docsPath: '/__docs'${servers.length > 0 ? `, openApiOptions: { servers: ${JSON.stringify(servers)} }` : ''} }
     : { docsPath: false };
 
   HonoEndpoint.addRoutes(endpoints, serviceDiscovery, app, openApiOptions);

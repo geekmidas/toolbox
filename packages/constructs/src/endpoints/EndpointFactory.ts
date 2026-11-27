@@ -23,7 +23,13 @@ import {
 	type SecurityScheme,
 } from './Authorizer';
 import type { ActorExtractor } from './audit';
-import type { AuthorizeFn, EndpointSurface, SessionFn } from './Endpoint';
+import type {
+	AuthorizeFn,
+	EndpointSurface,
+	EndpointTag,
+	SessionFn,
+} from './Endpoint';
+import { withTag } from './Endpoint';
 import { EndpointBuilder } from './EndpointBuilder';
 import type { RlsConfig } from './rls';
 
@@ -98,6 +104,8 @@ export class EndpointFactory<
 	private defaultActorExtractor?: ActorExtractor<TServices, TSession, TLogger>;
 	private customSecuritySchemes: TSecuritySchemes;
 	private defaultRlsConfig?: TRlsConfig;
+	/** The tags every endpoint built from it is grouped under, in order. */
+	private defaultTags: EndpointTag[];
 
 	constructor({
 		basePath,
@@ -115,6 +123,7 @@ export class EndpointFactory<
 		customSecuritySchemes = {} as TSecuritySchemes,
 		defaultRlsConfig,
 		surface,
+		defaultTags = [],
 	}: EndpointFactoryOptions<
 		TServices,
 		TBasePath,
@@ -147,6 +156,7 @@ export class EndpointFactory<
 		this.customSecuritySchemes = customSecuritySchemes;
 		this.defaultRlsConfig = defaultRlsConfig;
 		this.surface = surface;
+		this.defaultTags = defaultTags;
 	}
 
 	static joinPaths<TBasePath extends string, P extends string>(
@@ -234,6 +244,7 @@ export class EndpointFactory<
 			defaultActorExtractor: this.defaultActorExtractor,
 			customSecuritySchemes: this.customSecuritySchemes,
 			surface: this.surface,
+			defaultTags: this.defaultTags,
 			defaultRlsConfig: this.defaultRlsConfig,
 		});
 	}
@@ -300,6 +311,7 @@ export class EndpointFactory<
 				...schemes,
 			} as TSecuritySchemes & T,
 			surface: this.surface,
+			defaultTags: this.defaultTags,
 			defaultRlsConfig: this.defaultRlsConfig,
 		});
 	}
@@ -377,6 +389,7 @@ export class EndpointFactory<
 			defaultActorExtractor: this.defaultActorExtractor,
 			customSecuritySchemes: this.customSecuritySchemes,
 			surface: this.surface,
+			defaultTags: this.defaultTags,
 			defaultRlsConfig: this.defaultRlsConfig,
 		});
 	}
@@ -426,6 +439,7 @@ export class EndpointFactory<
 			defaultActorExtractor: this.defaultActorExtractor,
 			customSecuritySchemes: this.customSecuritySchemes,
 			surface: this.surface,
+			defaultTags: this.defaultTags,
 			defaultRlsConfig: this.defaultRlsConfig,
 		});
 	}
@@ -474,6 +488,7 @@ export class EndpointFactory<
 			defaultActorExtractor: this.defaultActorExtractor,
 			customSecuritySchemes: this.customSecuritySchemes,
 			surface: this.surface,
+			defaultTags: this.defaultTags,
 			defaultRlsConfig: this.defaultRlsConfig,
 		});
 	}
@@ -584,6 +599,7 @@ export class EndpointFactory<
 				| undefined,
 			customSecuritySchemes: this.customSecuritySchemes,
 			surface: this.surface,
+			defaultTags: this.defaultTags,
 			defaultRlsConfig: this.defaultRlsConfig as unknown as
 				| RlsConfig<[...S, ...TServices], TSession, TLogger>
 				| undefined,
@@ -647,6 +663,7 @@ export class EndpointFactory<
 			>,
 			customSecuritySchemes: this.customSecuritySchemes,
 			surface: this.surface,
+			defaultTags: this.defaultTags,
 			defaultRlsConfig: this.defaultRlsConfig as unknown as
 				| RlsConfig<TServices, TSession, L>
 				| undefined,
@@ -705,6 +722,7 @@ export class EndpointFactory<
 			>,
 			customSecuritySchemes: this.customSecuritySchemes,
 			surface: this.surface,
+			defaultTags: this.defaultTags,
 			defaultRlsConfig: this.defaultRlsConfig as unknown as
 				| RlsConfig<TServices, T, TLogger>
 				| undefined,
@@ -771,6 +789,7 @@ export class EndpointFactory<
 			defaultDatabaseService: service,
 			customSecuritySchemes: this.customSecuritySchemes,
 			surface: this.surface,
+			defaultTags: this.defaultTags,
 			defaultRlsConfig: this.defaultRlsConfig,
 		});
 	}
@@ -828,6 +847,7 @@ export class EndpointFactory<
 			>,
 			customSecuritySchemes: this.customSecuritySchemes,
 			surface: this.surface,
+			defaultTags: this.defaultTags,
 			defaultRlsConfig: this.defaultRlsConfig,
 		});
 	}
@@ -879,6 +899,7 @@ export class EndpointFactory<
 			defaultActorExtractor: extractor,
 			customSecuritySchemes: this.customSecuritySchemes,
 			surface: this.surface,
+			defaultTags: this.defaultTags,
 			defaultRlsConfig: this.defaultRlsConfig,
 		});
 	}
@@ -944,8 +965,41 @@ export class EndpointFactory<
 			defaultActorExtractor: this.defaultActorExtractor,
 			customSecuritySchemes: this.customSecuritySchemes,
 			surface: this.surface,
+			defaultTags: this.defaultTags,
 			defaultRlsConfig: config,
 		});
+	}
+
+	/**
+	 * Group every endpoint built from here under a tag — a section of the API
+	 * reference, with the description written once, where the group is.
+	 * A branch like `.database()`: it chains, and a second `.tag()` adds a
+	 * second tag. Tags are listed in the document in the order first met.
+	 *
+	 * @example
+	 * ```typescript
+	 * export const payments = api.tag('payments', 'Taking money');
+	 * export const charge = payments.post('/charges').handle(…);
+	 * ```
+	 */
+	tag(name: string, description?: string): this {
+		return new EndpointFactory({
+			defaultServices: this.defaultServices,
+			defaultConstructs: this.defaultConstructs,
+			basePath: this.basePath,
+			defaultAuthorizeFn: this.defaultAuthorizeFn,
+			defaultLogger: this.defaultLogger,
+			defaultSessionExtractor: this.defaultSessionExtractor,
+			availableAuthorizers: this.availableAuthorizers,
+			defaultAuthorizerName: this.defaultAuthorizerName,
+			defaultAuditorStorage: this.defaultAuditorStorage,
+			defaultDatabaseService: this.defaultDatabaseService,
+			defaultActorExtractor: this.defaultActorExtractor,
+			customSecuritySchemes: this.customSecuritySchemes,
+			surface: this.surface,
+			defaultTags: withTag(this.defaultTags, { name, description }),
+			defaultRlsConfig: this.defaultRlsConfig,
+		}) as unknown as this;
 	}
 
 	private createBuilder<TMethod extends HttpMethod, TPath extends string>(
@@ -1001,6 +1055,7 @@ export class EndpointFactory<
 		}
 
 		builder._surface = this.surface;
+		if (this.defaultTags.length) builder._tagList = [...this.defaultTags];
 
 		if (this.defaultSessionExtractor) {
 			builder._getSession = this.defaultSessionExtractor as SessionFn<
@@ -1132,6 +1187,8 @@ export interface EndpointFactoryOptions<
 	defaultActorExtractor?: ActorExtractor<TServices, TSession, TLogger>;
 	customSecuritySchemes?: TSecuritySchemes;
 	defaultRlsConfig?: TRlsConfig;
+	/** Tags from `.tag()`, carried to every endpoint it builds. */
+	defaultTags?: EndpointTag[];
 	/**
 	 * The surface this factory belongs to.
 	 *

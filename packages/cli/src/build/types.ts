@@ -104,6 +104,11 @@ export interface BuildContext {
 	};
 
 	telescope?: NormalizedTelescopeConfig;
+	/**
+	 * Each deployed stage's base domain — the workspace's `domains` — from
+	 * which a surface's OpenAPI `servers` are derived.
+	 */
+	domains?: Record<string, string>;
 	/** The dev server's database JSON API. Never set for `gkm build`. */
 	databaseApi?: DevDatabaseApi;
 	hooks?: NormalizedHooksConfig;

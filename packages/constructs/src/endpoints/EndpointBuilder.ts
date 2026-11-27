@@ -32,6 +32,7 @@ import type {
 	EndpointContext,
 	EndpointHandler,
 	EndpointStatus,
+	EndpointTag,
 	OperationExtensions,
 	SessionFn,
 } from './Endpoint';
@@ -39,6 +40,7 @@ import {
 	Endpoint,
 	type EndpointSchemas,
 	type EndpointSurface,
+	withTag,
 } from './Endpoint';
 import type { RlsBypass, RlsConfig } from './rls';
 import { RLS_BYPASS } from './rls';
@@ -93,7 +95,8 @@ export class EndpointBuilder<
 	protected schemas: TInput = {} as TInput;
 	protected _description?: string;
 	protected _status?: EndpointStatus;
-	protected _tags?: string[];
+	/** Its tags, in order, each with the description it was given. */
+	_tagList: EndpointTag[] = [];
 	protected _summary?: string;
 	protected _deprecated?: boolean;
 	protected _extensions?: OperationExtensions;
@@ -202,8 +205,25 @@ export class EndpointBuilder<
 		>;
 	}
 
+	/**
+	 * Group the endpoint under a tag — a section of the API reference. Adds
+	 * to the tags it has, including those of the factory it came from
+	 * (`api.tag(…)`), so it chains.
+	 */
+	tag(name: string, description?: string): this {
+		return cloneWith(this, {
+			_tagList: withTag(this._tagList, { name, description }),
+		});
+	}
+
+	/** Several tags at once, by name — `.tag()` for each. */
 	tags(tags: string[]): this {
-		return cloneWith(this, { _tags: tags });
+		return cloneWith(this, {
+			_tagList: tags.reduce(
+				(list, name) => withTag(list, { name }),
+				this._tagList,
+			),
+		});
 	}
 
 	/**
@@ -909,7 +929,7 @@ export class EndpointBuilder<
 			method: this.method,
 			route: this.route,
 			description: this._description,
-			tags: this._tags,
+			...(this._tagList.length ? { tags: this._tagList } : {}),
 			...(this._summary ? { summary: this._summary } : {}),
 			...(this._deprecated ? { deprecated: true } : {}),
 			...(this._extensions ? { extensions: this._extensions } : {}),

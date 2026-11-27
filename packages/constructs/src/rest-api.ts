@@ -52,7 +52,6 @@ import {
 	type BuiltInSecuritySchemeId,
 	getSecurityScheme,
 } from './endpoints/Authorizer';
-import type { SurfaceDocument } from './endpoints/Endpoint';
 import { EndpointFactory } from './endpoints/EndpointFactory';
 import { envParserFor } from './endpoints/surfaceEnv';
 import type { Telemetry } from './telemetry';
@@ -163,26 +162,15 @@ export interface RestApiConfig<
 	 */
 	telemetry?: Telemetry;
 	/**
-	 * What its OpenAPI document says about the API as a whole: its title and
-	 * version, contact and licence, the tags its endpoints are grouped under
-	 * (with descriptions, in reference order), and the servers it is reached
-	 * on. What each endpoint does is read off the endpoint.
-	 *
-	 * @example
-	 * ```ts
-	 * new RestApi('Api', {
-	 *   path: 'apps/api',
-	 *   defaultAuthorizer: 'none',
-	 *   openapi: {
-	 *     title: 'Payments API',
-	 *     contact: { name: 'Platform', email: 'platform@example.com' },
-	 *     license: { name: 'Apache-2.0', identifier: 'Apache-2.0' },
-	 *     tags: [{ name: 'payments', description: 'Taking and refunding money' }],
-	 *   },
-	 * });
-	 * ```
+	 * Who to contact about this API — its OpenAPI document's `info.contact`,
+	 * and the generated client's `apiInfo`.
 	 */
-	openapi?: SurfaceDocument;
+	contact?: { name?: string; url?: string; email?: string };
+	/**
+	 * The licence this API is offered under — `info.license`. An SPDX
+	 * `identifier`, or a `url` to the text.
+	 */
+	license?: { name: string; identifier?: string; url?: string };
 }
 
 /**
@@ -308,7 +296,9 @@ export class RestApi<
 			surface: {
 				id: this.id,
 				envParser: this.envParser,
-				...(config.openapi ? { openapi: config.openapi } : {}),
+				...(config.subdomain ? { subdomain: config.subdomain } : {}),
+				...(config.contact ? { contact: config.contact } : {}),
+				...(config.license ? { license: config.license } : {}),
 				...(authenticator ? { auth: authenticator } : {}),
 			},
 		});
@@ -328,6 +318,7 @@ export class RestApi<
 		this.authorize = endpoints.authorize.bind(endpoints);
 		this.rls = endpoints.rls.bind(endpoints);
 		this.route = endpoints.route.bind(endpoints);
+		this.tag = endpoints.tag.bind(endpoints);
 	}
 
 	/**
@@ -372,6 +363,7 @@ export class RestApi<
 	readonly authorize: Endpoints['authorize'];
 	readonly rls: Endpoints['rls'];
 	readonly route: Endpoints['route'];
+	readonly tag: Endpoints['tag'];
 
 	/**
 	 * What authenticates this surface.

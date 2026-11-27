@@ -24,11 +24,11 @@ export {
 	type EndpointOutput,
 	type EndpointSchemas,
 	type EndpointStatus,
+	type EndpointTag,
 	type OperationExtensions,
 	RedirectStatus,
 	ResponseBuilder,
 	SuccessStatus,
-	type SurfaceDocument,
 } from './Endpoint';
 export {
 	EndpointBuilder,
