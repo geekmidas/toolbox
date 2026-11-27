@@ -108,6 +108,12 @@ export class Endpoint<
 	description?: string;
 	/** Optional tags for OpenAPI documentation */
 	tags?: string[];
+	/** A one-line summary of what it does, for the API reference */
+	summary?: string;
+	/** Whether callers should stop using it — `deprecated: true` in the document */
+	deprecated?: boolean;
+	/** Vendor extensions written onto its operation — `x-…` keys only */
+	extensions?: OperationExtensions;
 	/** The HTTP status code to return (default: 200) */
 	public readonly status: EndpointStatus;
 	/**
@@ -190,7 +196,37 @@ export class Endpoint<
 		endpoints: Endpoint<any, any, any, any, any, any>[],
 		options?: OpenApiSchemaOptions,
 	) {
-		return buildOpenApiSchema(endpoints, options);
+		return buildOpenApiSchema(endpoints, {
+			...Endpoint.surfaceDocument(endpoints),
+			...definedOnly(options ?? {}),
+		});
+	}
+
+	/**
+	 * What the endpoints' surfaces say about the API — the `RestApi`'s
+	 * `openapi` option. One surface's, titled after it unless it says
+	 * otherwise; several surfaces' tags are listed together, and what only
+	 * one API can have (a title, servers) is left to the caller.
+	 */
+	static surfaceDocument(
+		endpoints: Endpoint<any, any, any, any, any, any>[],
+	): OpenApiSchemaOptions {
+		const surfaces = [
+			...new Map(
+				endpoints
+					.map((endpoint) => endpoint.surface)
+					.filter(Boolean)
+					.map((surface) => [surface.id, surface] as const),
+			).values(),
+		];
+
+		if (surfaces.length === 1) {
+			const [surface] = surfaces;
+			return { title: surface!.id, ...surface!.openapi };
+		}
+
+		const tags = surfaces.flatMap((surface) => surface.openapi?.tags ?? []);
+		return tags.length > 0 ? { tags } : {};
 	}
 
 	/**
@@ -504,9 +540,12 @@ export class Endpoint<
 		// 201, not as the 200 every endpoint used to claim.
 		const status = String(this.status);
 		const operation: OpenAPIV3_1.OperationObject = {
+			...this.extensions,
 			operationId: this.operationId,
+			...(this.summary && { summary: this.summary }),
 			...(this.description && { description: this.description }),
 			...(this.tags && this.tags.length > 0 && { tags: this.tags }),
+			...(this.deprecated && { deprecated: true }),
 			responses: {
 				[status]: {
 					description: 'Successful response',
@@ -654,6 +693,9 @@ export class Endpoint<
 		route,
 		description,
 		tags,
+		summary,
+		deprecated,
+		extensions,
 		input,
 		logger,
 		output: outputSchema,
@@ -710,6 +752,9 @@ export class Endpoint<
 		this.method = method;
 		this.description = description;
 		this.tags = tags;
+		if (summary) this.summary = summary;
+		if (deprecated) this.deprecated = deprecated;
+		if (extensions) this.extensions = extensions;
 		this.status = status;
 		this.responseType = responseType ?? 'application/json';
 		this.endpointFn = fn;
@@ -758,6 +803,13 @@ export class Endpoint<
 			this.rlsBypass = rlsBypass;
 		}
 	}
+}
+
+/** `options` without the keys it sets to `undefined`, so they do not erase. */
+function definedOnly<T extends object>(options: T): Partial<T> {
+	return Object.fromEntries(
+		Object.entries(options).filter(([, value]) => value !== undefined),
+	) as Partial<T>;
 }
 
 /**
@@ -819,7 +871,16 @@ export interface EndpointSurface {
 	 * `RestApi.auth()`, which session callbacks read from as `auth`.
 	 */
 	auth?: Authenticator;
+	/** What its OpenAPI document says about the API as a whole. */
+	openapi?: SurfaceDocument;
 }
+
+/**
+ * What a surface's OpenAPI document says about the API as a whole — the
+ * `RestApi`'s `openapi` option. Everything about an operation is read off
+ * its endpoint instead.
+ */
+export type SurfaceDocument = OpenApiSchemaOptions;
 
 /**
  * Configuration options for creating an Endpoint instance.
@@ -873,6 +934,12 @@ export interface EndpointOptions<
 	description: string | undefined;
 	/** Optional tags for OpenAPI documentation */
 	tags?: string[];
+	/** A one-line summary for the API reference */
+	summary?: string;
+	/** Whether the endpoint is deprecated */
+	deprecated?: boolean;
+	/** Vendor extensions on its operation */
+	extensions?: OperationExtensions;
 	/** Optional execution timeout in milliseconds */
 	timeout: number | undefined;
 	/** Optional memory size in MB for serverless deployments */
@@ -926,6 +993,13 @@ export interface EndpointOptions<
 	/** This route's telemetry — `.telemetry({ ignore, attributes })`. */
 	telemetry?: EndpointTelemetry;
 }
+
+/**
+ * Vendor extensions on an operation — `x-codegen-request-body-name`,
+ * `x-internal`, a gateway's own keys. Only `x-` keys: anything else would
+ * be a field OpenAPI defines, written from the endpoint already.
+ */
+export type OperationExtensions = Record<`x-${string}`, unknown>;
 
 /**
  * Defines the possible input schema types for an endpoint.

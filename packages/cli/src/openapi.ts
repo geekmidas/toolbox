@@ -194,12 +194,18 @@ export async function generateOpenApi(
 
 		await mkdir(dirname(outputPath), { recursive: true });
 
+		// What the surface says about itself — the RestApi's `openapi` — wins
+		// over the workspace-wide config, which is the same for every surface.
+		const document = surfaceEndpoints.find(
+			(endpoint) => endpoint.surface?.openapi,
+		)?.surface?.openapi;
+
 		const tsContent = await tsGenerator.generate(surfaceEndpoints, {
 			// The surface's own name, so a spec says which API it describes
 			// rather than repeating one title across all of them.
-			title: openApiConfig.title ?? surfaceId,
-			version: openApiConfig.version!,
-			description: openApiConfig.description!,
+			title: document?.title ?? openApiConfig.title ?? surfaceId,
+			version: document?.version ?? openApiConfig.version!,
+			description: document?.description ?? openApiConfig.description!,
 			...(options.telemetry !== undefined
 				? { telemetry: options.telemetry }
 				: {}),

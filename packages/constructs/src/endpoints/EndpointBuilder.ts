@@ -32,6 +32,7 @@ import type {
 	EndpointContext,
 	EndpointHandler,
 	EndpointStatus,
+	OperationExtensions,
 	SessionFn,
 } from './Endpoint';
 import {
@@ -48,6 +49,19 @@ import {
 	type UploadOptions,
 	type UploadPost,
 } from './upload';
+
+/**
+ * A key given to `.extensions()` that is not a vendor extension. OpenAPI
+ * reserves every other key on an operation for fields it defines.
+ */
+export class NotAnExtension extends Error {
+	constructor(readonly key: string) {
+		super(
+			`'${key}' is not a vendor extension. Name it 'x-${key}': only x- keys can be added to an operation, and the fields OpenAPI defines are written from the endpoint — .summary(), .description(), .tags(), .deprecated().`,
+		);
+		this.name = 'NotAnExtension';
+	}
+}
 
 export class EndpointBuilder<
 	TRoute extends string,
@@ -80,6 +94,9 @@ export class EndpointBuilder<
 	protected _description?: string;
 	protected _status?: EndpointStatus;
 	protected _tags?: string[];
+	protected _summary?: string;
+	protected _deprecated?: boolean;
+	protected _extensions?: OperationExtensions;
 	protected _memorySize?: number;
 	protected _responseType: string = 'application/json';
 	/** Set by a factory's `.session()`; absent, the endpoint reads none. */
@@ -187,6 +204,41 @@ export class EndpointBuilder<
 
 	tags(tags: string[]): this {
 		return cloneWith(this, { _tags: tags });
+	}
+
+	/**
+	 * A one-line summary of what the endpoint does — the line an API
+	 * reference lists it under. `.description()` is the longer text beneath.
+	 */
+	summary(summary: string): this {
+		return cloneWith(this, { _summary: summary });
+	}
+
+	/**
+	 * Mark the endpoint deprecated: `deprecated: true` in the document, and
+	 * `@deprecated` on its entry in the generated client. It still serves.
+	 */
+	deprecated(deprecated = true): this {
+		return cloneWith(this, { _deprecated: deprecated });
+	}
+
+	/**
+	 * Vendor extensions written onto the endpoint's operation, merged with
+	 * any given before. Only `x-` keys; what OpenAPI defines is written from
+	 * the endpoint itself.
+	 *
+	 * @example
+	 * ```ts
+	 * router.get('/internal/stats').extensions({ 'x-internal': true })
+	 * ```
+	 */
+	extensions(extensions: OperationExtensions): this {
+		for (const key of Object.keys(extensions)) {
+			if (!key.startsWith('x-')) throw new NotAnExtension(key);
+		}
+		return cloneWith(this, {
+			_extensions: { ...this._extensions, ...extensions },
+		});
 	}
 
 	memorySize(memorySize: number): this {
@@ -858,6 +910,9 @@ export class EndpointBuilder<
 			route: this.route,
 			description: this._description,
 			tags: this._tags,
+			...(this._summary ? { summary: this._summary } : {}),
+			...(this._deprecated ? { deprecated: true } : {}),
+			...(this._extensions ? { extensions: this._extensions } : {}),
 			input: this.schemas,
 			output: this.outputSchema,
 			services: this._services,

@@ -77,6 +77,8 @@ interface EndpointInfo {
 	responseType: string;
 	/** Whether the request may leave its body out. */
 	bodyOptional: boolean;
+	summary?: string;
+	deprecated?: boolean;
 }
 
 interface SecuritySchemeInfo {
@@ -161,6 +163,8 @@ export class OpenApiTsGenerator {
 					tags: ep.tags,
 					operationId: ep.operationId,
 					responseType: ep.responseType ?? 'application/json',
+					summary: ep.summary,
+					deprecated: ep.deprecated,
 					bodyOptional:
 						typeof ep.isBodyOptional === 'function'
 							? await ep.isBodyOptional()
@@ -601,7 +605,9 @@ export class OpenApiTsGenerator {
 
 			for (const info of infos) {
 				const methodDef = await this.generateMethodDefinition(info);
-				methodEntries.push(`    ${info.method.toLowerCase()}: ${methodDef};`);
+				methodEntries.push(
+					`${operationDoc(info)}    ${info.method.toLowerCase()}: ${methodDef};`,
+				);
 			}
 
 			// Add path parameters if present
@@ -919,4 +925,18 @@ ${createApiSection}
  */
 function unknownType(name: string): string {
 	return `export type ${name} = unknown;`;
+}
+
+/**
+ * The JSDoc an operation's entry in `paths` carries: its summary and
+ * description, and `@deprecated` — which an editor strikes through.
+ */
+function operationDoc(info: EndpointInfo): string {
+	const lines = [info.summary, info.description]
+		.filter((line): line is string => Boolean(line))
+		.flatMap((text) => text.split('\n'))
+		.map((line) => line.replace(/\*\//g, '*\\/'));
+	if (info.deprecated) lines.push('@deprecated');
+	if (lines.length === 0) return '';
+	return `    /**\n${lines.map((line) => `     * ${line}`).join('\n')}\n     */\n`;
 }

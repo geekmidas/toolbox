@@ -322,15 +322,11 @@ export async function setupEndpoints(
 ): Promise<void> {
   const serviceDiscovery = ServiceDiscovery.getInstance(envParser);
 
-  // Configure OpenAPI options based on enableOpenApi flag
-  const openApiOptions: any = enableOpenApi ? {
-    docsPath: '/__docs',
-    openApiOptions: {
-      title: 'API Documentation',
-      version: '1.0.0',
-      description: 'Generated API documentation'
-    }
-  } : { docsPath: false };
+  // The document's title, contact, tags and servers are the surface's own —
+  // its \`openapi\` option — so none are written here.
+  const openApiOptions: any = enableOpenApi
+    ? { docsPath: '/__docs' }
+    : { docsPath: false };
 
   HonoEndpoint.addRoutes(endpoints, serviceDiscovery, app, openApiOptions);
 

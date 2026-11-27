@@ -24,12 +24,15 @@ export {
 	type EndpointOutput,
 	type EndpointSchemas,
 	type EndpointStatus,
+	type OperationExtensions,
 	RedirectStatus,
 	ResponseBuilder,
 	SuccessStatus,
+	type SurfaceDocument,
 } from './Endpoint';
 export {
 	EndpointBuilder,
+	NotAnExtension,
 	UploadEndpointBuilder,
 	type UploadHandler,
 } from './EndpointBuilder';

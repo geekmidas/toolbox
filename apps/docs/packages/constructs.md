@@ -3085,3 +3085,43 @@ export const touch = router
   .body(z.object({ note: z.string() }).optional())
   .handle(async ({ body }) => touchSession(body?.note));
 ```
+
+### Summary, deprecation and vendor extensions
+
+```typescript
+export const listCharges = router
+  .get('/v1/charges')
+  .summary('List charges')          // the line a reference lists it under
+  .description('Oldest first.')     // the text beneath
+  .tags(['payments'])
+  .deprecated()                     // `deprecated: true`, `@deprecated` in the client
+  .extensions({ 'x-internal': true })
+  .handle(async () => listAll());
+```
+
+`.extensions()` takes `x-` keys only and merges across calls; any other key
+throws `NotAnExtension`, since OpenAPI defines it and the endpoint writes it.
+
+### What the API says about itself
+
+The `RestApi`'s `openapi` option is what its document says about the API as a
+whole. Untitled, a document is titled after the surface's id.
+
+```typescript
+export const api = new RestApi('Api', {
+  path: 'apps/api',
+  defaultAuthorizer: 'none',
+  openapi: {
+    title: 'Payments API',
+    version: '2.1.0',
+    tags: [
+      { name: 'payments', description: 'Taking money' },
+      { name: 'refunds', description: 'Giving it back' },
+    ],
+  },
+});
+```
+
+Tags are listed in the order declared, then any tag an endpoint names that
+was not declared, by name. `gkm openapi` titles the generated client from the
+same option before the workspace's `openapi` config.

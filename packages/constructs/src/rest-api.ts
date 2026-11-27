@@ -52,6 +52,7 @@ import {
 	type BuiltInSecuritySchemeId,
 	getSecurityScheme,
 } from './endpoints/Authorizer';
+import type { SurfaceDocument } from './endpoints/Endpoint';
 import { EndpointFactory } from './endpoints/EndpointFactory';
 import { envParserFor } from './endpoints/surfaceEnv';
 import type { Telemetry } from './telemetry';
@@ -161,6 +162,27 @@ export interface RestApiConfig<
 	 * per stage.
 	 */
 	telemetry?: Telemetry;
+	/**
+	 * What its OpenAPI document says about the API as a whole: its title and
+	 * version, contact and licence, the tags its endpoints are grouped under
+	 * (with descriptions, in reference order), and the servers it is reached
+	 * on. What each endpoint does is read off the endpoint.
+	 *
+	 * @example
+	 * ```ts
+	 * new RestApi('Api', {
+	 *   path: 'apps/api',
+	 *   defaultAuthorizer: 'none',
+	 *   openapi: {
+	 *     title: 'Payments API',
+	 *     contact: { name: 'Platform', email: 'platform@example.com' },
+	 *     license: { name: 'Apache-2.0', identifier: 'Apache-2.0' },
+	 *     tags: [{ name: 'payments', description: 'Taking and refunding money' }],
+	 *   },
+	 * });
+	 * ```
+	 */
+	openapi?: SurfaceDocument;
 }
 
 /**
@@ -286,6 +308,7 @@ export class RestApi<
 			surface: {
 				id: this.id,
 				envParser: this.envParser,
+				...(config.openapi ? { openapi: config.openapi } : {}),
 				...(authenticator ? { auth: authenticator } : {}),
 			},
 		});

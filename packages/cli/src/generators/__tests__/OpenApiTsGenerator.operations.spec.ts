@@ -35,4 +35,19 @@ describe('OpenApiTsGenerator — operations', () => {
 		expect(pathEntry(content, '/touch')).toContain('requestBody?: {');
 		expect(pathEntry(content, '/things')).toContain('requestBody: {');
 	});
+
+	it('carries an operation’s summary and deprecation as its JSDoc', async () => {
+		const old = api
+			.get('/v1/charges')
+			.summary('List charges')
+			.description('Oldest first.')
+			.deprecated()
+			.handle(async () => []);
+
+		const entry = pathEntry(await generate([old]), '/v1/charges');
+
+		expect(entry).toContain(
+			'    /**\n     * List charges\n     * Oldest first.\n     * @deprecated\n     */\n    get:',
+		);
+	});
 });
