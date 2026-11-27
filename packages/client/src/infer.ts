@@ -4,11 +4,9 @@ import type {
 	EndpointSchemas,
 } from '@geekmidas/constructs/endpoints';
 import type { HttpMethod } from '@geekmidas/constructs/types';
-import type {
-	InferStandardSchema,
-	InferStandardSchemaInput,
-} from '@geekmidas/schema';
+import type { InferStandardSchemaInput } from '@geekmidas/schema';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
+import type { InferResponses } from './responses';
 
 /**
  * Infers path parameters from a route string as an object
@@ -91,15 +89,7 @@ type InferOperation<
 	TOutput extends StandardSchemaV1 | undefined,
 > = InferOperationParameters<TInput> &
 	InferRequestBody<TInput> & {
-		responses: {
-			200: {
-				content: TOutput extends StandardSchemaV1
-					? {
-							'application/json': InferStandardSchema<TOutput>;
-						}
-					: never;
-			};
-		};
+		responses: InferResponses<TOutput>;
 	};
 
 /**

@@ -48,6 +48,7 @@ import {
 import { enforceRateLimit } from './rateLimit';
 import { readRequestBody } from './readRequestBody';
 import { requestLogger } from './requestLogger';
+import { parseDeclaredResponse } from './responses';
 
 export interface HonoEndpointOptions {
 	/**
@@ -644,8 +645,16 @@ export class HonoEndpoint<
 									const redirect = Endpoint.isRedirectStatus(
 										metadata.status ?? endpoint.status,
 									);
-									const output =
-										endpoint.outputSchema && !redirect
+									const declared = endpoint.responseFor(metadata.status);
+									const output = declared
+										? redirect
+											? undefined
+											: await parseDeclaredResponse(
+													declared,
+													data,
+													metadata.headers,
+												)
+										: endpoint.outputSchema && !redirect
 											? await endpoint.parseOutput(data)
 											: undefined;
 
@@ -666,6 +675,7 @@ export class HonoEndpoint<
 							},
 							async (result, auditor) => {
 								if (!audits?.length || result.redirect) return;
+								if (endpoint.isAlternateStatus(result.metadata.status)) return;
 
 								for (const audit of audits) {
 									if (audit.when && !audit.when(result.output as any)) {
@@ -704,7 +714,11 @@ export class HonoEndpoint<
 							}
 
 							// Only publish events if configured (no global middleware overhead)
-							if (features.hasEvents && Endpoint.isSuccessStatus(status)) {
+							if (
+								features.hasEvents &&
+								Endpoint.isSuccessStatus(status) &&
+								!endpoint.isAlternateStatus(status)
+							) {
 								await publishConstructEvents<any>(
 									endpoint as any,
 									output,
@@ -725,7 +739,11 @@ export class HonoEndpoint<
 							// we use c.json() which sets Content-Type and serializes. For any
 							// other type, emit the body as-is and set the header explicitly —
 							// metadata.headers (from r.header()) applied above still wins.
-							if (endpoint.responseType === 'application/json') {
+							const contentType = endpoint.contentTypeFor(
+								status,
+								metadata.headers,
+							);
+							if (contentType === 'application/json') {
 								// Hono 4.13 types `c.json`'s status well enough that the
 								// suppression here is now itself an error.
 								return c.json(output, status);
@@ -733,7 +751,7 @@ export class HonoEndpoint<
 							if (
 								!(metadata.headers && hasContentTypeHeader(metadata.headers))
 							) {
-								c.header('content-type', endpoint.responseType);
+								c.header('content-type', contentType);
 							}
 							return c.body(output as any, status);
 						} catch (validationError: any) {

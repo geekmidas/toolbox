@@ -50,6 +50,7 @@ import {
 	executeWithAuditTransaction,
 } from './processAudits';
 import { requestLogger } from './requestLogger';
+import { parseDeclaredResponse, toLambdaBody } from './responses';
 
 // Helper function to publish events
 
@@ -407,7 +408,10 @@ export abstract class AmazonApiGatewayEndpoint<
 
 				// Only publish events on successful responses (2xx status codes)
 				// Note: Audits are processed inside the handler's transaction
-				if (Endpoint.isSuccessStatus(statusCode)) {
+				if (
+					Endpoint.isSuccessStatus(statusCode) &&
+					!this.endpoint.isAlternateStatus(statusCode)
+				) {
 					const logger = event.logger as TLogger;
 					const serviceDiscovery = ServiceDiscovery.getInstance<
 						ServiceRecord<TServices>
@@ -517,8 +521,12 @@ export abstract class AmazonApiGatewayEndpoint<
 					const redirect = Endpoint.isRedirectStatus(
 						metadata.status ?? this.endpoint.status,
 					);
-					const output =
-						this.endpoint.outputSchema && !redirect
+					const declared = this.endpoint.responseFor(metadata.status);
+					const output = declared
+						? redirect
+							? undefined
+							: await parseDeclaredResponse(declared, data, metadata.headers)
+						: this.endpoint.outputSchema && !redirect
 							? await this.endpoint.parseOutput(data)
 							: undefined;
 
@@ -541,6 +549,7 @@ export abstract class AmazonApiGatewayEndpoint<
 			// Process declarative audits after handler (inside transaction)
 			async (result, auditor) => {
 				if (!audits?.length || result.redirect) return;
+				if (this.endpoint.isAlternateStatus(result.metadata.status)) return;
 
 				for (const audit of audits) {
 					if (audit.when && !audit.when(result.output as any)) {
@@ -559,15 +568,21 @@ export abstract class AmazonApiGatewayEndpoint<
 		);
 
 		const { output, metadata } = result;
-		const isJsonResponse = this.endpoint.responseType === 'application/json';
+		const contentType = this.endpoint.contentTypeFor(
+			metadata.status,
+			metadata.headers,
+		);
+		const isJsonResponse = contentType === 'application/json';
+		const encoded =
+			output === undefined || isJsonResponse
+				? undefined
+				: await toLambdaBody(output);
 		const body =
 			output === undefined
 				? undefined
 				: isJsonResponse
 					? JSON.stringify(output)
-					: typeof output === 'string'
-						? output
-						: String(output);
+					: encoded!.body;
 
 		// Store response for middleware access
 		(event as any).__response = output;
@@ -576,13 +591,14 @@ export abstract class AmazonApiGatewayEndpoint<
 		const lambdaResponse: AmazonApiGatewayEndpointHandlerResponse = {
 			statusCode: metadata.status ?? this.endpoint.status,
 			body,
+			...(encoded?.isBase64Encoded && { isBase64Encoded: true }),
 		};
 
 		// Compose headers. For non-JSON responseType, emit a default
 		// Content-Type header which metadata.headers (r.header()) can override.
 		const baseHeaders: Record<string, string> | undefined = isJsonResponse
 			? undefined
-			: { 'content-type': this.endpoint.responseType };
+			: { 'content-type': contentType };
 		const rateLimitHeaders: Record<string, string> | undefined = (event as any)
 			.rateLimitHeaders;
 
@@ -727,6 +743,8 @@ type Middleware<
 export type AmazonApiGatewayEndpointHandlerResponse = {
 	statusCode: number;
 	body: string | undefined;
+	/** Set when `body` is base64 — a binary response's bytes. */
+	isBase64Encoded?: boolean;
 	headers?: Record<string, string>;
 	multiValueHeaders?: Record<string, string[]>;
 };

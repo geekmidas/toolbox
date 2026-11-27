@@ -15,6 +15,11 @@ import {
 	problemResponsesOf,
 	withProblemResponses,
 } from './problemResponses.js';
+import {
+	declaredResponseSchemas,
+	printResponses,
+	type ResponsesInfo,
+} from './openApiResponses.js';
 import { generateWebhookTypes } from './webhookTypes.js';
 
 export type { ClientTelemetryDefault } from './clientTelemetry.js';
@@ -67,7 +72,7 @@ interface SecuritySchemeObject {
 	[key: string]: unknown;
 }
 
-interface EndpointInfo {
+interface EndpointInfo extends ResponsesInfo {
 	endpoint: string;
 	route: string;
 	method: string;
@@ -226,6 +231,8 @@ export class OpenApiTsGenerator {
 						typeof ep.isBodyOptional === 'function'
 							? await ep.isBodyOptional()
 							: false,
+					status: ep.status ?? 200,
+					responses: ep.declaredResponses ?? [],
 				};
 			}),
 		);
@@ -411,6 +418,25 @@ export class OpenApiTsGenerator {
 				if (!generatedNames.has(name)) {
 					const schema = await this.schemaToInterfaceWithDefs(
 						info.output,
+						name,
+						collectedDefs,
+					);
+					if (schema) {
+						interfaces.push(schema);
+						generatedNames.add(name);
+					}
+				}
+			}
+
+			// Each response `.response()` declared
+			for (const declared of declaredResponseSchemas(info, baseName)) {
+				const name = await this.getSchemaName(
+					declared.schema,
+					declared.defaultName,
+				);
+				if (!generatedNames.has(name)) {
+					const schema = await this.schemaToInterfaceWithDefs(
+						declared.schema,
 						name,
 						collectedDefs,
 					);
@@ -737,13 +763,14 @@ export class OpenApiTsGenerator {
 		const outputName = info.output
 			? await this.getSchemaName(info.output, `${baseName}Output`)
 			: 'unknown';
-		parts.push(`responses: {
-        200: {
-          content: {
-            '${info.responseType}': ${outputName};
-          };
-        };
-      }`);
+		parts.push(
+			await printResponses(
+				info,
+				outputName,
+				declaredResponseSchemas(info, baseName),
+				(d) => this.getSchemaName(d.schema, d.defaultName),
+			),
+		);
 		if (info.problemResponses) {
 			parts.push(
 				withProblemResponses(parts.pop()!, info.problemResponses, (s) =>

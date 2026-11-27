@@ -33,6 +33,12 @@ import {
 	type EndpointError,
 	type ErrorFormat,
 } from './problems';
+import {
+	type DeclaredResponse,
+	declaredContentType,
+	documentDeclaredResponses,
+	findDeclaredResponse,
+} from './responses';
 import type { RlsConfig } from './rls';
 import { type SessionAuth, sessionAuth } from './sessionAuth';
 import { type Webhook, withWebhooks } from './webhooks';
@@ -131,6 +137,12 @@ export class Endpoint<
 	 * Content-Type header instead of JSON-serializing.
 	 */
 	public readonly responseType: string;
+	/**
+	 * The responses `.response()` declared beside the default one — each
+	 * documented, typed by the client, and checked when the handler answers
+	 * its status.
+	 */
+	public readonly declaredResponses: DeclaredResponse[] = [];
 
 	/**
 	 * This route's telemetry — `.telemetry({ ignore, attributes })` — read by
@@ -322,6 +334,39 @@ export class Endpoint<
 			() => false,
 		);
 		return this.bodyOptional;
+	}
+
+	/** The response `.response()` declared for `status` (default: `.status()`). */
+	responseFor(status?: number): DeclaredResponse | undefined {
+		return findDeclaredResponse(this.declaredResponses, status ?? this.status);
+	}
+
+	/**
+	 * Whether `status` is a declared response other than the default one. Its
+	 * body is not `.output()`'s, so what is derived from the output — declared
+	 * events and audits — is not sent, as for a redirect.
+	 */
+	isAlternateStatus(status: number | undefined): boolean {
+		return (
+			status !== undefined &&
+			status !== this.status &&
+			this.responseFor(status) !== undefined
+		);
+	}
+
+	/**
+	 * The content type a response with `status` is emitted in: a declared
+	 * response's (the one the handler set, or the first it lists), otherwise
+	 * `.responseType()`.
+	 */
+	contentTypeFor(
+		status: number | undefined,
+		headers: Record<string, string> | undefined,
+	): string {
+		const declared = this.responseFor(status);
+		return declared
+			? declaredContentType(declared, headers)
+			: this.responseType;
 	}
 
 	static isSuccessStatus(status: number): boolean {
@@ -621,6 +666,11 @@ export class Endpoint<
 				};
 			}
 		}
+		await documentDeclaredResponses(
+			operation,
+			this.declaredResponses,
+			componentCollector,
+		);
 
 		// Separate path and query parameters
 		const pathParameters: OpenAPIV3_1.ParameterObject[] = [];
@@ -773,6 +823,7 @@ export class Endpoint<
 		responseType,
 		telemetry,
 		errors,
+		responses,
 	}: EndpointOptions<
 		TRoute,
 		TMethod,
@@ -826,6 +877,7 @@ export class Endpoint<
 		this.endpointFn = fn;
 		if (telemetry) this.telemetry = telemetry;
 		if (errors) this.errors = errors;
+		if (responses) this.declaredResponses = responses;
 
 		if (getSession) {
 			this.hasSession = true;
@@ -1101,6 +1153,8 @@ export interface EndpointOptions<
 	responseType?: string;
 	/** This route's telemetry — `.telemetry({ ignore, attributes })`. */
 	telemetry?: EndpointTelemetry;
+	/** The responses `.response()` declared beside the default one. */
+	responses?: DeclaredResponse[];
 }
 
 /**

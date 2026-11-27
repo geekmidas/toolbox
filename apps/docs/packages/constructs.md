@@ -3318,3 +3318,54 @@ The document lists each declared status under `responses`. Its schema is
 codes declared for that status. The typed client that `gkm` generates carries
 the same bodies. Without `errors`, a surface keeps the error body it has always
 sent. The document still lists the statuses, but it does not describe a body.
+
+### Several responses, and content types beside JSON
+
+`.output()`, `.status()` and `.responseType()` describe the default response.
+`.response(status, content, { description })` declares another — repeatable,
+after `.output()`. `content` is a schema (JSON), a schema per content type, or
+nothing (a 204); `binary()` declares bytes such as a PDF.
+
+```typescript
+import { binary } from '@geekmidas/constructs/endpoints';
+
+// 201 when it creates, 200 when a retry hands back the original
+export const putOrder = router
+  .put('/orders/:id')
+  .output(Order)
+  .status(201)
+  .response(200, Order, { description: 'A retry: the order already created' })
+  .handle(async ({ params, db }, response) => {
+    const existing = await findOrder(db, params.id);
+    if (existing) return response.status(200).send(existing);
+    return createOrder(db, params.id);
+  });
+
+// JSON, CSV or a PDF, as the caller accepts
+export const getReport = router
+  .get('/reports/:id')
+  .response(200, {
+    'application/json': Report,
+    'text/csv': z.string(),
+    'application/pdf': binary(),
+  })
+  .handle(async ({ params, header }, response) => {
+    const report = await loadReport(params.id);
+    if (header('accept')?.includes('text/csv')) {
+      return response.header('content-type', 'text/csv').send(toCsv(report));
+    }
+    return report;
+  });
+```
+
+Every status and content type appears in the document (`binary()` as
+`{ type: 'string', format: 'binary' }`). When the handler answers a declared
+status, its body is checked against that response rather than `.output()`, in
+the content type the handler set or the first listed; one that is not
+`application/json` is emitted as-is (on Lambda, bytes are base64-encoded). A
+content type the response does not list fails with
+`UndeclaredResponseContentType`. Declared events and audits follow `.output()`,
+so they are not sent for another status.
+
+The generated client and `InferOpenApi` type each status and content type, and
+a call resolves to the union of every 2xx JSON body — `Order | Retry`.

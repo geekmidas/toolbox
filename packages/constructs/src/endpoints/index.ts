@@ -78,6 +78,21 @@ export {
 	UnsupportedRequestContentType,
 } from './readRequestBody';
 export {
+	type BinaryBody,
+	type BinarySchema,
+	binary,
+	type ContentMapOf,
+	type DeclaredResponse,
+	type DeclaredResponses,
+	type DeclaredResponsesOf,
+	type DefaultSchemaOf,
+	isBinarySchema,
+	type ResponseContent,
+	type ResponseOptions,
+	UndeclaredResponseContentType,
+	type WithResponse,
+} from './responses';
+export {
 	RLS_BYPASS,
 	type RlsBypass,
 	type RlsConfig,

@@ -1,3 +1,4 @@
+import type { JsonSuccessBody } from './responses';
 import type { ClientTelemetryOptions } from './telemetry';
 
 export type OpenAPIRoutes<Paths> = keyof Paths;
@@ -68,19 +69,16 @@ type RequestBodyOf<Op, Optional extends boolean> = Op extends {
  */
 type IsOptionalKey<T, K extends keyof T> = {} extends Pick<T, K> ? true : false;
 
+/**
+ * What a call resolves to: the JSON body of any 2xx the operation documents —
+ * a union when it answers more than one (201 when it creates, 200 when a retry
+ * returns the original). See `JsonSuccessBody`.
+ */
 export type ExtractResponse<
 	Paths,
 	Route extends OpenAPIRoutes<Paths>,
 	Method extends ExtractMethod<Paths, Route>,
-> = Paths[Route][Method] extends {
-	responses?: { 200?: { content?: { 'application/json'?: infer R } } };
-}
-	? R
-	: Paths[Route][Method] extends {
-				responses?: { 201?: { content?: { 'application/json'?: infer R } } };
-			}
-		? R
-		: never;
+> = JsonSuccessBody<Paths[Route][Method]>;
 
 export type RequestConfig<
 	Paths,

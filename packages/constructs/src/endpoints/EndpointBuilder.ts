@@ -60,6 +60,13 @@ import {
 	endpointError,
 	mergeEndpointErrors,
 } from './problems';
+import {
+	type DeclaredResponse,
+	declareResponse,
+	type ResponseContent,
+	type ResponseOptions,
+	type WithResponse,
+} from './responses';
 import type { RlsBypass, RlsConfig } from './rls';
 import { RLS_BYPASS } from './rls';
 import {
@@ -148,6 +155,7 @@ export class EndpointBuilder<
 	_telemetry?: EndpointTelemetry;
 	_callbacks?: Record<string, EndpointCallback>;
 	_errors: EndpointError[] = [];
+	_responses: DeclaredResponse[] = [];
 
 	constructor(
 		readonly route: TRoute,
@@ -375,6 +383,66 @@ export class EndpointBuilder<
 	 */
 	responseType(type: string): this {
 		return cloneWith(this, { _responseType: type });
+	}
+
+	/**
+	 * Another response the handler may answer with, beside the default one
+	 * `.output()`, `.status()` and `.responseType()` describe — repeatable.
+	 * `content` is a schema (JSON) or a schema per content type; `binary()`
+	 * declares bytes. Declare it after `.output()`, which starts the types over.
+	 *
+	 * When the handler answers `status` (`response.status(200)`), the body is
+	 * checked against this response rather than `.output()`, in the content
+	 * type the handler set (`response.header('content-type', 'text/csv')`) or
+	 * the first one listed; one that is not JSON is emitted as-is. Declared
+	 * events and audits follow `.output()`, so they are not sent for it.
+	 *
+	 * @example
+	 * ```typescript
+	 * api.put('/orders/:id')
+	 *   .output(Order)
+	 *   .status(201)
+	 *   .response(200, Order, { description: 'A retry: the original order' })
+	 *   .response(202, undefined, { description: 'Queued' })
+	 *   .handle(async ({ params }, response) => …);
+	 *
+	 * api.get('/reports/:id')
+	 *   .response(200, {
+	 *     'application/json': Report,
+	 *     'text/csv': z.string(),
+	 *     'application/pdf': binary(),
+	 *   })
+	 *   .handle(async ({ header }, response) => …);
+	 * ```
+	 */
+	response<
+		TStatus extends EndpointStatus,
+		TContent extends ResponseContent | undefined = undefined,
+	>(
+		status: TStatus,
+		content?: TContent,
+		options?: ResponseOptions,
+	): EndpointBuilder<
+		TRoute,
+		TMethod,
+		TInput,
+		TServices,
+		TLogger,
+		WithResponse<OutSchema, TStatus, TContent>,
+		TSession,
+		TAuthorizers,
+		TAuditStorage,
+		TAuditStorageServiceName,
+		TAuditAction,
+		TDatabase,
+		TDatabaseServiceName
+	> {
+		return cloneWith(this, {
+			_responses: [
+				...this._responses,
+				declareResponse(status, content, options),
+			],
+		}) as never;
 	}
 
 	body<T extends StandardSchemaV1>(
@@ -1072,6 +1140,7 @@ export class EndpointBuilder<
 			rlsConfig: this._rlsConfig,
 			rlsBypass: this._rlsBypass,
 			responseType: this._responseType,
+			responses: this._responses,
 			...(this._telemetry ? { telemetry: this._telemetry } : {}),
 			errors: mergeEndpointErrors(this._surface?.refusals, this._errors),
 		});
