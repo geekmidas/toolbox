@@ -6,7 +6,7 @@
  * says so on the surface that documents it:
  *
  * ```ts
- * export const api = new RestApi('Api', { path: 'apps/api' }).webhooks(users, {
+ * export const api = new RestApi('Api', { path: 'apps/api', defaultAuthorizer: 'none' }).webhooks(users, {
  *   signature: {
  *     header: 'Webhook-Signature',
  *     description: 'HMAC-SHA256 of the raw body with the endpoint secret',

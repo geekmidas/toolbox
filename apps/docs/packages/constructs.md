@@ -3162,7 +3162,7 @@ whose body is `{ type, payload }`, with the payload's schema from the topic,
 and the header a receiver checks.
 
 ```typescript
-export const api = new RestApi('Api', { path: 'apps/api' }).webhooks(billing, {
+export const api = new RestApi('Api', { path: 'apps/api', defaultAuthorizer: 'none' }).webhooks(billing, {
   signature: {
     header: 'Webhook-Signature',
     description: 'HMAC-SHA256 of the raw body with the endpoint secret',

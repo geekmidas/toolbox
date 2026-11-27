@@ -408,7 +408,10 @@ export class RestApi<
 	 * signature header a receiver checks.
 	 *
 	 * ```ts
-	 * export const api = new RestApi('Api', { path: 'apps/api' }).webhooks(
+	 * export const api = new RestApi('Api', {
+	 *   path: 'apps/api',
+	 *   defaultAuthorizer: 'none',
+	 * }).webhooks(
 	 *   users,
 	 *   { signature: { header: 'Webhook-Signature' } },
 	 * );
