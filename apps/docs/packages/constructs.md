@@ -3152,3 +3152,52 @@ stage's domain, described by the stage's name.
 
 The document served at `/__docs` and the generated client's `apiInfo` both
 carry the contact, licence and servers.
+
+### Webhooks and callbacks
+
+A service that sends signed events to its users' endpoints documents them
+from the topic that carries them. `.webhooks(topic, …)` on the `RestApi`
+lists each event under the document's `webhooks` (OpenAPI 3.1): a `POST`
+whose body is `{ type, payload }`, with the payload's schema from the topic,
+and the header a receiver checks.
+
+```typescript
+export const api = new RestApi('Api', { path: 'apps/api' }).webhooks(billing, {
+  signature: {
+    header: 'Webhook-Signature',
+    description: 'HMAC-SHA256 of the raw body with the endpoint secret',
+  },
+  // Optional — the events that leave the service, when not all of them do.
+  events: ['invoice.paid', 'invoice.voided'],
+});
+```
+
+It documents; delivering the events is the service's own subscriber's job.
+The document is built from endpoints, so it lists the webhooks of the surfaces
+they were built from, whenever the topic was registered. Two delivered topics
+carrying the same event type are refused (`WebhookEventDeclaredTwice`): a
+receiver tells events apart by type. The generated client exports a
+`webhooks` interface, event type → body, for a receiver to type its handler:
+
+```typescript
+import type { webhooks } from './client/openapi';
+
+function onEvent(event: webhooks[keyof webhooks]) { … }
+```
+
+An endpoint that calls back a URL its caller gave it declares the request with
+`.callback(name, …)`, repeatable, documented under the operation's
+`callbacks`. `url` is an OpenAPI runtime expression; `method` defaults to
+`post` and the expected response to a `200`.
+
+```typescript
+export const startExport = api
+  .post('/exports')
+  .body(z.object({ callbackUrl: z.url() }))
+  .callback('exportReady', {
+    url: '{$request.body#/callbackUrl}',
+    body: z.object({ exportId: z.string(), downloadUrl: z.url() }),
+    response: { status: 204, description: 'Acknowledged' },
+  })
+  .handle(async ({ body }) => { … });
+```

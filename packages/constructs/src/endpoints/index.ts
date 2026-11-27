@@ -17,6 +17,11 @@ export {
 } from './Authorizer';
 export type { ActorExtractor, MappedAudit } from './audit';
 export {
+	CallbackDeclaredTwice,
+	type EndpointCallback,
+	type EndpointCallbackResponse,
+} from './callbacks';
+export {
 	type ConvertRouteParams,
 	Endpoint,
 	type EndpointContext,
@@ -74,3 +79,11 @@ export {
 	type UploadOptions,
 	type UploadPost,
 } from './upload';
+export {
+	type Webhook,
+	WebhookEventDeclaredTwice,
+	WebhookEventNotOnTopic,
+	type WebhookOptions,
+	type WebhookSignature,
+	webhooksOf,
+} from './webhooks';

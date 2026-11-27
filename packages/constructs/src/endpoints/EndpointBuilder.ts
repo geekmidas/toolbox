@@ -27,6 +27,7 @@ import type { HttpMethod } from '../types';
 import type { Authorizer, SecurityScheme } from './Authorizer';
 import { getSecurityScheme } from './Authorizer';
 import type { ActorExtractor, MappedAudit } from './audit';
+import { CallbackDeclaredTwice, type EndpointCallback } from './callbacks';
 import type {
 	AuthorizeFn,
 	EndpointContext,
@@ -122,6 +123,7 @@ export class EndpointBuilder<
 	_rlsConfig?: RlsConfig<TServices, TSession, TLogger>;
 	_rlsBypass?: boolean;
 	_telemetry?: EndpointTelemetry;
+	_callbacks?: Record<string, EndpointCallback>;
 
 	constructor(
 		readonly route: TRoute,
@@ -258,6 +260,30 @@ export class EndpointBuilder<
 		}
 		return cloneWith(this, {
 			_extensions: { ...this._extensions, ...extensions },
+		});
+	}
+
+	/**
+	 * A request this endpoint makes back to a URL its caller gave it,
+	 * documented under the operation's `callbacks`. Repeatable, one name each.
+	 *
+	 * @example
+	 * ```ts
+	 * api.post('/exports')
+	 *   .body(z.object({ callbackUrl: z.url() }))
+	 *   .callback('exportReady', {
+	 *     url: '{$request.body#/callbackUrl}',
+	 *     body: z.object({ exportId: z.string() }),
+	 *     response: { status: 204 },
+	 *   })
+	 * ```
+	 */
+	callback(name: string, callback: EndpointCallback): this {
+		if (this._callbacks && name in this._callbacks) {
+			throw new CallbackDeclaredTwice(name, `${this.method} ${this.route}`);
+		}
+		return cloneWith(this, {
+			_callbacks: { ...this._callbacks, [name]: callback },
 		});
 	}
 
@@ -961,6 +987,7 @@ export class EndpointBuilder<
 		// endpoint's is its surface; a cron's is the worker that handed out the
 		// factory. The build partitions on this rather than on directories.
 		endpoint.owner = this._surface?.id;
+		if (this._callbacks) endpoint.callbacks = this._callbacks;
 
 		return endpoint;
 	}

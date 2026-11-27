@@ -10,6 +10,7 @@ import {
 	type ClientTelemetryDefault,
 	printTelemetryDefault,
 } from './clientTelemetry.js';
+import { generateWebhookTypes } from './webhookTypes.js';
 
 export type { ClientTelemetryDefault } from './clientTelemetry.js';
 
@@ -137,8 +138,13 @@ export class OpenApiTsGenerator {
 		// Generate paths interface
 		const pathsInterface = await this.generatePathsInterface(endpointInfos);
 
+		// What the API sends its users, for a receiver to type its handler by.
+		const webhookTypes = generateWebhookTypes(endpoints, (schema) =>
+			this.jsonSchemaTypeToTs(schema),
+		);
+
 		// Build the final TypeScript module
-		return this.buildModule({
+		const module = this.buildModule({
 			info,
 			securitySchemes,
 			endpointAuth,
@@ -146,6 +152,7 @@ export class OpenApiTsGenerator {
 			pathsInterface,
 			telemetryDefault,
 		});
+		return module + webhookTypes;
 	}
 
 	private async extractEndpointInfos(

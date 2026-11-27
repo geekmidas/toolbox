@@ -54,7 +54,13 @@ import {
 } from './endpoints/Authorizer';
 import { EndpointFactory } from './endpoints/EndpointFactory';
 import { envParserFor } from './endpoints/surfaceEnv';
+import {
+	registerWebhook,
+	type Webhook,
+	type WebhookOptions,
+} from './endpoints/webhooks';
 import type { Telemetry } from './telemetry';
+import type { Topic, TopicEvents } from './topic/Topic';
 
 /** The factory a surface builds its endpoints from. */
 type Endpoints = EndpointFactory<[], '', Logger>;
@@ -244,8 +250,11 @@ export class RestApi<
 		private readonly config: RestApiConfig<TAuthorizers>,
 		/** Internal: how `.auth()` carries the authenticator into its copy. */
 		private readonly authenticator?: Authenticator,
+		/** Internal: how `.auth()` keeps the webhooks its copy documents. */
+		webhooks: Webhook[] = [],
 	) {
 		const canonical = canonicalId(id as string);
+		this.#webhooks = webhooks;
 
 		this.id = canonical as TName;
 		assertHostLabels({
@@ -300,6 +309,7 @@ export class RestApi<
 				...(config.contact ? { contact: config.contact } : {}),
 				...(config.license ? { license: config.license } : {}),
 				...(authenticator ? { auth: authenticator } : {}),
+				webhooks: this.#webhooks,
 			},
 		});
 
@@ -329,6 +339,9 @@ export class RestApi<
 	 * thing as `api.database(db)` with one more word to learn.
 	 */
 	readonly #endpoints: Endpoints;
+
+	/** The surface's webhooks — shared by reference with every endpoint. */
+	readonly #webhooks: Webhook[];
 
 	/** `api.get('/users')` — one route on this surface. */
 	readonly get: Endpoints['get'];
@@ -384,7 +397,32 @@ export class RestApi<
 			this.id as ConstructName<TName>,
 			this.config,
 			construct,
+			this.#webhooks,
 		);
+	}
+
+	/**
+	 * Documents `topic`'s events as webhooks — the signed requests this service
+	 * sends to the URLs its users register. Each event appears under the
+	 * document's `webhooks`, with its `{ type, payload }` body and the
+	 * signature header a receiver checks.
+	 *
+	 * ```ts
+	 * export const api = new RestApi('Api', { path: 'apps/api' }).webhooks(
+	 *   users,
+	 *   { signature: { header: 'Webhook-Signature' } },
+	 * );
+	 * ```
+	 *
+	 * Documentation only: delivering the events is the service's own
+	 * subscriber's job. Returns the surface, so it chains where it is declared.
+	 */
+	webhooks<TEvents extends TopicEvents>(
+		topic: Topic<string, TEvents>,
+		options?: WebhookOptions<TEvents>,
+	): this {
+		registerWebhook(this.#webhooks, topic, options as WebhookOptions);
+		return this;
 	}
 
 	/**

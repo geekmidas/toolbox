@@ -27,8 +27,10 @@ import type { EndpointTelemetry } from '../telemetry';
 import type { HttpMethod, LowerHttpMethod, RemoveUndefined } from '../types';
 import type { Authorizer } from './Authorizer';
 import type { ActorExtractor, MappedAudit } from './audit';
+import { buildOpenApiCallbacks, type EndpointCallback } from './callbacks';
 import type { RlsConfig } from './rls';
 import { type SessionAuth, sessionAuth } from './sessionAuth';
+import { type Webhook, withWebhooks } from './webhooks';
 
 /**
  * Represents an HTTP endpoint that can handle requests with type-safe input/output validation,
@@ -164,6 +166,8 @@ export class Endpoint<
 	public rlsConfig?: RlsConfig<TServices, TSession, TLogger>;
 	/** Whether to bypass RLS for this endpoint */
 	public rlsBypass?: boolean;
+	/** Requests it makes back to its caller — `.callback(name, …)`. */
+	public callbacks?: Record<string, EndpointCallback>;
 	/** The endpoint handler function */
 	private endpointFn!: EndpointHandler<
 		TInput,
@@ -198,11 +202,13 @@ export class Endpoint<
 		endpoints: Endpoint<any, any, any, any, any, any>[],
 		options?: OpenApiSchemaOptions,
 	) {
-		return buildOpenApiSchema(endpoints, {
+		const doc = await buildOpenApiSchema(endpoints, {
 			...Endpoint.surfaceInfo(endpoints),
 			tags: Endpoint.documentTags(endpoints),
 			...definedOnly(options ?? {}),
 		});
+		// Webhooks are the surfaces', which the endpoints carry.
+		return withWebhooks(doc, endpoints);
 	}
 
 	/**
@@ -674,6 +680,14 @@ export class Endpoint<
 			operation.parameters = queryParameters;
 		}
 
+		// The requests it makes back to a URL its caller gave it.
+		if (this.callbacks && Object.keys(this.callbacks).length > 0) {
+			operation.callbacks = await buildOpenApiCallbacks(
+				this.callbacks,
+				componentCollector,
+			);
+		}
+
 		// Build the route object with path parameters at the route level
 		const routeObject: any = {};
 		if (pathParameters.length > 0) {
@@ -908,6 +922,12 @@ export interface EndpointSurface {
 	contact?: OpenAPIV3_1.ContactObject;
 	/** The licence the API is offered under — its document's `info.license`. */
 	license?: OpenAPIV3_1.LicenseObject;
+	/**
+	 * Topics whose events this surface delivers to its users' URLs —
+	 * `api.webhooks(topic, …)`. One list shared by every endpoint the surface
+	 * built, so the document finds it from any of them.
+	 */
+	webhooks?: Webhook[];
 }
 
 /** A tag an endpoint is grouped under, and what the group is. */
