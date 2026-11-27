@@ -24,8 +24,18 @@ import type { EventFor } from '../publisher';
 import type { EndpointTelemetry } from '../telemetry';
 import type { Topic } from '../topic/Topic';
 import type { HttpMethod } from '../types';
-import type { Authorizer, SecurityScheme } from './Authorizer';
-import { getSecurityScheme } from './Authorizer';
+import type {
+	Authorizer,
+	AuthorizerOptions,
+	AuthorizerRequirement,
+	SecurityScheme,
+} from './Authorizer';
+import {
+	assertAuthorizerAvailable,
+	NoAuthorizersGiven,
+	normalizeAuthorizerRequirement,
+	resolveAuthorizer,
+} from './Authorizer';
 import type { ActorExtractor, MappedAudit } from './audit';
 import { CallbackDeclaredTwice, type EndpointCallback } from './callbacks';
 import type {
@@ -110,6 +120,12 @@ export class EndpointBuilder<
 	_rateLimit?: RateLimitConfig;
 	_availableAuthorizers: Authorizer[] = [];
 	_authorizerName?: TAuthorizers[number];
+	/**
+	 * Every authorizer the endpoint accepts, with scopes — set by
+	 * `.authorizer(name, { scopes })`, `.authorizers([...])` or a factory
+	 * default with scopes. Absent, `_authorizerName` alone with none.
+	 */
+	_security?: { name: string; scopes: string[] }[];
 	_actorExtractor?: ActorExtractor<TServices, TSession, TLogger>;
 	_audits: MappedAudit<TAuditAction, OutSchema>[] = [];
 	/**
@@ -423,8 +439,14 @@ export class EndpointBuilder<
 		return cloneWith(this, { _rateLimit: config });
 	}
 
+	/**
+	 * The authorizer that guards this endpoint, and the scopes a caller's
+	 * credential must carry: `.authorizer('oauth', { scopes: ['orders:read'] })`.
+	 * `'none'` makes it public.
+	 */
 	authorizer(
 		name: TAuthorizers[number] | 'none',
+		options?: AuthorizerOptions,
 	): EndpointBuilder<
 		TRoute,
 		TMethod,
@@ -442,23 +464,64 @@ export class EndpointBuilder<
 	> {
 		// Special case: 'none' explicitly marks endpoint as having no authorizer
 		if (name === 'none') {
-			return cloneWith(this, { _authorizerName: undefined });
+			return cloneWith(this, {
+				_authorizerName: undefined,
+				_security: undefined,
+			});
 		}
 
 		// Validate that the authorizer exists in available authorizers
-		const authorizerExists = this._availableAuthorizers.some(
-			(a) => a.name === name,
-		);
-		if (!authorizerExists && this._availableAuthorizers.length > 0) {
-			const available = this._availableAuthorizers
-				.map((a) => a.name)
-				.join(', ');
-			throw new Error(
-				`Authorizer "${name as string}" not found in available authorizers: ${available}`,
-			);
+		assertAuthorizerAvailable(name as string, this._availableAuthorizers);
+
+		return cloneWith(this, {
+			_authorizerName: name,
+			_security: [
+				{ name: name as string, scopes: [...(options?.scopes ?? [])] },
+			],
+		});
+	}
+
+	/**
+	 * Several ways to call this endpoint, any one of which is enough — a
+	 * session cookie, or an OAuth 2 token with a scope:
+	 *
+	 * ```typescript
+	 * .authorizers(['session', { name: 'oauth', scopes: ['orders:read'] }])
+	 * ```
+	 *
+	 * The first is the endpoint's `authorizer`, the one a gateway enforces;
+	 * the OpenAPI document lists them all as alternatives.
+	 */
+	authorizers(
+		alternatives: readonly AuthorizerRequirement<TAuthorizers[number]>[],
+	): EndpointBuilder<
+		TRoute,
+		TMethod,
+		TInput,
+		TServices,
+		TLogger,
+		OutSchema,
+		TSession,
+		TAuthorizers,
+		TAuditStorage,
+		TAuditStorageServiceName,
+		TAuditAction,
+		TDatabase,
+		TDatabaseServiceName
+	> {
+		const security = alternatives.map(normalizeAuthorizerRequirement);
+		const [first] = security;
+		if (!first) {
+			throw new NoAuthorizersGiven(`${this.method} ${this.route}`);
+		}
+		for (const { name } of security) {
+			assertAuthorizerAvailable(name, this._availableAuthorizers);
 		}
 
-		return cloneWith(this, { _authorizerName: name });
+		return cloneWith(this, {
+			_authorizerName: first.name as TAuthorizers[number],
+			_security: security,
+		});
 	}
 
 	/**
@@ -927,28 +990,22 @@ export class EndpointBuilder<
 		TDatabase,
 		TDatabaseServiceName
 	> {
-		// Find authorizer metadata if name is set
-		// If the authorizer name is set but not in availableAuthorizers, create a simple authorizer object
-		let authorizer: Authorizer | undefined;
-		if (this._authorizerName) {
-			const existingAuthorizer = this._availableAuthorizers.find(
-				(a) => a.name === this._authorizerName,
-			);
-
-			if (existingAuthorizer) {
-				authorizer = existingAuthorizer;
-			} else {
-				// Create authorizer with security scheme if available (built-in or custom)
-				const securityScheme = getSecurityScheme(
-					this._authorizerName as string,
-					this._customSecuritySchemes,
-				);
-				authorizer = {
-					name: this._authorizerName as string,
-					securityScheme,
-				};
-			}
-		}
+		// Each authorizer it accepts, resolved to its scheme (the factory's own,
+		// a built-in, or a custom one); the first is the endpoint's `authorizer`.
+		const security = (
+			this._security ??
+			(this._authorizerName
+				? [{ name: this._authorizerName as string, scopes: [] }]
+				: [])
+		).map(({ name, scopes }) => ({
+			authorizer: resolveAuthorizer(
+				name,
+				this._availableAuthorizers,
+				this._customSecuritySchemes,
+			),
+			scopes,
+		}));
+		const authorizer: Authorizer | undefined = security[0]?.authorizer;
 
 		const endpoint = new Endpoint({
 			fn,
@@ -972,6 +1029,7 @@ export class EndpointBuilder<
 			rateLimit: this._rateLimit,
 			events: this._events,
 			authorizer,
+			security,
 			surface: this._surface,
 			auditorStorageService: this._auditorStorage,
 			actorExtractor: this._actorExtractor,

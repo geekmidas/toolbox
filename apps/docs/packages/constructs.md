@@ -3201,3 +3201,64 @@ export const startExport = api
   })
   .handle(async ({ body }) => { … });
 ```
+
+### Security requirements and scopes
+
+An endpoint's authorizer becomes its `security` requirement, and its scheme a
+`components.securitySchemes` entry. Scopes go beside the name, and an endpoint
+that accepts more than one credential lists each as an alternative, any one of
+which is enough:
+
+```typescript
+import {
+  oauth2AuthorizationCode,
+  oauth2ClientCredentials,
+  RestApi,
+} from '@geekmidas/constructs/rest-api';
+
+export const api = new RestApi('Api', {
+  path: 'apps/api',
+  securitySchemes: {
+    session: { type: 'apiKey', in: 'cookie', name: 'session' },
+    // RFC 6749 §4.4: a service trades its client id and secret for a token
+    partners: oauth2ClientCredentials({
+      tokenUrl: 'https://auth.example.com/oauth/token',
+      scopes: { 'orders:read': 'Read orders', 'orders:write': 'Change orders' },
+    }),
+    // Authorization code with PKCE (RFC 7636), written as `x-usePkce: SHA-256`
+    app: oauth2AuthorizationCode({
+      authorizationUrl: 'https://auth.example.com/oauth/authorize',
+      tokenUrl: 'https://auth.example.com/oauth/token',
+      scopes: { profile: 'Read your profile' },
+    }),
+  },
+  authorizers: ['session', 'partners', 'app'],
+  defaultAuthorizer: 'none',
+});
+
+// security: [{ partners: ['orders:write'] }]
+export const createOrder = api
+  .post('/orders')
+  .authorizer('partners', { scopes: ['orders:write'] })
+  .handle(async () => { … });
+
+// security: [{ session: [] }, { partners: ['orders:read'] }]
+export const listOrders = api
+  .get('/orders')
+  .authorizers(['session', { name: 'partners', scopes: ['orders:read'] }])
+  .handle(async () => { … });
+
+// A branch's default: every endpoint built from it requires `orders:read`
+export const partnerApi = api.authorizer('partners', { scopes: ['orders:read'] });
+```
+
+Scopes are documentation: checking them is the authorizer's job. The first
+alternative is the endpoint's `authorizer`, the one API Gateway enforces;
+`endpoint.security` holds them all.
+
+The client `gkm openapi --ts` generates knows every alternative too. In
+`endpointAuth` an endpoint that accepts several lists them
+(`'GET /orders': ['session', 'partners']`), and the fetcher sends the first one
+it has an `authStrategies` entry for, so a browser app configures `session`
+and a back-office script `partners`, and neither needs the other. A strategy is
+required only for a scheme some endpoint accepts on its own.

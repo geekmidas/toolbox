@@ -25,7 +25,7 @@ import { Function, type FunctionHandler } from '../functions';
 import type { TopicEvent } from '../publisher';
 import type { EndpointTelemetry } from '../telemetry';
 import type { HttpMethod, LowerHttpMethod, RemoveUndefined } from '../types';
-import type { Authorizer } from './Authorizer';
+import type { Authorizer, SecurityRequirement } from './Authorizer';
 import type { ActorExtractor, MappedAudit } from './audit';
 import { buildOpenApiCallbacks, type EndpointCallback } from './callbacks';
 import type { RlsConfig } from './rls';
@@ -156,6 +156,12 @@ export class Endpoint<
 	public rateLimit?: RateLimitConfig;
 	/** Optional authorizer for this endpoint */
 	public authorizer?: Authorizer;
+	/**
+	 * Every way to call it: each authorizer it accepts, with the scopes that
+	 * one must grant. Any one is enough. `authorizer` is the first, which is
+	 * what a gateway enforces; this is what the document describes.
+	 */
+	public security: SecurityRequirement[] = [];
 	/** Optional actor extractor for audit records */
 	public actorExtractor?: ActorExtractor<TServices, TSession, TLogger>;
 	/** Declarative audit definitions */
@@ -578,13 +584,19 @@ export class Endpoint<
 
 		// What protects it. Without this every endpoint read as public in the
 		// document, including the ones an authorizer guards.
-		const scheme = this.authorizer?.securityScheme;
-		if (this.authorizer && scheme && componentCollector) {
-			componentCollector.addSecurityScheme(
-				this.authorizer.name,
-				scheme as OpenAPIV3_1.SecuritySchemeObject,
-			);
-			operation.security = [{ [this.authorizer.name]: [] }];
+		// Each alternative is its own requirement object, so any one will do,
+		// and each carries the scopes that authorizer must grant.
+		const security = this.security.filter((s) => s.authorizer.securityScheme);
+		if (componentCollector && security.length > 0) {
+			for (const { authorizer } of security) {
+				componentCollector.addSecurityScheme(
+					authorizer.name,
+					authorizer.securityScheme as OpenAPIV3_1.SecuritySchemeObject,
+				);
+			}
+			operation.security = security.map(({ authorizer, scopes }) => ({
+				[authorizer.name]: scopes,
+			}));
 		}
 
 		// Add response schema
@@ -740,6 +752,7 @@ export class Endpoint<
 		status = SuccessStatus.OK,
 		events,
 		authorizer,
+		security,
 		surface,
 		auditorStorageService,
 		actorExtractor,
@@ -822,6 +835,9 @@ export class Endpoint<
 		if (authorizer) {
 			this.authorizer = authorizer;
 		}
+		// Given just an authorizer, that is the one way to call it.
+		this.security =
+			security ?? (authorizer ? [{ authorizer, scopes: [] }] : []);
 
 		this.surface = surface;
 
@@ -1036,6 +1052,11 @@ export interface EndpointOptions<
 	events?: TopicEvent[];
 	/** Optional authorizer configuration */
 	authorizer?: Authorizer;
+	/**
+	 * Every authorizer it accepts, with its scopes. Absent, `authorizer` with
+	 * no scopes. Its first entry should be `authorizer`.
+	 */
+	security?: SecurityRequirement[];
 	/** The surface this endpoint was built from. Every endpoint has one. */
 	surface: EndpointSurface;
 	/**

@@ -71,6 +71,11 @@ interface EndpointInfo {
 	authorizerType: string | null;
 	/** The OpenAPI security scheme definition for this endpoint's authorizer */
 	securityScheme: SecuritySchemeObject | null;
+	/**
+	 * Every authorizer the endpoint accepts, in order — the first is
+	 * `authorizerName`. Any one of them is enough.
+	 */
+	alternatives: { name: string; scheme: SecuritySchemeObject | null }[];
 	input?: {
 		body?: StandardSchemaV1;
 		query?: StandardSchemaV1;
@@ -85,6 +90,30 @@ interface EndpointInfo {
 	bodyOptional: boolean;
 	summary?: string;
 	deprecated?: boolean;
+}
+
+/**
+ * What `endpointAuth` says of one endpoint: its scheme, every scheme it
+ * accepts when there is more than one, or `null` when it is public.
+ */
+type EndpointAuthEntry = string | string[] | null;
+
+/**
+ * Each authorizer an endpoint accepts with its scheme, in order. An endpoint
+ * from a constructs version without `security` has only its `authorizer`.
+ */
+function endpointAlternatives(
+	ep: Endpoint<any, any, any, any, any, any>,
+): EndpointInfo['alternatives'] {
+	const authorizers = ep.security?.length
+		? ep.security.map((s) => s.authorizer)
+		: ep.authorizer
+			? [ep.authorizer]
+			: [];
+	return authorizers.map((a) => ({
+		name: a.name,
+		scheme: (a.securityScheme as SecuritySchemeObject | undefined) ?? null,
+	}));
 }
 
 interface SecuritySchemeInfo {
@@ -176,6 +205,7 @@ export class OpenApiTsGenerator {
 					authorizerName: ep.authorizer?.name ?? null,
 					authorizerType: ep.authorizer?.type ?? null,
 					securityScheme: securityScheme ?? null,
+					alternatives: endpointAlternatives(ep),
 					input: ep.input,
 					output: ep.outputSchema,
 					description: ep.description,
@@ -217,6 +247,16 @@ export class OpenApiTsGenerator {
 						type: scheme.type,
 						scheme,
 					});
+				}
+			}
+		}
+
+		// Every alternative's scheme, not just the first: a client calls an
+		// endpoint that accepts several with whichever it has a strategy for.
+		for (const info of endpointInfos) {
+			for (const { name, scheme } of info.alternatives.slice(1)) {
+				if (scheme && !schemes.has(name)) {
+					schemes.set(name, { name, type: scheme.type, scheme });
 				}
 			}
 		}
@@ -273,11 +313,17 @@ export class OpenApiTsGenerator {
 
 	private buildEndpointAuthMap(
 		endpointInfos: EndpointInfo[],
-	): Record<string, string | null> {
-		const authMap: Record<string, string | null> = {};
+	): Record<string, EndpointAuthEntry> {
+		const authMap: Record<string, EndpointAuthEntry> = {};
 
 		for (const info of endpointInfos) {
-			authMap[info.endpoint] = info.authorizerName;
+			// One scheme stays a string, as it always was; an endpoint that
+			// accepts several lists them in order, for the fetcher to pick from.
+			const alternatives = info.alternatives
+				.filter(({ scheme }) => scheme)
+				.map(({ name }) => name);
+			authMap[info.endpoint] =
+				alternatives.length > 1 ? alternatives : info.authorizerName;
 		}
 
 		return authMap;
@@ -697,7 +743,7 @@ export class OpenApiTsGenerator {
 	private buildModule(params: {
 		info: Record<string, unknown>;
 		securitySchemes: SecuritySchemeInfo[];
-		endpointAuth: Record<string, string | null>;
+		endpointAuth: Record<string, EndpointAuthEntry>;
 		schemaInterfaces: string;
 		pathsInterface: string;
 		telemetryDefault: string;
@@ -745,7 +791,7 @@ export const telemetryDefault: boolean | ClientTelemetryOptions = ${telemetryDef
 
 import {
   createAuthAwareFetcher,
-  type AuthStrategy,
+  type AuthFetcherOptions,
 } from '@geekmidas/client/auth-fetcher';
 import { createEndpointHooks } from '@geekmidas/client/endpoint-hooks';
 import type { ClientTelemetryOptions } from '@geekmidas/client/telemetry';
@@ -757,8 +803,11 @@ ${telemetrySection}
 export interface CreateApiOptions {
   /** Base URL for all API requests (required) */
   baseURL: string;
-  /** Auth strategies for each security scheme used in this API */
-  authStrategies: Record<SecuritySchemeId, AuthStrategy>;
+  /**
+   * Auth strategies for the security schemes used in this API. A scheme an
+   * endpoint accepts only as one of several alternatives may be left out.
+   */
+  authStrategies: AuthFetcherOptions<typeof endpointAuth, typeof securitySchemes>['authStrategies'];
   /** Optional React Query client instance */
   queryClient?: QueryClient;
   /** Optional request interceptor */
@@ -904,9 +953,10 @@ export type SecuritySchemeId = ${schemeNames || 'never'};
 
 /**
  * Runtime map of endpoints to their required authentication scheme.
- * \`null\` indicates a public endpoint (no auth required).
+ * \`null\` indicates a public endpoint (no auth required); a list is every
+ * scheme an endpoint accepts, any one of which will do.
  */
-export const endpointAuth = ${JSON.stringify(endpointAuth, null, 2).replace(/"([^"]+)":/g, "'$1':")} as const satisfies Record<string, SecuritySchemeId | null>;
+export const endpointAuth = ${JSON.stringify(endpointAuth, null, 2).replace(/"([^"]+)":/g, "'$1':")} as const satisfies Record<string, SecuritySchemeId | readonly SecuritySchemeId[] | null>;
 
 export type EndpointString = keyof typeof endpointAuth;
 

@@ -51,7 +51,15 @@ export type { Authenticator } from './construct-interface';
 import {
 	type BuiltInSecuritySchemeId,
 	getSecurityScheme,
+	type SecurityScheme,
 } from './endpoints/Authorizer';
+
+export {
+	oauth2AuthorizationCode,
+	oauth2ClientCredentials,
+	type SecurityScheme,
+} from './endpoints/Authorizer';
+
 import { EndpointFactory } from './endpoints/EndpointFactory';
 import { envParserFor } from './endpoints/surfaceEnv';
 import {
@@ -112,6 +120,20 @@ export interface RestApiConfig<
 	 * belongs to the target and never to portable code.
 	 */
 	authorizers?: TAuthorizers;
+	/**
+	 * The OpenAPI security schemes behind names in `authorizers` that are not
+	 * built in — an OAuth 2 scheme with its flows and scopes, a session
+	 * cookie. Documentation only, like the built-ins:
+	 *
+	 * ```ts
+	 * securitySchemes: {
+	 *   partners: oauth2ClientCredentials({ tokenUrl, scopes }),
+	 *   session: { type: 'apiKey', in: 'cookie', name: 'session' },
+	 * },
+	 * authorizers: ['session', 'partners'],
+	 * ```
+	 */
+	securitySchemes?: Record<string, SecurityScheme>;
 	/**
 	 * The authorizer applied to an endpoint that names none.
 	 *
@@ -286,13 +308,19 @@ export class RestApi<
 
 		this.#endpoints = new EndpointFactory({
 			defaultLogger: this.logger,
+			...(config.securitySchemes
+				? { customSecuritySchemes: config.securitySchemes }
+				: {}),
 			...(config.authorizers
 				? {
 						// With the scheme a built-in name stands for, as the factory's own
 						// `.authorizers()` resolves it. Bare names reached the OpenAPI
 						// document with no scheme, so a guarded endpoint read as public.
 						availableAuthorizers: config.authorizers.map((name) => {
-							const securityScheme = getSecurityScheme(name);
+							const securityScheme = getSecurityScheme(
+								name,
+								config.securitySchemes,
+							);
 							return securityScheme ? { name, securityScheme } : { name };
 						}),
 					}

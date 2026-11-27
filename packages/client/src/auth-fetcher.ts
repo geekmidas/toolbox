@@ -26,12 +26,34 @@ export interface SecuritySchemeObject {
 }
 
 /**
+ * What an endpoint requires: one security scheme, several it accepts as
+ * alternatives (any one will do), or `null` for a public endpoint.
+ */
+export type EndpointAuthRequirement = string | readonly string[] | null;
+
+type SchemesOf<T> = T extends readonly (infer S)[] ? S : T;
+
+type SoleSchemeOf<T> = T extends string
+	? T
+	: T extends readonly [infer S extends string]
+		? S
+		: never;
+
+/**
  * Extract all non-null security scheme IDs that are actually used in the API.
  * This gives us the union of scheme names that endpoints require.
  */
 export type UsedSecuritySchemes<
-	EndpointAuth extends Record<string, string | null>,
-> = NonNullable<EndpointAuth[keyof EndpointAuth]>;
+	EndpointAuth extends Record<string, EndpointAuthRequirement>,
+> = NonNullable<SchemesOf<EndpointAuth[keyof EndpointAuth]>>;
+
+/**
+ * The schemes some endpoint can be called with only — a strategy for each is
+ * required. A scheme that is only ever one of several alternatives is not.
+ */
+export type RequiredSecuritySchemes<
+	EndpointAuth extends Record<string, EndpointAuthRequirement>,
+> = SoleSchemeOf<EndpointAuth[keyof EndpointAuth]>;
 
 /**
  * Interface for token storage and retrieval.
@@ -88,7 +110,7 @@ export type AuthStrategy =
  * @template SecuritySchemes - Available security scheme definitions
  */
 export interface AuthFetcherOptions<
-	EndpointAuth extends Record<string, string | null>,
+	EndpointAuth extends Record<string, EndpointAuthRequirement>,
 	SecuritySchemes extends Record<string, SecuritySchemeObject>,
 > extends Omit<FetcherOptions, 'onRequest'> {
 	/**
@@ -105,7 +127,9 @@ export interface AuthFetcherOptions<
 
 	/**
 	 * Auth strategies for security schemes that are actually used.
-	 * Only schemes referenced in endpointAuth are required.
+	 * Only schemes referenced in endpointAuth are required, and of an
+	 * endpoint that accepts several, only one is: the fetcher uses the first
+	 * of its schemes there is a strategy for.
 	 *
 	 * @example
 	 * ```typescript
@@ -117,7 +141,8 @@ export interface AuthFetcherOptions<
 	 * }
 	 * ```
 	 */
-	authStrategies: Record<UsedSecuritySchemes<EndpointAuth>, AuthStrategy>;
+	authStrategies: Record<RequiredSecuritySchemes<EndpointAuth>, AuthStrategy> &
+		Partial<Record<UsedSecuritySchemes<EndpointAuth>, AuthStrategy>>;
 
 	/**
 	 * Optional request interceptor (runs after auth headers are added).
@@ -155,9 +180,9 @@ export interface AuthFetcherOptions<
  */
 export function createAuthAwareFetcher<
 	Paths,
-	EndpointAuth extends Record<string, string | null> = Record<
+	EndpointAuth extends Record<string, EndpointAuthRequirement> = Record<
 		string,
-		string | null
+		EndpointAuthRequirement
 	>,
 	SecuritySchemes extends Record<string, SecuritySchemeObject> = Record<
 		string,
@@ -186,19 +211,21 @@ export function createAuthAwareFetcher<
 		endpoint: T,
 		config?: FilteredRequestConfig<Paths, T>,
 	): Promise<ExtractEndpointResponse<Paths, T>> => {
-		// Look up auth requirement for this endpoint
-		const schemeName = endpointAuth[endpoint as keyof EndpointAuth] as
-			| string
-			| null;
+		// Look up auth requirement for this endpoint: the first scheme it
+		// accepts that this client has a strategy for.
+		const requirement = endpointAuth[
+			endpoint as keyof EndpointAuth
+		] as EndpointAuthRequirement;
+		const strategies = authStrategies as Partial<Record<string, AuthStrategy>>;
+		const schemeName = (
+			typeof requirement === 'string' ? [requirement] : (requirement ?? [])
+		).find((name) => strategies[name]);
 
 		let authHeaders: Record<string, string> = {};
 
 		if (schemeName) {
 			const scheme = securitySchemes[schemeName as keyof SecuritySchemes];
-			// Since authStrategies is now required to have all used schemes,
-			// we can safely access it - TypeScript ensures the strategy exists
-			const strategy =
-				authStrategies[schemeName as UsedSecuritySchemes<EndpointAuth>];
+			const strategy = strategies[schemeName];
 
 			if (strategy && scheme) {
 				authHeaders = await resolveAuthHeaders(strategy, scheme);
@@ -267,7 +294,7 @@ async function resolveAuthHeaders(
  * Type helper to extract the security scheme ID from an endpoint.
  */
 export type GetEndpointAuth<
-	EndpointAuth extends Record<string, string | null>,
+	EndpointAuth extends Record<string, EndpointAuthRequirement>,
 	Endpoint extends keyof EndpointAuth,
 > = EndpointAuth[Endpoint];
 
@@ -275,7 +302,7 @@ export type GetEndpointAuth<
  * Type helper to get all authenticated endpoints.
  */
 export type AuthenticatedEndpoints<
-	EndpointAuth extends Record<string, string | null>,
+	EndpointAuth extends Record<string, EndpointAuthRequirement>,
 > = {
 	[K in keyof EndpointAuth]: EndpointAuth[K] extends null ? never : K;
 }[keyof EndpointAuth];
@@ -284,7 +311,7 @@ export type AuthenticatedEndpoints<
  * Type helper to get all public endpoints.
  */
 export type PublicEndpoints<
-	EndpointAuth extends Record<string, string | null>,
+	EndpointAuth extends Record<string, EndpointAuthRequirement>,
 > = {
 	[K in keyof EndpointAuth]: EndpointAuth[K] extends null ? K : never;
 }[keyof EndpointAuth];

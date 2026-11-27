@@ -502,4 +502,80 @@ describe('createAuthAwareFetcher', () => {
 			expect(result).toEqual({ users: [{ id: '1', name: 'John' }] });
 		});
 	});
+
+	describe('an endpoint that accepts several schemes', () => {
+		const schemes = {
+			...securitySchemes,
+			session: { type: 'apiKey', in: 'cookie', name: 'session' },
+		} satisfies Record<string, SecuritySchemeObject>;
+
+		it('authenticates with the first scheme it has a strategy for', async () => {
+			const tokenProvider: TokenProvider = {
+				getValidAccessToken: vi.fn().mockResolvedValue('valid-token'),
+				createValidAuthHeaders: vi.fn().mockResolvedValue({
+					Authorization: 'Bearer valid-token',
+				}),
+			};
+
+			// A server-side caller: no browser session, an OAuth token.
+			const api = createAuthAwareFetcher<
+				TestPaths,
+				{ 'GET /protected': readonly ['session', 'bearer'] },
+				typeof schemes
+			>({
+				baseURL: 'https://api.example.com',
+				endpointAuth: { 'GET /protected': ['session', 'bearer'] },
+				securitySchemes: schemes,
+				authStrategies: {
+					bearer: { type: 'bearer', tokenProvider },
+				},
+			});
+
+			const result = await api('GET /protected');
+
+			expect(result).toEqual({ data: 'secret' });
+			expect(lastReceivedHeaders.authorization).toBe('Bearer valid-token');
+		});
+
+		it('prefers the earlier scheme when it has strategies for both', async () => {
+			const tokenProvider: TokenProvider = {
+				getValidAccessToken: vi.fn().mockResolvedValue('valid-token'),
+				createValidAuthHeaders: vi.fn().mockResolvedValue({
+					Authorization: 'Bearer valid-token',
+				}),
+			};
+			const apiKeyProvider: ApiKeyProvider = {
+				getApiKey: vi.fn().mockResolvedValue('my-api-key'),
+			};
+
+			const api = createAuthAwareFetcher<TestPaths>({
+				baseURL: 'https://api.example.com',
+				endpointAuth: { 'GET /api-key-protected': ['apiKey', 'bearer'] },
+				securitySchemes: schemes,
+				authStrategies: {
+					apiKey: { type: 'apiKey', apiKeyProvider },
+					bearer: { type: 'bearer', tokenProvider },
+				},
+			});
+
+			await api('GET /api-key-protected');
+
+			expect(lastReceivedHeaders['x-api-key']).toBe('my-api-key');
+			expect(lastReceivedHeaders.authorization).toBeUndefined();
+			expect(tokenProvider.createValidAuthHeaders).not.toHaveBeenCalled();
+		});
+
+		it('sends no credentials when it has a strategy for none of them', async () => {
+			const api = createAuthAwareFetcher<TestPaths>({
+				baseURL: 'https://api.example.com',
+				endpointAuth: { 'GET /users': ['session', 'bearer'] },
+				securitySchemes: schemes,
+				authStrategies: {},
+			});
+
+			await api('GET /users');
+
+			expect(lastReceivedHeaders.authorization).toBeUndefined();
+		});
+	});
 });

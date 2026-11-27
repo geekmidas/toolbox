@@ -6,13 +6,20 @@ export { trustsOrigin } from '@geekmidas/manifest';
 export { publishConstructEvents } from '../publisher';
 export {
 	type Authorizer,
+	AuthorizerNotAvailable,
+	type AuthorizerOptions,
+	type AuthorizerRequirement,
 	BUILT_IN_SECURITY_SCHEMES,
 	type BuiltInSecuritySchemeId,
 	createAuthorizer,
 	getSecurityScheme,
 	isBuiltInSecurityScheme,
+	NoAuthorizersGiven,
 	type OAuthFlow,
 	type OAuthFlows,
+	oauth2AuthorizationCode,
+	oauth2ClientCredentials,
+	type SecurityRequirement,
 	type SecurityScheme,
 } from './Authorizer';
 export type { ActorExtractor, MappedAudit } from './audit';

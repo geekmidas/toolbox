@@ -18,6 +18,8 @@ import {
 import type { HttpMethod } from '../types';
 import {
 	type Authorizer,
+	type AuthorizerOptions,
+	assertAuthorizerAvailable,
 	type BuiltInSecuritySchemeId,
 	getSecurityScheme,
 	type SecurityScheme,
@@ -95,6 +97,7 @@ export class EndpointFactory<
 	private surface: EndpointSurface;
 	private availableAuthorizers: Authorizer[];
 	private defaultAuthorizerName?: TAuthorizers[number];
+	private defaultAuthorizerScopes?: string[];
 	private defaultAuditorStorage:
 		| Service<TAuditStorageServiceName, TAuditStorage>
 		| undefined;
@@ -117,6 +120,7 @@ export class EndpointFactory<
 		defaultConstructs = [] as string[],
 		availableAuthorizers = [],
 		defaultAuthorizerName,
+		defaultAuthorizerScopes,
 		defaultAuditorStorage,
 		defaultDatabaseService,
 		defaultActorExtractor,
@@ -150,6 +154,7 @@ export class EndpointFactory<
 		this.defaultSessionExtractor = defaultSessionExtractor;
 		this.availableAuthorizers = availableAuthorizers;
 		this.defaultAuthorizerName = defaultAuthorizerName;
+		this.defaultAuthorizerScopes = defaultAuthorizerScopes;
 		this.defaultAuditorStorage = defaultAuditorStorage;
 		this.defaultDatabaseService = defaultDatabaseService;
 		this.defaultActorExtractor = defaultActorExtractor;
@@ -239,6 +244,7 @@ export class EndpointFactory<
 			defaultSessionExtractor: this.defaultSessionExtractor,
 			availableAuthorizers: authorizerConfigs,
 			defaultAuthorizerName: this.defaultAuthorizerName,
+			defaultAuthorizerScopes: this.defaultAuthorizerScopes,
 			defaultAuditorStorage: this.defaultAuditorStorage,
 			defaultDatabaseService: this.defaultDatabaseService,
 			defaultActorExtractor: this.defaultActorExtractor,
@@ -303,6 +309,7 @@ export class EndpointFactory<
 			defaultSessionExtractor: this.defaultSessionExtractor,
 			availableAuthorizers: this.availableAuthorizers,
 			defaultAuthorizerName: this.defaultAuthorizerName,
+			defaultAuthorizerScopes: this.defaultAuthorizerScopes,
 			defaultAuditorStorage: this.defaultAuditorStorage,
 			defaultDatabaseService: this.defaultDatabaseService,
 			defaultActorExtractor: this.defaultActorExtractor,
@@ -325,6 +332,9 @@ export class EndpointFactory<
 	 * - Built-in security scheme names: 'jwt', 'bearer', 'apiKey', 'oauth2', 'oidc'
 	 * - Custom security scheme names defined via `.securitySchemes()`
 	 * - 'none' to disable authorization
+	 *
+	 * `options.scopes` are the scopes every endpoint built from it requires of
+	 * that authorizer, unless the endpoint names its own.
 	 */
 	authorizer(
 		name:
@@ -332,6 +342,7 @@ export class EndpointFactory<
 			| keyof TSecuritySchemes
 			| TAuthorizers[number]
 			| 'none',
+		options?: AuthorizerOptions,
 	): EndpointFactory<
 		TServices,
 		TBasePath,
@@ -347,18 +358,8 @@ export class EndpointFactory<
 		TRlsConfig
 	> {
 		// Validate that the authorizer exists in available authorizers (if authorizers() was called)
-		if (name !== 'none' && this.availableAuthorizers.length > 0) {
-			const authorizerExists = this.availableAuthorizers.some(
-				(a) => a.name === name,
-			);
-			if (!authorizerExists) {
-				const available = this.availableAuthorizers
-					.map((a) => a.name)
-					.join(', ');
-				throw new Error(
-					`Authorizer "${name as string}" not found in available authorizers: ${available}`,
-				);
-			}
+		if (name !== 'none') {
+			assertAuthorizerAvailable(name as string, this.availableAuthorizers);
 		}
 
 		return new EndpointFactory<
@@ -384,6 +385,8 @@ export class EndpointFactory<
 			availableAuthorizers: this.availableAuthorizers,
 			defaultAuthorizerName:
 				name === 'none' ? undefined : (name as TAuthorizers[number]),
+			defaultAuthorizerScopes:
+				name === 'none' || !options?.scopes ? undefined : [...options.scopes],
 			defaultAuditorStorage: this.defaultAuditorStorage,
 			defaultDatabaseService: this.defaultDatabaseService,
 			defaultActorExtractor: this.defaultActorExtractor,
@@ -434,6 +437,7 @@ export class EndpointFactory<
 			defaultSessionExtractor: this.defaultSessionExtractor,
 			availableAuthorizers: this.availableAuthorizers,
 			defaultAuthorizerName: this.defaultAuthorizerName,
+			defaultAuthorizerScopes: this.defaultAuthorizerScopes,
 			defaultAuditorStorage: this.defaultAuditorStorage,
 			defaultDatabaseService: this.defaultDatabaseService,
 			defaultActorExtractor: this.defaultActorExtractor,
@@ -483,6 +487,7 @@ export class EndpointFactory<
 			defaultSessionExtractor: this.defaultSessionExtractor,
 			availableAuthorizers: this.availableAuthorizers,
 			defaultAuthorizerName: this.defaultAuthorizerName,
+			defaultAuthorizerScopes: this.defaultAuthorizerScopes,
 			defaultAuditorStorage: this.defaultAuditorStorage,
 			defaultDatabaseService: this.defaultDatabaseService,
 			defaultActorExtractor: this.defaultActorExtractor,
@@ -592,6 +597,7 @@ export class EndpointFactory<
 				| undefined,
 			availableAuthorizers: this.availableAuthorizers,
 			defaultAuthorizerName: this.defaultAuthorizerName,
+			defaultAuthorizerScopes: this.defaultAuthorizerScopes,
 			defaultAuditorStorage: this.defaultAuditorStorage,
 			defaultDatabaseService: this.defaultDatabaseService,
 			defaultActorExtractor: this.defaultActorExtractor as unknown as
@@ -653,6 +659,7 @@ export class EndpointFactory<
 			>,
 			availableAuthorizers: this.availableAuthorizers,
 			defaultAuthorizerName: this.defaultAuthorizerName,
+			defaultAuthorizerScopes: this.defaultAuthorizerScopes,
 			defaultAuditorStorage: this.defaultAuditorStorage,
 			defaultDatabaseService: this.defaultDatabaseService,
 			defaultActorExtractor: this
@@ -712,6 +719,7 @@ export class EndpointFactory<
 			defaultSessionExtractor: session,
 			availableAuthorizers: this.availableAuthorizers,
 			defaultAuthorizerName: this.defaultAuthorizerName,
+			defaultAuthorizerScopes: this.defaultAuthorizerScopes,
 			defaultAuditorStorage: this.defaultAuditorStorage,
 			defaultDatabaseService: this.defaultDatabaseService,
 			defaultActorExtractor: this
@@ -785,6 +793,7 @@ export class EndpointFactory<
 				| undefined,
 			availableAuthorizers: this.availableAuthorizers,
 			defaultAuthorizerName: this.defaultAuthorizerName,
+			defaultAuthorizerScopes: this.defaultAuthorizerScopes,
 			defaultAuditorStorage: this.defaultAuditorStorage,
 			defaultDatabaseService: service,
 			customSecuritySchemes: this.customSecuritySchemes,
@@ -837,6 +846,7 @@ export class EndpointFactory<
 			defaultSessionExtractor: this.defaultSessionExtractor,
 			availableAuthorizers: this.availableAuthorizers,
 			defaultAuthorizerName: this.defaultAuthorizerName,
+			defaultAuthorizerScopes: this.defaultAuthorizerScopes,
 			defaultAuditorStorage: storage,
 			defaultDatabaseService: this.defaultDatabaseService,
 			defaultActorExtractor: this
@@ -894,6 +904,7 @@ export class EndpointFactory<
 			defaultSessionExtractor: this.defaultSessionExtractor,
 			availableAuthorizers: this.availableAuthorizers,
 			defaultAuthorizerName: this.defaultAuthorizerName,
+			defaultAuthorizerScopes: this.defaultAuthorizerScopes,
 			defaultAuditorStorage: this.defaultAuditorStorage,
 			defaultDatabaseService: this.defaultDatabaseService,
 			defaultActorExtractor: extractor,
@@ -960,6 +971,7 @@ export class EndpointFactory<
 			defaultSessionExtractor: this.defaultSessionExtractor,
 			availableAuthorizers: this.availableAuthorizers,
 			defaultAuthorizerName: this.defaultAuthorizerName,
+			defaultAuthorizerScopes: this.defaultAuthorizerScopes,
 			defaultAuditorStorage: this.defaultAuditorStorage,
 			defaultDatabaseService: this.defaultDatabaseService,
 			defaultActorExtractor: this.defaultActorExtractor,
@@ -1069,6 +1081,14 @@ export class EndpointFactory<
 		builder._availableAuthorizers = this.availableAuthorizers;
 		if (this.defaultAuthorizerName) {
 			builder._authorizerName = this.defaultAuthorizerName;
+			if (this.defaultAuthorizerScopes) {
+				builder._security = [
+					{
+						name: this.defaultAuthorizerName as string,
+						scopes: this.defaultAuthorizerScopes,
+					},
+				];
+			}
 		}
 
 		// Set auditor storage if configured
@@ -1182,6 +1202,8 @@ export interface EndpointFactoryOptions<
 	defaultSessionExtractor?: SessionFn<TServices, TLogger, TSession, TDatabase>;
 	availableAuthorizers?: Authorizer[];
 	defaultAuthorizerName?: TAuthorizers[number];
+	/** The scopes `defaultAuthorizerName` must grant, from `.authorizer(name, { scopes })`. */
+	defaultAuthorizerScopes?: string[];
 	defaultAuditorStorage?: Service<TAuditStorageServiceName, TAuditStorage>;
 	defaultDatabaseService?: Service<TDatabaseServiceName, TDatabase>;
 	defaultActorExtractor?: ActorExtractor<TServices, TSession, TLogger>;
