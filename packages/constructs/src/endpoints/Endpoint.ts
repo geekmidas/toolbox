@@ -29,6 +29,11 @@ import type { Authorizer, SecurityRequirement } from './Authorizer';
 import type { ActorExtractor, MappedAudit } from './audit';
 import { buildOpenApiCallbacks, type EndpointCallback } from './callbacks';
 import {
+	documentRequestHeaders,
+	documentResponseHeaders,
+	type ResponseHeaders,
+} from './headers';
+import {
 	addErrorResponses,
 	type EndpointError,
 	type ErrorFormat,
@@ -39,11 +44,6 @@ import {
 	documentDeclaredResponses,
 	findDeclaredResponse,
 } from './responses';
-import {
-	documentRequestHeaders,
-	documentResponseHeaders,
-	type ResponseHeaders,
-} from './headers';
 import type { RlsConfig } from './rls';
 import { type SessionAuth, sessionAuth } from './sessionAuth';
 import { type Webhook, withWebhooks } from './webhooks';

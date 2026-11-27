@@ -54,6 +54,12 @@ import {
 	withTag,
 } from './Endpoint';
 import {
+	type RequestHeadersInput,
+	type RequestHeadersSchema,
+	type ResponseHeaders,
+	requestHeadersSchema,
+} from './headers';
+import {
 	type EndpointError,
 	type EndpointErrorOptions,
 	type ErrorStatus,
@@ -67,12 +73,6 @@ import {
 	type ResponseOptions,
 	type WithResponse,
 } from './responses';
-import {
-	type RequestHeadersInput,
-	type RequestHeadersSchema,
-	type ResponseHeaders,
-	requestHeadersSchema,
-} from './headers';
 import type { RlsBypass, RlsConfig } from './rls';
 import { RLS_BYPASS } from './rls';
 import {

@@ -14,6 +14,11 @@ import {
 	printTelemetryDefault,
 } from './clientTelemetry.js';
 import {
+	type ResponseHeaderInfo,
+	requestHeadersInterface,
+	responseHeadersType,
+} from './openApiHeaders.js';
+import {
 	declaredResponseSchemas,
 	printResponses,
 	type ResponsesInfo,
@@ -23,11 +28,6 @@ import {
 	problemResponsesOf,
 	withProblemResponses,
 } from './problemResponses.js';
-import {
-	type ResponseHeaderInfo,
-	requestHeadersInterface,
-	responseHeadersType,
-} from './openApiHeaders.js';
 import { generateWebhookTypes } from './webhookTypes.js';
 
 export type { ClientTelemetryDefault } from './clientTelemetry.js';
