@@ -29,6 +29,7 @@ import {
 	type EndpointSchemas,
 	ResponseBuilder,
 } from './Endpoint';
+import { parseRequestHeaders } from './headers';
 import {
 	createCookieHeaderAccessor,
 	createObjectHeaders,
@@ -171,6 +172,16 @@ export class TestEndpointAdaptor<
 			(ctx as any).params,
 			'params',
 		);
+		// The request's headers, as the endpoint's `.headers()` reads them — a
+		// refusal throws the 400 `RequestHeadersInvalid` a server answers with.
+		const requestHeaders = this.endpoint.input?.headers
+			? {
+					headers: await parseRequestHeaders(
+						this.endpoint.input.headers,
+						ctx.headers,
+					),
+				}
+			: {};
 
 		// Lazy accessors - defer parsing until needed
 		const header = createObjectHeaders(ctx.headers);
@@ -219,6 +230,7 @@ export class TestEndpointAdaptor<
 					body,
 					query,
 					params,
+					...requestHeaders,
 				} as any);
 
 				if (!isAuthorized) {
@@ -305,6 +317,7 @@ export class TestEndpointAdaptor<
 								body,
 								query,
 								params,
+								...requestHeaders,
 								session,
 								services: ctx.services,
 								logger,
@@ -450,7 +463,8 @@ export type TestRequestAdaptor<
 	_TDatabaseServiceName extends string = string,
 > = {
 	services: ServiceRecord<TServices>;
+	/** The request's headers, raw — validated by the endpoint's `.headers()`. */
 	headers: Record<string, string>;
-} & InferComposableStandardSchema<TInput> &
+} & InferComposableStandardSchema<Omit<TInput, 'headers'>> &
 	AuditStorageRequirement<TAuditStorage> &
 	DatabaseRequirement<TDatabase>;

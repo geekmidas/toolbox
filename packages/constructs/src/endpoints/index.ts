@@ -50,6 +50,16 @@ export {
 } from './EndpointBuilder';
 export { EndpointFactory } from './EndpointFactory';
 export {
+	defineHeader,
+	documentResponseHeaders,
+	type HeaderDefinition,
+	HeaderNameNotLowerCase,
+	type HeaderOptions,
+	isHeaderDefinition,
+	RequestHeadersInvalid,
+	type ResponseHeaders,
+} from './headers';
+export {
 	createApiGatewayCookies,
 	createApiGatewayHeaders,
 	createHonoCookies,

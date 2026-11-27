@@ -11,6 +11,7 @@ import type {
 import { loadRls } from '../optionalPeers';
 import type { HttpMethod } from '../types';
 import { Endpoint, type EndpointSchemas, ResponseBuilder } from './Endpoint';
+import { parseRequestHeaders, VALIDATED_HEADERS } from './headers';
 import type { Telemetry } from './lambdaTelemetry';
 import { answersProblems, asValidationFailed, lambdaProblem } from './problems';
 import { enforceRateLimit } from './rateLimit';
@@ -231,6 +232,14 @@ export abstract class AmazonApiGatewayEndpoint<
 						header,
 						cookie,
 					});
+					// Kept beside the event's own `headers`, which are the raw ones.
+					// A refusal is a 400 `RequestHeadersInvalid`.
+					if (this.endpoint.input?.headers) {
+						(req.event as any)[VALIDATED_HEADERS] = await parseRequestHeaders(
+							this.endpoint.input.headers,
+							headers,
+						);
+					}
 				} catch (error) {
 					// Convert validation errors to 422 Unprocessable Entity
 					if (answersProblems(this.endpoint)) throw asValidationFailed(error);
@@ -305,6 +314,9 @@ export abstract class AmazonApiGatewayEndpoint<
 					body: (req.event as any).body,
 					query: (req.event as any).query,
 					params: (req.event as any).params,
+					...(this.endpoint.input?.headers && {
+						headers: (req.event as any)[VALIDATED_HEADERS],
+					}),
 				} as any);
 
 				if (!isAuthorized) {
@@ -504,6 +516,9 @@ export abstract class AmazonApiGatewayEndpoint<
 							auditor,
 							db,
 							...input,
+							...(this.endpoint.input?.headers && {
+								headers: (event as any)[VALIDATED_HEADERS],
+							}),
 						} as any,
 						responseBuilder,
 					);

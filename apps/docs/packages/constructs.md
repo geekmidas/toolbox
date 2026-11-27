@@ -3369,3 +3369,62 @@ so they are not sent for another status.
 
 The generated client and `InferOpenApi` type each status and content type, and
 a call resolves to the union of every 2xx JSON body — `Order | Retry`.
+
+### Request and response headers
+
+`.headers()` declares the request headers an endpoint reads. They are
+validated like the query and handed to the handler as `headers`; a missing
+required header, or one its schema refuses, is answered with **400**
+(`RequestHeadersInvalid`), not the 422 a body or query gets. The document
+lists them as `in: header` parameters, and the generated client types them —
+required when one is, beside any other header the caller sends.
+
+Header names are case-insensitive, so incoming names are lower-cased before
+validation and the handler reads them by lower-case name. Give an object
+schema with lower-case keys (an upper-case key throws
+`HeaderNameNotLowerCase`), or the headers one by one under their names:
+
+```typescript
+// constructs/headers.ts — declared once, `$ref`'d from every operation
+import { defineHeader } from '@geekmidas/constructs/rest-api';
+
+export const IdempotencyKey = defineHeader('Idempotency-Key', {
+  schema: z.string().min(1).max(255),
+  description: 'Makes a retried request safe to repeat.',
+});
+export const ETag = defineHeader('ETag', {
+  schema: z.string(),
+  description: 'The version of the resource (RFC 9110 §8.8.3).',
+});
+
+// endpoints/payments.ts
+export const pay = router
+  .post('/payments')
+  .headers({
+    'Idempotency-Key': IdempotencyKey,
+    'if-match': z.string().optional(),
+  })
+  .responseHeaders({
+    ETag,
+    Location: { schema: z.string(), description: 'Where the payment is' },
+    'Retry-After': { schema: z.string().optional() },
+  })
+  .status(201)
+  .handle(async ({ headers }, response) => {
+    const payment = await charge(headers['idempotency-key']);
+    return response
+      .header('ETag', `"${payment.version}"`)
+      .header('Location', `/payments/${payment.id}`)
+      .send(payment);
+  });
+
+// or: .headers(z.object({ 'if-none-match': z.string().optional() }))
+```
+
+`.responseHeaders()` documents the headers a successful response carries,
+under that response's `headers`; the handler still sets them with
+`response.header()`. A header with a schema is required unless the schema
+accepts `undefined`; one without is an optional string; `required` says
+otherwise. A `defineHeader()` is written once — under `components.parameters`
+as a request header, `components.headers` as a response header — and every
+operation refers to it with `$ref`.

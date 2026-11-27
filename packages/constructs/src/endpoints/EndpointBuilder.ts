@@ -67,6 +67,12 @@ import {
 	type ResponseOptions,
 	type WithResponse,
 } from './responses';
+import {
+	type RequestHeadersInput,
+	type RequestHeadersSchema,
+	type ResponseHeaders,
+	requestHeadersSchema,
+} from './headers';
 import type { RlsBypass, RlsConfig } from './rls';
 import { RLS_BYPASS } from './rls';
 import {
@@ -156,6 +162,7 @@ export class EndpointBuilder<
 	_callbacks?: Record<string, EndpointCallback>;
 	_errors: EndpointError[] = [];
 	_responses: DeclaredResponse[] = [];
+	_responseHeaders?: ResponseHeaders;
 
 	constructor(
 		readonly route: TRoute,
@@ -529,6 +536,63 @@ export class EndpointBuilder<
 		this.schemas.params = schema as unknown as T;
 		// @ts-expect-error
 		return this;
+	}
+
+	/**
+	 * The request headers the endpoint reads — validated like the query, and
+	 * handed to the handler as `headers`, keyed by lower-case name. A missing
+	 * required header, or one its schema refuses, is answered with 400.
+	 *
+	 * Give an object schema whose keys are lower-case, or the headers one by
+	 * one — each a schema or a shared `defineHeader()` — under their names.
+	 *
+	 * @example
+	 * ```ts
+	 * router
+	 *   .post('/payments')
+	 *   .headers({ 'Idempotency-Key': IdempotencyKey, 'if-match': z.string().optional() })
+	 *   .handle(async ({ headers }) => headers['idempotency-key']);
+	 * ```
+	 */
+	headers<const T extends RequestHeadersInput>(
+		headers: T,
+	): EndpointBuilder<
+		TRoute,
+		TMethod,
+		Omit<TInput, 'headers'> & { headers: RequestHeadersSchema<T> },
+		TServices,
+		TLogger,
+		OutSchema,
+		TSession,
+		TAuthorizers,
+		TAuditStorage,
+		TAuditStorageServiceName,
+		TAuditAction,
+		TDatabase,
+		TDatabaseServiceName
+	> {
+		(this.schemas as EndpointSchemas).headers = requestHeadersSchema(headers);
+		// @ts-expect-error
+		return this;
+	}
+
+	/**
+	 * The headers a successful response carries — `ETag`, `Location`,
+	 * `Retry-After` — documented under the response, each given inline or as a
+	 * shared `defineHeader()`. Adds to any declared before. The handler still
+	 * sets them, with `response.header()`.
+	 *
+	 * @example
+	 * ```ts
+	 * router
+	 *   .get('/things/:id')
+	 *   .responseHeaders({ ETag, 'Cache-Control': { description: 'How long to keep it' } })
+	 * ```
+	 */
+	responseHeaders(headers: ResponseHeaders): this {
+		return cloneWith(this, {
+			_responseHeaders: { ...this._responseHeaders, ...headers },
+		});
 	}
 
 	authorize(
@@ -1143,6 +1207,9 @@ export class EndpointBuilder<
 			responses: this._responses,
 			...(this._telemetry ? { telemetry: this._telemetry } : {}),
 			errors: mergeEndpointErrors(this._surface?.refusals, this._errors),
+			...(this._responseHeaders
+				? { responseHeaders: this._responseHeaders }
+				: {}),
 		});
 
 		// One field says which process runs a construct, whatever its kind. An

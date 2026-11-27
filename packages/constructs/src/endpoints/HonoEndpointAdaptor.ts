@@ -36,6 +36,7 @@ import {
 	type EndpointSchemas,
 	ResponseBuilder,
 } from './Endpoint';
+import { parseRequestHeaders, RequestHeadersInvalid } from './headers';
 import { getEndpointsFromRoutes } from './helpers';
 import { honoProblem } from './honoProblems';
 import { createHonoCookies, createHonoHeaders } from './lazyAccessors';
@@ -77,6 +78,7 @@ interface EndpointFeatures {
 	hasBodyValidation: boolean;
 	hasQueryValidation: boolean;
 	hasParamValidation: boolean;
+	hasHeaderValidation: boolean;
 	hasAudits: boolean;
 	hasEvents: boolean;
 	hasRateLimit: boolean;
@@ -118,6 +120,7 @@ function analyzeEndpointFeatures(
 		hasBodyValidation: !!endpoint.input?.body,
 		hasQueryValidation: !!endpoint.input?.query,
 		hasParamValidation: !!endpoint.input?.params,
+		hasHeaderValidation: !!endpoint.input?.headers,
 		// Audit context needed if declarative audits OR auditor storage service configured (for manual audits)
 		hasAudits:
 			(endpoint.audits?.length ?? 0) > 0 || !!endpoint.auditorStorageService,
@@ -450,6 +453,35 @@ export class HonoEndpoint<
 			);
 		}
 
+		if (features.hasHeaderValidation) {
+			// Lower-cased by Hono already; a refusal is 400, not the 422 a body
+			// or query gets — the request itself is malformed.
+			validators.push(async (c: Context, next: () => Promise<void>) => {
+				try {
+					c.req.addValidatedData(
+						'header',
+						(await parseRequestHeaders(
+							endpoint.input!.headers!,
+							c.req.header(),
+						)) as {},
+					);
+				} catch (error) {
+					if (!(error instanceof RequestHeadersInvalid)) throw error;
+					c.header('X-Request-ID', requestIdOf(c));
+					loggerFor(c).error(
+						{ err: error, part: 'headers' },
+						'Request validation failed',
+					);
+					setErrorHeaders(c, error);
+					return c.json(
+						errorBody(error),
+						error.statusCode as ContentfulStatusCode,
+					);
+				}
+				await next();
+			});
+		}
+
 		// Main handler
 		const handler = async (c: Context) => {
 			// Request context setup
@@ -522,6 +554,9 @@ export class HonoEndpoint<
 							params: features.hasParamValidation
 								? (c.req.valid as any)('param')
 								: undefined,
+							...(features.hasHeaderValidation && {
+								headers: (c.req.valid as any)('header'),
+							}),
 						} as any);
 
 						if (!isAuthorized) {
@@ -616,6 +651,9 @@ export class HonoEndpoint<
 											params: features.hasParamValidation
 												? (c.req.valid as any)('param')
 												: undefined,
+											...(features.hasHeaderValidation && {
+												headers: (c.req.valid as any)('header'),
+											}),
 											session,
 											header,
 											cookie,

@@ -32,15 +32,31 @@ export interface ComponentCollector {
 		scheme: OpenAPIV3_1.SecuritySchemeObject,
 	): void;
 	getReference(id: string): OpenAPIV3_1.ReferenceObject;
+	/** Request headers many operations share, `$ref`'d from each. */
+	parameters?: Record<string, OpenAPIV3_1.ParameterObject>;
+	/** Response headers many operations share, `$ref`'d from each. */
+	headers?: Record<string, OpenAPIV3_1.HeaderObject>;
+	addParameter?(name: string, parameter: OpenAPIV3_1.ParameterObject): void;
+	addHeader?(name: string, header: OpenAPIV3_1.HeaderObject): void;
 }
 
 export function createComponentCollector(): ComponentCollector {
 	const schemas: Record<string, OpenAPIV3_1.SchemaObject> = {};
 	const securitySchemes: Record<string, OpenAPIV3_1.SecuritySchemeObject> = {};
+	const parameters: Record<string, OpenAPIV3_1.ParameterObject> = {};
+	const headers: Record<string, OpenAPIV3_1.HeaderObject> = {};
 
 	return {
 		schemas,
 		securitySchemes,
+		parameters,
+		headers,
+		addParameter(name, parameter) {
+			parameters[name] = parameter;
+		},
+		addHeader(name, header) {
+			headers[name] = header;
+		},
 		addSchema(id: string, schema: OpenAPIV3_1.SchemaObject) {
 			schemas[id] = schema;
 		},
@@ -123,6 +139,17 @@ export async function buildOpenApiSchema(
 		doc.components = {
 			...(Object.keys(schemas).length > 0 && { schemas }),
 			...(Object.keys(securitySchemes).length > 0 && { securitySchemes }),
+		};
+	}
+
+	// Headers declared once and shared — `defineHeader()` — which operations
+	// refer to rather than repeat.
+	const { parameters = {}, headers = {} } = componentCollector;
+	if (Object.keys(parameters).length > 0 || Object.keys(headers).length > 0) {
+		doc.components = {
+			...doc.components,
+			...(Object.keys(parameters).length > 0 && { parameters }),
+			...(Object.keys(headers).length > 0 && { headers }),
 		};
 	}
 

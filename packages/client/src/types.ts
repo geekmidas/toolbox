@@ -34,6 +34,29 @@ export type ExtractQueryParams<
 	? Q
 	: never;
 
+/**
+ * The request headers an operation declares — `parameters.header` — keyed by
+ * lower-case name; `never` when it declares none.
+ */
+export type ExtractHeaderParams<
+	Paths,
+	Route extends OpenAPIRoutes<Paths>,
+	Method extends ExtractMethod<Paths, Route>,
+> = Paths[Route][Method] extends { parameters?: { header?: infer H } }
+	? // A missing `header` key infers as `unknown`.
+		unknown extends H
+		? never
+		: H
+	: never;
+
+/**
+ * The `headers` a request may send: the declared ones, typed, beside any
+ * other the caller adds.
+ */
+type HeadersConfig<THeaders> = [THeaders] extends [never]
+	? Record<string, string>
+	: THeaders & Record<string, string>;
+
 export type ExtractRequestBody<
 	Paths,
 	Route extends OpenAPIRoutes<Paths>,
@@ -88,7 +111,7 @@ export type RequestConfig<
 	params?: ExtractPathParams<Paths, Route>;
 	query?: ExtractQueryParams<Paths, Route, Method>;
 	body?: ExtractRequestBody<Paths, Route, Method>;
-	headers?: Record<string, string>;
+	headers?: HeadersConfig<ExtractHeaderParams<Paths, Route, Method>>;
 };
 
 export type EndpointString = `${Uppercase<string>} ${string}`;
@@ -159,7 +182,7 @@ export type ExtractEndpointConfig<
  * - `params` is required if the endpoint has path parameters
  * - `body` is required if the endpoint has a request body
  * - `query` is required if it has a required key, optional otherwise
- * - `headers` is always optional
+ * - `headers` is required when it has a required key, optional otherwise
  */
 export type FilteredRequestConfig<
 	Paths,
@@ -170,7 +193,8 @@ export type FilteredRequestConfig<
 			? BuildRequestConfig<
 					ExtractPathParams<Paths, Route>,
 					ExtractQueryParams<Paths, Route, Lowercase<Method>>,
-					ExtractRequestBody<Paths, Route, Lowercase<Method>>
+					ExtractRequestBody<Paths, Route, Lowercase<Method>>,
+					ExtractHeaderParams<Paths, Route, Lowercase<Method>>
 				>
 			: never
 		: never
@@ -181,7 +205,12 @@ export type FilteredRequestConfig<
  * Uses [T] extends [never] pattern to prevent distribution over union types,
  * which would cause the entire type to become `never`.
  */
-type BuildRequestConfig<TParams, TQuery, TBody> = SimplifyIntersection<
+type BuildRequestConfig<
+	TParams,
+	TQuery,
+	TBody,
+	THeaders = never,
+> = SimplifyIntersection<
 	// params: required if not never
 	([TParams] extends [never] ? {} : { params: TParams }) &
 		// body: required if not never, unless it may be left out
@@ -195,11 +224,19 @@ type BuildRequestConfig<TParams, TQuery, TBody> = SimplifyIntersection<
 			? {}
 			: {} extends TQuery
 				? { query?: TQuery }
-				: { query: TQuery }) & {
-			// headers: always optional
-			headers?: Record<string, string>;
-		}
+				: { query: TQuery }) &
+		// headers: required when a declared one is, and open to any other
+		(HasRequiredHeaders<THeaders> extends true
+			? { headers: HeadersConfig<THeaders> }
+			: { headers?: HeadersConfig<THeaders> })
 >;
+
+/** Whether the request must send a declared header. */
+type HasRequiredHeaders<THeaders> = [THeaders] extends [never]
+	? false
+	: {} extends THeaders
+		? false
+		: true;
 
 /**
  * Simplify intersection types for better IDE display
@@ -235,7 +272,11 @@ export type IsConfigRequired<
 					> extends false
 					? HasRequiredQuery<
 							ExtractQueryParams<Paths, Route, Lowercase<Method>>
-						>
+						> extends true
+						? true
+						: HasRequiredHeaders<
+								ExtractHeaderParams<Paths, Route, Lowercase<Method>>
+							>
 					: true
 				: true
 			: false

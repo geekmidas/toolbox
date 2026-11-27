@@ -53,6 +53,16 @@ type InferOperationParameters<TInput extends EndpointSchemas> = TInput extends {
 	: {};
 
 /**
+ * Request headers — `.headers()` — as the caller sends them, keyed by
+ * lower-case name. Merged with the query under one `parameters`.
+ */
+type InferHeaderParameters<TInput extends EndpointSchemas> = TInput extends {
+	headers: infer H;
+}
+	? { parameters: { header: InferStandardSchemaInput<H> } }
+	: {};
+
+/**
  * The request body: a required key when the schema needs one, an optional
  * key when it accepts `undefined` (`z.object({…}).optional()`), as the
  * document writes `required: false`.
@@ -88,6 +98,7 @@ type InferOperation<
 	TInput extends EndpointSchemas,
 	TOutput extends StandardSchemaV1 | undefined,
 > = InferOperationParameters<TInput> &
+	InferHeaderParameters<TInput> &
 	InferRequestBody<TInput> & {
 		responses: InferResponses<TOutput>;
 	};

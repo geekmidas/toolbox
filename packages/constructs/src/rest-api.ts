@@ -62,6 +62,10 @@ export {
 
 import { EndpointFactory } from './endpoints/EndpointFactory';
 import type { ErrorFormat } from './endpoints/problems';
+
+/** A header many endpoints read or send, declared once — see `.headers()`. */
+export { defineHeader } from './endpoints/headers';
+
 import { envParserFor } from './endpoints/surfaceEnv';
 import {
 	registerWebhook,

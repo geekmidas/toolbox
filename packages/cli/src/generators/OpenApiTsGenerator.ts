@@ -1,4 +1,7 @@
-import type { Endpoint } from '@geekmidas/constructs/endpoints';
+import {
+	documentResponseHeaders,
+	type Endpoint,
+} from '@geekmidas/constructs/endpoints';
 import {
 	getRegisteredZodJsonSchemas,
 	getSchemaMetadata,
@@ -20,6 +23,11 @@ import {
 	problemResponsesOf,
 	withProblemResponses,
 } from './problemResponses.js';
+import {
+	type ResponseHeaderInfo,
+	requestHeadersInterface,
+	responseHeadersType,
+} from './openApiHeaders.js';
 import { generateWebhookTypes } from './webhookTypes.js';
 
 export type { ClientTelemetryDefault } from './clientTelemetry.js';
@@ -90,6 +98,7 @@ interface EndpointInfo extends ResponsesInfo {
 		body?: StandardSchemaV1;
 		query?: StandardSchemaV1;
 		params?: StandardSchemaV1;
+		headers?: StandardSchemaV1;
 	};
 	output?: StandardSchemaV1;
 	description?: string;
@@ -102,6 +111,8 @@ interface EndpointInfo extends ResponsesInfo {
 	deprecated?: boolean;
 	/** The refusals it documents, beside its success. */
 	problemResponses?: ProblemResponsesInfo;
+	/** The headers its successful response carries — `.responseHeaders()`. */
+	responseHeaders?: Record<string, ResponseHeaderInfo>;
 }
 
 /**
@@ -233,6 +244,9 @@ export class OpenApiTsGenerator {
 							: false,
 					status: ep.status ?? 200,
 					responses: ep.declaredResponses ?? [],
+					responseHeaders: (await documentResponseHeaders(
+						ep.responseHeaders,
+					)) as Record<string, ResponseHeaderInfo> | undefined,
 				};
 			}),
 		);
@@ -410,6 +424,18 @@ export class OpenApiTsGenerator {
 						generatedNames.add(name);
 					}
 				}
+			}
+
+			// Request headers — keyed by header name, which needs quoting
+			if (info.input?.headers && !generatedNames.has(`${baseName}Headers`)) {
+				interfaces.push(
+					requestHeadersInterface(
+						info.input.headers,
+						`${baseName}Headers`,
+						(schema) => this.jsonSchemaTypeToTs(schema),
+					),
+				);
+				generatedNames.add(`${baseName}Headers`);
 			}
 
 			// Output schema
@@ -755,7 +781,11 @@ export class OpenApiTsGenerator {
 				`${baseName}Query`,
 			);
 			parts.push(`parameters: {
-        query: ${queryName};
+        query: ${queryName};${info.input.headers ? `\n        header: ${baseName}Headers;` : ''}
+      }`);
+		} else if (info.input?.headers) {
+			parts.push(`parameters: {
+        header: ${baseName}Headers;
       }`);
 		}
 
@@ -771,6 +801,24 @@ export class OpenApiTsGenerator {
 				(d) => this.getSchemaName(d.schema, d.defaultName),
 			),
 		);
+		if (info.responseHeaders) {
+			// The declared response headers go on the response the handler
+			// answers by default.
+			const headers = responseHeadersType(info.responseHeaders, (s) =>
+				this.jsonSchemaTypeToTs(s),
+			);
+			// Under its own status, or 200 where the default is typed there (a
+			// redirect's).
+			const responses = parts.pop()!;
+			const entry = [info.status, 200]
+				.map((status) => `        ${status}: {\n`)
+				.find((candidate) => responses.includes(candidate));
+			parts.push(
+				entry
+					? responses.replace(entry, `${entry}          headers: ${headers};\n`)
+					: responses,
+			);
+		}
 		if (info.problemResponses) {
 			parts.push(
 				withProblemResponses(parts.pop()!, info.problemResponses, (s) =>

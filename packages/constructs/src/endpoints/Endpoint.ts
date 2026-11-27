@@ -39,6 +39,11 @@ import {
 	documentDeclaredResponses,
 	findDeclaredResponse,
 } from './responses';
+import {
+	documentRequestHeaders,
+	documentResponseHeaders,
+	type ResponseHeaders,
+} from './headers';
 import type { RlsConfig } from './rls';
 import { type SessionAuth, sessionAuth } from './sessionAuth';
 import { type Webhook, withWebhooks } from './webhooks';
@@ -129,6 +134,8 @@ export class Endpoint<
 	deprecated?: boolean;
 	/** Vendor extensions written onto its operation — `x-…` keys only */
 	extensions?: OperationExtensions;
+	/** The headers its successful response carries — `.responseHeaders()` */
+	responseHeaders?: ResponseHeaders;
 	/** The HTTP status code to return (default: 200) */
 	public readonly status: EndpointStatus;
 	/**
@@ -514,6 +521,10 @@ export class Endpoint<
 				input[key] = (ctx as Record<string, unknown>)[key];
 			}
 		}
+		// Only when declared: an event's own `headers` are the raw ones.
+		if (this.input?.headers && 'headers' in ctx) {
+			input.headers = (ctx as Record<string, unknown>).headers;
+		}
 
 		return input as InferComposableStandardSchema<TInput>;
 	}
@@ -760,6 +771,26 @@ export class Endpoint<
 			);
 		}
 
+		// Request headers — `.headers()` — and the response's — `.responseHeaders()`
+		const headerParameters = await documentRequestHeaders(
+			this.input?.headers,
+			componentCollector,
+		);
+		if (headerParameters.length > 0) {
+			operation.parameters = [
+				...(operation.parameters ?? []),
+				...headerParameters,
+			];
+		}
+		const responseHeaders = await documentResponseHeaders(
+			this.responseHeaders,
+			componentCollector,
+		);
+		if (responseHeaders) {
+			(operation.responses![status] as OpenAPIV3_1.ResponseObject).headers =
+				responseHeaders;
+		}
+
 		// Build the route object with path parameters at the route level
 		const routeObject: any = {};
 		if (pathParameters.length > 0) {
@@ -824,6 +855,7 @@ export class Endpoint<
 		telemetry,
 		errors,
 		responses,
+		responseHeaders,
 	}: EndpointOptions<
 		TRoute,
 		TMethod,
@@ -878,6 +910,7 @@ export class Endpoint<
 		if (telemetry) this.telemetry = telemetry;
 		if (errors) this.errors = errors;
 		if (responses) this.declaredResponses = responses;
+		if (responseHeaders) this.responseHeaders = responseHeaders;
 
 		if (getSession) {
 			this.hasSession = true;
@@ -1155,6 +1188,8 @@ export interface EndpointOptions<
 	telemetry?: EndpointTelemetry;
 	/** The responses `.response()` declared beside the default one. */
 	responses?: DeclaredResponse[];
+	/** The headers its successful response carries. */
+	responseHeaders?: ResponseHeaders;
 }
 
 /**
@@ -1175,6 +1210,8 @@ export type EndpointSchemas = Partial<{
 	query: StandardSchemaV1;
 	/** Schema for request body (POST, PUT, PATCH) */
 	body: StandardSchemaV1;
+	/** Schema for request headers, keyed by lower-case name — `.headers()` */
+	headers: StandardSchemaV1;
 }>;
 
 export type AuthorizeContext<
