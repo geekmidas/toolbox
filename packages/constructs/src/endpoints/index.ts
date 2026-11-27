@@ -58,6 +58,19 @@ export {
 	createNoopHeaders,
 } from './lazyAccessors';
 export {
+	answersProblems,
+	documentedErrors,
+	type EndpointError,
+	type EndpointErrorOptions,
+	type ErrorFormat,
+	type ErrorStatus,
+	ErrorStatusNotARefusal,
+	PROBLEM_CONTENT_TYPE,
+	PROBLEM_SCHEMA_ID,
+	type Problem,
+	VALIDATION_FAILED,
+} from './problems';
+export {
 	MalformedRequestBody,
 	type RequestBodySource,
 	readRequestBody,

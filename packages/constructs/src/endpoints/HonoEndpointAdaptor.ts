@@ -1,6 +1,7 @@
 import type { AuditableAction, AuditStorage } from '@geekmidas/audit';
 import type { EnvironmentParser } from '@geekmidas/envkit';
 import {
+	ForbiddenError,
 	type HttpError,
 	isHttpError,
 	UnprocessableEntityError,
@@ -36,8 +37,10 @@ import {
 	ResponseBuilder,
 } from './Endpoint';
 import { getEndpointsFromRoutes } from './helpers';
+import { honoProblem } from './honoProblems';
 import { createHonoCookies, createHonoHeaders } from './lazyAccessors';
 import { parseHonoQuery } from './parseHonoQuery';
+import { answersProblems, validationFailed } from './problems';
 import {
 	createAuditContext,
 	executeWithAuditTransaction,
@@ -163,8 +166,13 @@ export class HonoEndpoint<
 		c: Context<any, string, {}>,
 		data: unknown,
 		schema?: T,
-		/** Told of the issues before the 422 goes out — to log the rejection. */
-		onInvalid?: (issues: readonly StandardSchemaV1.Issue[]) => void,
+		/**
+		 * Told of the issues before the 422 goes out — to log the rejection.
+		 * A response it returns is sent in place of the default 422.
+		 */
+		onInvalid?: (
+			issues: readonly StandardSchemaV1.Issue[],
+		) => Response | undefined | void,
 	) {
 		if (!schema) {
 			return undefined;
@@ -173,7 +181,8 @@ export class HonoEndpoint<
 		const parsed = await Endpoint.validate(schema, data);
 
 		if (parsed.issues) {
-			onInvalid?.(parsed.issues);
+			const answer = onInvalid?.(parsed.issues);
+			if (answer) return answer;
 			return c.json(parsed.issues, 422);
 		}
 
@@ -339,12 +348,19 @@ export class HonoEndpoint<
 				path: c.req.path,
 			});
 
+		// Read per request: `isDev` is a static a test may flip.
+		const problemOptions = {
+			get isDev() {
+				return HonoEndpoint.isDev;
+			},
+		};
+
 		// A request turned away before the handler runs is logged as one the
 		// handler failed would be: the Lambda adaptors log a rejected input
 		// through the same `onError` as any other failure.
 		const rejected =
 			(c: Context, part: 'body' | 'query' | 'params') =>
-			(issues: readonly StandardSchemaV1.Issue[]): void => {
+			(issues: readonly StandardSchemaV1.Issue[]): Response | undefined => {
 				c.header('X-Request-ID', requestIdOf(c));
 				loggerFor(c).error(
 					{
@@ -353,6 +369,10 @@ export class HonoEndpoint<
 					},
 					'Request validation failed',
 				);
+				if (answersProblems(endpoint)) {
+					return honoProblem(c, validationFailed(issues), problemOptions);
+				}
+				return undefined;
 			};
 
 		// Build validators array - only add validators for schemas that exist
@@ -382,6 +402,9 @@ export class HonoEndpoint<
 						'Request body could not be read',
 					);
 					setErrorHeaders(c, error);
+					if (answersProblems(endpoint)) {
+						return honoProblem(c, error, problemOptions);
+					}
 					return c.json(
 						errorBody(error),
 						error.statusCode as ContentfulStatusCode,
@@ -502,6 +525,12 @@ export class HonoEndpoint<
 
 						if (!isAuthorized) {
 							logger.warn('Forbidden access attempt');
+							if (answersProblems(endpoint)) {
+								const forbidden = new ForbiddenError(
+									'You do not have permission to access this resource.',
+								);
+								return honoProblem(c, forbidden, problemOptions);
+							}
 							return c.json({ error: 'Forbidden' }, 403);
 						}
 
@@ -718,6 +747,9 @@ export class HonoEndpoint<
 								'Response validation failed',
 							);
 							setErrorHeaders(c, error);
+							if (answersProblems(endpoint)) {
+								return honoProblem(c, error, problemOptions);
+							}
 							const body = errorBody(error);
 							if (HonoEndpoint.isDev) {
 								logger.info(
@@ -739,6 +771,9 @@ export class HonoEndpoint<
 						// records it as the exception. A 4xx is the client's.
 						if (error.statusCode >= 500 && e instanceof Error) c.error = e;
 						setErrorHeaders(c, error);
+						if (answersProblems(endpoint)) {
+							return honoProblem(c, error, problemOptions);
+						}
 						const body = errorBody(error);
 						if (HonoEndpoint.isDev) {
 							logger.info(

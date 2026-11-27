@@ -28,6 +28,11 @@ import type { HttpMethod, LowerHttpMethod, RemoveUndefined } from '../types';
 import type { Authorizer, SecurityRequirement } from './Authorizer';
 import type { ActorExtractor, MappedAudit } from './audit';
 import { buildOpenApiCallbacks, type EndpointCallback } from './callbacks';
+import {
+	addErrorResponses,
+	type EndpointError,
+	type ErrorFormat,
+} from './problems';
 import type { RlsConfig } from './rls';
 import { type SessionAuth, sessionAuth } from './sessionAuth';
 import { type Webhook, withWebhooks } from './webhooks';
@@ -132,6 +137,8 @@ export class Endpoint<
 	 * the build, which hands it to the request middleware.
 	 */
 	public telemetry?: EndpointTelemetry;
+	/** The refusals it declared with `.error()`, beside its branch's. */
+	public readonly errors: EndpointError[] = [];
 	/** Default headers to apply to all responses */
 	public readonly defaultHeaders: Record<string, string> = {};
 	/** Function to extract session data from the request context */
@@ -599,6 +606,9 @@ export class Endpoint<
 			}));
 		}
 
+		// Every refusal it can answer, beside its success.
+		await addErrorResponses(operation, this, componentCollector);
+
 		// Add response schema
 		if (this.outputSchema) {
 			const responseSchema = await convertSchemaWithComponents(
@@ -762,6 +772,7 @@ export class Endpoint<
 		rlsBypass,
 		responseType,
 		telemetry,
+		errors,
 	}: EndpointOptions<
 		TRoute,
 		TMethod,
@@ -814,6 +825,7 @@ export class Endpoint<
 		this.responseType = responseType ?? 'application/json';
 		this.endpointFn = fn;
 		if (telemetry) this.telemetry = telemetry;
+		if (errors) this.errors = errors;
 
 		if (getSession) {
 			this.hasSession = true;
@@ -944,6 +956,13 @@ export interface EndpointSurface {
 	 * built, so the document finds it from any of them.
 	 */
 	webhooks?: Webhook[];
+	/**
+	 * How a failed request is answered: `'problem'` for RFC 9457 problem
+	 * details. Unset, the body it always was.
+	 */
+	errors?: ErrorFormat;
+	/** The refusals a branch's `.error()` declared for every endpoint on it. */
+	refusals?: readonly EndpointError[];
 }
 
 /** A tag an endpoint is grouped under, and what the group is. */
@@ -1073,6 +1092,8 @@ export interface EndpointOptions<
 	rlsConfig?: RlsConfig<TServices, TSession, TLogger>;
 	/** Whether to bypass RLS for this endpoint */
 	rlsBypass?: boolean;
+	/** The refusals it declared with `.error()`. */
+	errors?: EndpointError[];
 	/**
 	 * Response content type (e.g. `'application/json'`, `'text/html'`).
 	 * Defaults to `'application/json'` when omitted.

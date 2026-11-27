@@ -61,6 +61,7 @@ export {
 } from './endpoints/Authorizer';
 
 import { EndpointFactory } from './endpoints/EndpointFactory';
+import type { ErrorFormat } from './endpoints/problems';
 import { envParserFor } from './endpoints/surfaceEnv';
 import {
 	registerWebhook,
@@ -199,6 +200,14 @@ export interface RestApiConfig<
 	 * `identifier`, or a `url` to the text.
 	 */
 	license?: { name: string; identifier?: string; url?: string };
+	/**
+	 * How a failed request is answered. `'problem'` is RFC 9457 problem
+	 * details — `application/problem+json`, `{ type, title, status, detail,
+	 * code, details }` — which the OpenAPI document describes for each refusal
+	 * an endpoint declares with `.error()`. Unset, the body it always was, so
+	 * an existing client keeps working until its API opts in.
+	 */
+	errors?: ErrorFormat;
 }
 
 /**
@@ -338,6 +347,7 @@ export class RestApi<
 				...(config.license ? { license: config.license } : {}),
 				...(authenticator ? { auth: authenticator } : {}),
 				webhooks: this.#webhooks,
+				...(config.errors ? { errors: config.errors } : {}),
 			},
 		});
 
@@ -357,6 +367,7 @@ export class RestApi<
 		this.rls = endpoints.rls.bind(endpoints);
 		this.route = endpoints.route.bind(endpoints);
 		this.tag = endpoints.tag.bind(endpoints);
+		this.error = endpoints.error.bind(endpoints);
 	}
 
 	/**
@@ -405,6 +416,8 @@ export class RestApi<
 	readonly rls: Endpoints['rls'];
 	readonly route: Endpoints['route'];
 	readonly tag: Endpoints['tag'];
+	/** A refusal every endpoint on the branch can answer — see `.error()`. */
+	readonly error: Endpoints['error'];
 
 	/**
 	 * What authenticates this surface.

@@ -53,6 +53,13 @@ import {
 	type EndpointSurface,
 	withTag,
 } from './Endpoint';
+import {
+	type EndpointError,
+	type EndpointErrorOptions,
+	type ErrorStatus,
+	endpointError,
+	mergeEndpointErrors,
+} from './problems';
 import type { RlsBypass, RlsConfig } from './rls';
 import { RLS_BYPASS } from './rls';
 import {
@@ -140,6 +147,7 @@ export class EndpointBuilder<
 	_rlsBypass?: boolean;
 	_telemetry?: EndpointTelemetry;
 	_callbacks?: Record<string, EndpointCallback>;
+	_errors: EndpointError[] = [];
 
 	constructor(
 		readonly route: TRoute,
@@ -300,6 +308,32 @@ export class EndpointBuilder<
 		}
 		return cloneWith(this, {
 			_callbacks: { ...this._callbacks, [name]: callback },
+		});
+	}
+
+	/**
+	 * A refusal this endpoint can answer — repeatable, one call per code. The
+	 * document lists each status under `responses`, as
+	 * `application/problem+json` with the status's codes as an enum. The
+	 * handler answers it by throwing an `HttpError` with that status and code.
+	 *
+	 * @example
+	 * ```ts
+	 * router.post('/users')
+	 *   .error(409, 'EMAIL_TAKEN', { description: 'The email is registered.' })
+	 *   .handle(async () => {
+	 *     throw createHttpError(409, 'Email taken', { code: 'EMAIL_TAKEN' });
+	 *   });
+	 * ```
+	 */
+	error(
+		status: ErrorStatus,
+		code: string,
+		options?: EndpointErrorOptions,
+	): this {
+		const declared = endpointError(status, code, options);
+		return cloneWith(this, {
+			_errors: mergeEndpointErrors(this._errors, [declared]),
 		});
 	}
 
@@ -1039,6 +1073,7 @@ export class EndpointBuilder<
 			rlsBypass: this._rlsBypass,
 			responseType: this._responseType,
 			...(this._telemetry ? { telemetry: this._telemetry } : {}),
+			errors: mergeEndpointErrors(this._surface?.refusals, this._errors),
 		});
 
 		// One field says which process runs a construct, whatever its kind. An

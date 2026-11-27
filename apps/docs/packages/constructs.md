@@ -3262,3 +3262,59 @@ The client `gkm openapi --ts` generates knows every alternative too. In
 it has an `authStrategies` entry for, so a browser app configures `session`
 and a back-office script `partners`, and neither needs the other. A strategy is
 required only for a scheme some endpoint accepts on its own.
+
+### Errors
+
+An endpoint declares the refusals it can answer with `.error(status, code, {
+description?, details? })`, one call per code. A branch can declare one for
+every endpoint built from it:
+
+```typescript
+import { createHttpError } from '@geekmidas/errors';
+
+export const api = new RestApi('Api', {
+  path: 'apps/api',
+  defaultAuthorizer: 'none',
+  errors: 'problem', // RFC 9457 problem details
+});
+
+const router = api.session(readSession).error(401, 'SIGNED_OUT');
+
+export const createUser = router
+  .post('/users')
+  .body(z.object({ email: z.email() }))
+  .error(409, 'EMAIL_TAKEN', {
+    description: 'The email is already registered.',
+    details: z.object({ email: z.email() }),
+  })
+  .handle(async ({ body }) => {
+    throw createHttpError(409, 'That email is registered', {
+      code: 'EMAIL_TAKEN',
+      details: { email: body.email },
+    });
+  });
+```
+
+With `errors: 'problem'`, every failure is answered as
+`application/problem+json`:
+
+```json
+{
+  "type": "about:blank",
+  "title": "Conflict",
+  "status": 409,
+  "detail": "That email is registered",
+  "code": "EMAIL_TAKEN",
+  "details": { "email": "ada@example.com" }
+}
+```
+
+A request that its body, query or params schema rejects is a 422 with the code
+`VALIDATION_FAILED`, and its issues are the `details`. A 5xx keeps its
+`details` out of the response unless it runs under `gkm dev`.
+
+The document lists each declared status under `responses`. Its schema is
+`allOf` the shared `#/components/schemas/Problem`, with `code` narrowed to the
+codes declared for that status. The typed client that `gkm` generates carries
+the same bodies. Without `errors`, a surface keeps the error body it has always
+sent. The document still lists the statuses, but it does not describe a body.

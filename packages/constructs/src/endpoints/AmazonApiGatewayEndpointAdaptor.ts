@@ -12,6 +12,7 @@ import { loadRls } from '../optionalPeers';
 import type { HttpMethod } from '../types';
 import { Endpoint, type EndpointSchemas, ResponseBuilder } from './Endpoint';
 import type { Telemetry } from './lambdaTelemetry';
+import { answersProblems, asValidationFailed, lambdaProblem } from './problems';
 import { enforceRateLimit } from './rateLimit';
 import { readRequestBody } from './readRequestBody';
 import { envParserFor } from './surfaceEnv';
@@ -145,6 +146,10 @@ export abstract class AmazonApiGatewayEndpoint<
 					'Error processing request',
 				);
 				const wrappedError = wrapError(req.error);
+				if (answersProblems(this.endpoint)) {
+					req.response = lambdaProblem(wrappedError);
+					return;
+				}
 
 				// Set the response with the proper status code from the HttpError,
 				// and the headers it says the response carries (a 429's
@@ -227,6 +232,7 @@ export abstract class AmazonApiGatewayEndpoint<
 					});
 				} catch (error) {
 					// Convert validation errors to 422 Unprocessable Entity
+					if (answersProblems(this.endpoint)) throw asValidationFailed(error);
 					if (error && typeof error === 'object' && Array.isArray(error)) {
 						throw new UnprocessableEntityError('Validation failed', error);
 					}

@@ -7,6 +7,7 @@ import type { Logger } from '@geekmidas/logger';
 import { DEFAULT_LOGGER } from '@geekmidas/logger/console';
 import type { Service } from '@geekmidas/services';
 import uniqBy from 'lodash.uniqby';
+import { cloneWith } from '../clone';
 import {
 	type Consumable,
 	idsOf,
@@ -33,6 +34,12 @@ import type {
 } from './Endpoint';
 import { withTag } from './Endpoint';
 import { EndpointBuilder } from './EndpointBuilder';
+import {
+	type EndpointErrorOptions,
+	type ErrorStatus,
+	endpointError,
+	withSurfaceError,
+} from './problems';
 import type { RlsConfig } from './rls';
 
 // Re-export SecurityScheme to make the type portable in declaration files
@@ -1012,6 +1019,29 @@ export class EndpointFactory<
 			defaultTags: withTag(this.defaultTags, { name, description }),
 			defaultRlsConfig: this.defaultRlsConfig,
 		}) as unknown as this;
+	}
+
+	/**
+	 * A refusal every endpoint built from this branch can answer — a 401 the
+	 * branch's session check sends. A new factory, like every branch; each
+	 * endpoint adds its own with `.error()`.
+	 *
+	 * @example
+	 * ```ts
+	 * const router = api.session(readSession).error(401, 'SIGNED_OUT');
+	 * ```
+	 */
+	error(
+		status: ErrorStatus,
+		code: string,
+		options?: EndpointErrorOptions,
+	): this {
+		return cloneWith(this, {
+			surface: withSurfaceError(
+				this.surface,
+				endpointError(status, code, options),
+			),
+		});
 	}
 
 	private createBuilder<TMethod extends HttpMethod, TPath extends string>(

@@ -10,6 +10,11 @@ import {
 	type ClientTelemetryDefault,
 	printTelemetryDefault,
 } from './clientTelemetry.js';
+import {
+	type ProblemResponsesInfo,
+	problemResponsesOf,
+	withProblemResponses,
+} from './problemResponses.js';
 import { generateWebhookTypes } from './webhookTypes.js';
 
 export type { ClientTelemetryDefault } from './clientTelemetry.js';
@@ -90,6 +95,8 @@ interface EndpointInfo {
 	bodyOptional: boolean;
 	summary?: string;
 	deprecated?: boolean;
+	/** The refusals it documents, beside its success. */
+	problemResponses?: ProblemResponsesInfo;
 }
 
 /**
@@ -213,6 +220,7 @@ export class OpenApiTsGenerator {
 					operationId: ep.operationId,
 					responseType: ep.responseType ?? 'application/json',
 					summary: ep.summary,
+					problemResponses: problemResponsesOf(ep),
 					deprecated: ep.deprecated,
 					bodyOptional:
 						typeof ep.isBodyOptional === 'function'
@@ -736,6 +744,13 @@ export class OpenApiTsGenerator {
           };
         };
       }`);
+		if (info.problemResponses) {
+			parts.push(
+				withProblemResponses(parts.pop()!, info.problemResponses, (s) =>
+					this.jsonSchemaTypeToTs(s),
+				),
+			);
+		}
 
 		return `{\n      ${parts.join(';\n      ')};\n    }`;
 	}
