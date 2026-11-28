@@ -3209,34 +3209,61 @@ carry the contact, licence and servers.
 
 ### Webhooks and callbacks
 
-A service that sends signed events to its users' endpoints documents them
-from the topic that carries them. `.webhooks(topic, …)` on the `RestApi`
-lists each event under the document's `webhooks` (OpenAPI 3.1): a `POST`
-whose body is `{ type, payload }`, with the payload's schema from the topic,
-and the header a receiver checks.
+Ownership decides which document lists a service's webhooks. The API a
+`Webhooks` construct is built from — `api.webhooks('BillingHooks', …)` — owns
+it, and that API's document lists each event it delivers under `webhooks`
+(OpenAPI 3.1). Depending on it is not documenting it: an endpoint on another
+API that `.dependsOn([billingHooks])`, to manage subscriptions or redeliver,
+gets `services.billingHooks` and the edges that come with it, and its own
+document lists nothing.
 
 ```typescript
-export const api = new RestApi('Api', { path: 'apps/api', defaultAuthorizer: 'none' }).webhooks(billing, {
-  signature: {
-    header: 'Webhook-Signature',
-    description: 'HMAC-SHA256 of the raw body with the endpoint secret',
-  },
-  // Optional — the events that leave the service, when not all of them do.
+// constructs/api.ts — the public API, whose users receive the webhooks
+export const api = new RestApi('Api', { path: 'apps/api', defaultAuthorizer: 'none' });
+
+export const billingHooks = api.webhooks('BillingHooks', {
+  topic: billing,
   events: ['invoice.paid', 'invoice.voided'],
+  database: db.schema('BillingHooksDb'),
+  encryption: pii,
 });
+
+// constructs/admin.ts — a private API for support staff
+export const admin = new RestApi('Admin', { path: 'apps/admin', defaultAuthorizer: 'iam' });
+
+export const redeliver = admin
+  .post('/deliveries/:id/redeliver')
+  .dependsOn([billingHooks])        // reaches it; does not document it
+  .handle(async ({ params, services }) => { … });
 ```
 
-It documents; delivering the events is the service's own subscriber's job.
-The document is built from endpoints, so it lists the webhooks of the surfaces
-they were built from, whenever the topic was registered. Two delivered topics
-carrying the same event type are refused (`WebhookEventDeclaredTwice`): a
-receiver tells events apart by type. The generated client exports a
-`webhooks` interface, event type → body, for a receiver to type its handler:
+`Api`'s document lists `invoice.paid` and `invoice.voided`; `Admin`'s lists
+no webhooks. Each event is a `POST` documenting what a receiver is actually
+sent:
+
+- **The body** is the envelope `{ id, type, occurredAt, payload }`: `id` the
+  delivery's id, `type` the event, `occurredAt` a date-time, and `payload` the
+  topic's schema for the event (a `$ref` when the schema is registered).
+- **Three required headers**, as [Standard Webhooks](https://www.standardwebhooks.com/)
+  names them: `webhook-id`, `webhook-timestamp` (unix seconds) and
+  `webhook-signature` — `v1,<base64 HMAC-SHA256 of id.timestamp.body>`, keyed
+  with the subscription's secret, several space-separated while a secret is
+  being rotated.
+- **The retry rules**: attempted immediately, then after 1m, 5m, 30m, 2h, 5h,
+  10h and 10h. A `2xx` accepts it; a `410` disables the subscription — "stop
+  sending to this URL"; anything else is retried. Redirects are not followed.
+
+Two `Webhooks` delivering the same event type to one document are refused
+(`WebhookEventDeclaredTwice`): a receiver tells events apart by type. The
+generated client exports a `webhooks` interface, event type → envelope, for a
+receiver to type its handler:
 
 ```typescript
 import type { webhooks } from './client/openapi';
 
-function onEvent(event: webhooks[keyof webhooks]) { … }
+function onEvent(event: webhooks[keyof webhooks]) {
+  if (event.type === 'invoice.paid') event.payload.invoiceId;
+}
 ```
 
 An endpoint that calls back a URL its caller gave it declares the request with

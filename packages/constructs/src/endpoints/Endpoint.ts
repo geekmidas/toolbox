@@ -46,7 +46,7 @@ import {
 } from './responses';
 import type { RlsConfig } from './rls';
 import { type SessionAuth, sessionAuth } from './sessionAuth';
-import { type Webhook, withWebhooks } from './webhooks';
+import { type OwnedWebhooks, withWebhooks } from './webhooks';
 
 /**
  * Represents an HTTP endpoint that can handle requests with type-safe input/output validation,
@@ -239,7 +239,7 @@ export class Endpoint<
 			tags: Endpoint.documentTags(endpoints),
 			...definedOnly(options ?? {}),
 		});
-		// Webhooks are the surfaces', which the endpoints carry.
+		// Webhooks are owned by the surfaces, which the endpoints carry.
 		return withWebhooks(doc, endpoints);
 	}
 
@@ -1036,11 +1036,12 @@ export interface EndpointSurface {
 	/** The licence the API is offered under — its document's `info.license`. */
 	license?: OpenAPIV3_1.LicenseObject;
 	/**
-	 * Topics whose events this surface delivers to its users' URLs —
-	 * `api.webhooks(topic, …)`. One list shared by every endpoint the surface
-	 * built, so the document finds it from any of them.
+	 * The `Webhooks` constructs this surface owns — `api.webhooks(id, …)` —
+	 * which its OpenAPI document lists. One list shared by every endpoint the
+	 * surface built, so the document finds it from any of them. Depending on
+	 * another surface's `Webhooks` does not put it here.
 	 */
-	webhooks?: Webhook[];
+	webhooks?: OwnedWebhooks[];
 	/**
 	 * How a failed request is answered: `'problem'` for RFC 9457 problem
 	 * details. Unset, the body it always was.

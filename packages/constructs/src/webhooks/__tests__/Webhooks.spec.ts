@@ -90,7 +90,12 @@ describe('Webhooks', () => {
 	});
 
 	it('delivers every event of the topic when it names none', () => {
-		const all = api.webhooks('AllHooks', {
+		// Another API: `api` already owns hooks delivering these event types.
+		const other = new RestApi('Other', {
+			path: '.',
+			defaultAuthorizer: 'none',
+		});
+		const all = other.webhooks('AllHooks', {
 			topic: billing,
 			database: tenant,
 			encryption: pii,

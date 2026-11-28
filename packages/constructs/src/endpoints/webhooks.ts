@@ -1,27 +1,19 @@
 /**
- * Webhooks — the requests a service sends to its users' endpoints.
+ * Webhooks in the OpenAPI document — the requests a service sends to the URLs
+ * its users register.
  *
- * A `Topic` already declares each event it carries and the schema of its
- * payload. A service that delivers those events to URLs its users register
- * says so on the surface that documents it:
+ * Ownership decides the document. `api.webhooks('BillingHooks', …)` builds a
+ * `Webhooks` construct owned by `api`, and records it on the surface every
+ * endpoint built from `api` carries by reference. The document — which only
+ * ever sees endpoints — finds it there, so it lists the webhooks of the APIs
+ * its endpoints were built from, and no others: an endpoint on another API
+ * that `.dependsOn([billingHooks])` to manage the subscriptions does not make
+ * that API's document list them.
  *
- * ```ts
- * export const api = new RestApi('Api', { path: 'apps/api', defaultAuthorizer: 'none' }).webhooks(users, {
- *   signature: {
- *     header: 'Webhook-Signature',
- *     description: 'HMAC-SHA256 of the raw body with the endpoint secret',
- *   },
- * });
- * ```
- *
- * and the OpenAPI document lists each event under `webhooks` (OpenAPI 3.1) —
- * the body the receiver is sent, `{ type, payload }`, and the header that
- * proves it came from this service.
- *
- * The list lives on the surface, which every endpoint built from it carries by
- * reference, so the document — which only ever sees endpoints — finds it
- * there. Registering a topic after the endpoints were built still reaches
- * them.
+ * Each delivered event is a `POST` under the document's `webhooks` (OpenAPI
+ * 3.1): the envelope a receiver is actually sent, the three Standard Webhooks
+ * headers it verifies the signature by, and what its answer makes the sender
+ * do next.
  */
 import { convertSchemaWithComponents } from '@geekmidas/schema/conversion';
 import {
@@ -29,37 +21,11 @@ import {
 	createComponentCollector,
 } from '@geekmidas/schema/openapi';
 import type { OpenAPIV3_1 } from 'openapi-types';
-import type { Topic, TopicEvents } from '../topic/Topic';
-
-/** The header a receiver checks to know a delivery came from this service. */
-export interface WebhookSignature {
-	/** The header's name — `Webhook-Signature`, `X-Hub-Signature-256`. */
-	header: string;
-	/** How the signature is computed, and how a receiver verifies it. */
-	description?: string;
-}
-
-/** What `api.webhooks(topic, options)` says about a topic's deliveries. */
-export interface WebhookOptions<TEvents extends TopicEvents = TopicEvents> {
-	/** The header each delivery is signed with. */
-	signature?: WebhookSignature;
-	/** Said of every event delivered from this topic. */
-	description?: string;
-	/**
-	 * The events that are delivered, when not all of them are. A topic can
-	 * carry events that never leave the service.
-	 */
-	events?: readonly (keyof TEvents & string)[];
-}
-
-/** A topic whose events are delivered to subscriber URLs. */
-export interface Webhook {
-	topic: Topic<string, TopicEvents>;
-	options: WebhookOptions;
-}
+import type { TopicEvents } from '../topic/Topic';
+import type { Webhooks } from '../webhooks/Webhooks';
 
 /**
- * Two topics delivered as webhooks carry an event of the same type.
+ * Two `Webhooks` documented together deliver an event of the same type.
  *
  * `webhooks` is keyed by event type — it is what a receiver switches on — so
  * the second would replace the first in the document.
@@ -67,12 +33,12 @@ export interface Webhook {
 export class WebhookEventDeclaredTwice extends Error {
 	constructor(
 		readonly type: string,
-		readonly topics: readonly [string, string],
+		readonly webhooks: readonly [string, string],
 	) {
 		super(
-			`Webhook event '${type}' is carried by both '${topics[0]}' and '${topics[1]}'. ` +
+			`Webhook event '${type}' is delivered by both '${webhooks[0]}' and '${webhooks[1]}'. ` +
 				'A receiver tells events apart by type, so rename one of them, or ' +
-				"leave it out of one topic's deliveries with `events: [...]`.",
+				'leave it out of one of their deliveries with `events: [...]`.',
 		);
 		this.name = 'WebhookEventDeclaredTwice';
 	}
@@ -94,131 +60,204 @@ export class WebhookEventNotOnTopic extends Error {
 	}
 }
 
+/** A `Webhooks` construct, whatever its topic's events. */
+export type OwnedWebhooks = Webhooks<string, any, any>;
+
+/** One event a receiver can be sent, and the construct that delivers it. */
+export interface DeliveredWebhookEvent {
+	/** The event's type — `invoice.paid`. */
+	type: string;
+	/** The `Webhooks` construct that delivers it. */
+	webhooks: OwnedWebhooks;
+	/** The schema of its payload, from the topic. */
+	payload: TopicEvents[string] | undefined;
+}
+
 /**
- * Records `topic` in `webhooks`, replacing what an earlier call said about the
- * same topic. Mutates in place: the list is shared by every endpoint the
- * surface built.
+ * The event types `hooks` delivers.
+ *
+ * Read through here rather than `hooks.events`: the delivered list is being
+ * renamed `eventTypes`, with `events` becoming the construct's lifecycle
+ * `Topic`. Preferring `eventTypes`, and taking `events` only when it is the
+ * array it used to be, reads the list correctly on either side of that change.
  */
-export function registerWebhook(
-	webhooks: Webhook[],
-	topic: Topic<string, any>,
-	options: WebhookOptions = {},
+export function deliveredEventTypes(hooks: OwnedWebhooks): readonly string[] {
+	const { eventTypes, events } = hooks as unknown as {
+		eventTypes?: unknown;
+		events?: unknown;
+	};
+	if (Array.isArray(eventTypes)) return eventTypes as string[];
+	if (Array.isArray(events)) return events as string[];
+	return [];
+}
+
+/**
+ * Records `hooks` in `owned` — the list a surface shares with every endpoint
+ * it built — refusing an event type another construct there already delivers.
+ * Mutates in place, so endpoints built before it still reach it.
+ */
+export function ownWebhooks(
+	owned: OwnedWebhooks[],
+	hooks: OwnedWebhooks,
 ): void {
-	for (const type of options.events ?? []) {
-		if (!(type in topic.eventSchemas)) {
-			throw new WebhookEventNotOnTopic(type, topic.name);
+	webhookEvents([...owned, hooks]);
+	owned.push(hooks);
+}
+
+/**
+ * The `Webhooks` owned by every surface the endpoints came from, each once.
+ */
+export function webhooksOf(
+	endpoints: ReadonlyArray<{
+		surface?: { webhooks?: readonly OwnedWebhooks[] };
+	}>,
+): OwnedWebhooks[] {
+	const owned = new Set<OwnedWebhooks>();
+	for (const endpoint of endpoints) {
+		for (const hooks of endpoint.surface?.webhooks ?? []) owned.add(hooks);
+	}
+	return [...owned];
+}
+
+/**
+ * Every event `webhooks` deliver, in order, with its payload schema — refusing
+ * one delivered by two of them, which a receiver could not tell apart.
+ */
+export function webhookEvents(
+	webhooks: readonly OwnedWebhooks[],
+): DeliveredWebhookEvent[] {
+	const events: DeliveredWebhookEvent[] = [];
+	const deliveredBy = new Map<string, string>();
+
+	for (const hooks of webhooks) {
+		for (const type of deliveredEventTypes(hooks)) {
+			const other = deliveredBy.get(type);
+			if (other !== undefined) {
+				throw new WebhookEventDeclaredTwice(type, [other, hooks.id]);
+			}
+			deliveredBy.set(type, hooks.id);
+			events.push({
+				type,
+				webhooks: hooks,
+				payload: (hooks.topic.eventSchemas as TopicEvents)[type],
+			});
 		}
 	}
 
-	const existing = webhooks.findIndex((w) => w.topic === topic);
-	const webhook: Webhook = { topic, options };
-	if (existing >= 0) {
-		webhooks[existing] = webhook;
-	} else {
-		webhooks.push(webhook);
-	}
+	return events;
 }
 
-/**
- * The webhooks of every surface the endpoints came from, each topic once.
- */
-export function webhooksOf(
-	endpoints: ReadonlyArray<{ surface?: { webhooks?: Webhook[] } }>,
-): Webhook[] {
-	const lists = new Set<Webhook[]>();
-	for (const endpoint of endpoints) {
-		if (endpoint.surface?.webhooks) lists.add(endpoint.surface.webhooks);
-	}
+/** How a delivery is retried, and what a receiver's answer means. */
+export const WEBHOOK_DELIVERY_DESCRIPTION = [
+	'Sent as a signed `POST` to each URL subscribed to this event.',
+	'',
+	'A delivery is attempted immediately, then retried after 1m, 5m, 30m, 2h, ' +
+		'5h, 10h and 10h.',
+	'',
+	'- A `2xx` answer accepts the delivery; nothing more is sent.',
+	'- A `410 Gone` answer disables the subscription: nothing more is sent to ' +
+		'this URL until it is enabled again.',
+	'- Anything else (another status, a timeout, no answer) is retried.',
+	'- Redirects are not followed: a `3xx` is a failed attempt.',
+	'',
+	'The same delivery can arrive more than once. `webhook-id` is the same on ' +
+		'every attempt, so a receiver can drop one it has already processed.',
+].join('\n');
 
-	const byTopic = new Map<Topic<string, TopicEvents>, Webhook>();
-	for (const list of lists) {
-		for (const webhook of list) byTopic.set(webhook.topic, webhook);
-	}
-	return [...byTopic.values()];
-}
+/** The Standard Webhooks headers every delivery carries. */
+export const WEBHOOK_HEADERS: readonly OpenAPIV3_1.ParameterObject[] = [
+	{
+		name: 'webhook-id',
+		in: 'header',
+		required: true,
+		description:
+			"The delivery's id: the envelope's `id`, the same on every attempt.",
+		schema: { type: 'string' },
+	},
+	{
+		name: 'webhook-timestamp',
+		in: 'header',
+		required: true,
+		description:
+			'When this attempt was sent, in unix seconds. Reject a request whose ' +
+			'timestamp is far from now, so a captured one cannot be replayed.',
+		schema: { type: 'integer' },
+	},
+	{
+		name: 'webhook-signature',
+		in: 'header',
+		required: true,
+		description:
+			'`v1,<signature>`: the base64 HMAC-SHA256 of ' +
+			'`<webhook-id>.<webhook-timestamp>.<raw body>`, keyed with the ' +
+			"subscription's secret. While a secret is being rotated several are " +
+			'sent, space-separated; the request is genuine if any one matches.',
+		schema: { type: 'string' },
+	},
+];
 
 /**
- * The OpenAPI `webhooks` object for `webhooks`: one POST per event, keyed by
- * its type.
+ * The OpenAPI `webhooks` object for `webhooks`: one POST per delivered event,
+ * keyed by its type.
  */
 export async function buildOpenApiWebhooks(
-	webhooks: readonly Webhook[],
+	webhooks: readonly OwnedWebhooks[],
 	collector?: ComponentCollector,
 ): Promise<Record<string, OpenAPIV3_1.PathItemObject>> {
 	const document: Record<string, OpenAPIV3_1.PathItemObject> = {};
-	const carriedBy = new Map<string, string>();
 
-	for (const { topic, options } of webhooks) {
-		const types = options.events ?? topic.eventTypes;
+	for (const event of webhookEvents(webhooks)) {
+		const payload = event.payload
+			? await convertSchemaWithComponents(event.payload, collector)
+			: undefined;
 
-		for (const type of types) {
-			const other = carriedBy.get(type);
-			if (other !== undefined) {
-				throw new WebhookEventDeclaredTwice(type, [other, topic.name]);
-			}
-			carriedBy.set(type, topic.name);
-
-			const payload = await convertSchemaWithComponents(
-				topic.eventSchemas[type],
-				collector,
-			);
-
-			const operation: OpenAPIV3_1.OperationObject = {
-				operationId: webhookOperationId(type),
-				summary: `${topic.name}: ${type}`,
-				...(options.description && { description: options.description }),
-				requestBody: {
-					required: true,
-					content: {
-						'application/json': {
-							schema: {
-								type: 'object',
-								properties: {
-									type: { type: 'string', const: type },
-									payload: payload ?? {},
-								},
-								required: ['type', 'payload'],
-							} as OpenAPIV3_1.SchemaObject,
-						},
+		const operation: OpenAPIV3_1.OperationObject = {
+			operationId: webhookOperationId(event.type),
+			summary: `${event.webhooks.id}: ${event.type}`,
+			description: WEBHOOK_DELIVERY_DESCRIPTION,
+			parameters: WEBHOOK_HEADERS.map((header) => ({ ...header })),
+			requestBody: {
+				required: true,
+				content: {
+					'application/json': {
+						schema: {
+							type: 'object',
+							properties: {
+								id: { type: 'string' },
+								type: { type: 'string', const: event.type },
+								occurredAt: { type: 'string', format: 'date-time' },
+								payload: payload ?? {},
+							},
+							required: ['id', 'type', 'occurredAt', 'payload'],
+						} as OpenAPIV3_1.SchemaObject,
 					},
 				},
-				responses: {
-					'2XX': {
-						description:
-							'Delivered. Any other status, or no answer, is a failed delivery.',
-					},
+			},
+			responses: {
+				'2XX': { description: 'Accepted: the delivery is done.' },
+				'410': {
+					description:
+						'Gone: stop sending to this URL. The subscription is disabled.',
 				},
-			};
+			},
+		};
 
-			if (options.signature) {
-				operation.parameters = [
-					{
-						name: options.signature.header,
-						in: 'header',
-						required: true,
-						...(options.signature.description && {
-							description: options.signature.description,
-						}),
-						schema: { type: 'string' },
-					},
-				];
-			}
-
-			// openapi-types types a 3.1 path item's operations as 3.0 ones.
-			document[type] = { post: operation } as OpenAPIV3_1.PathItemObject;
-		}
+		// openapi-types types a 3.1 path item's operations as 3.0 ones.
+		document[event.type] = { post: operation } as OpenAPIV3_1.PathItemObject;
 	}
 
 	return document;
 }
 
 /**
- * `doc` with the webhooks of the surfaces `endpoints` came from — the schemas
- * their payloads name added to its components.
+ * `doc` with the webhooks owned by the surfaces `endpoints` came from — the
+ * schemas their payloads name added to its components.
  */
 export async function withWebhooks(
 	doc: OpenAPIV3_1.Document,
-	endpoints: ReadonlyArray<{ surface?: { webhooks?: Webhook[] } }>,
+	endpoints: ReadonlyArray<{
+		surface?: { webhooks?: readonly OwnedWebhooks[] };
+	}>,
 ): Promise<OpenAPIV3_1.Document> {
 	const webhooks = webhooksOf(endpoints);
 	if (webhooks.length === 0) return doc;

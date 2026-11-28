@@ -23,4 +23,5 @@ A subscription's URL has to be public HTTPS on a deployed stage —
 `WebhookUrlNotDeliverable` otherwise. The manifest has a `webhooks` kind, which
 provisions nothing of its own.
 
-The old `api.webhooks(topic, …)`, which only documented events, is deprecated.
+The old `api.webhooks(topic, …)`, which only documented events, is removed:
+the owning API's OpenAPI document lists the construct's events instead.
