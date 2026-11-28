@@ -219,7 +219,17 @@ export function idsOf(
 	constructs: readonly Consumable[],
 	existing: readonly string[] = [],
 ): string[] {
-	return [...new Set([...existing, ...constructs.map(({ id }) => id)])];
+	return [...new Set([...existing, ...constructs.flatMap(edgesOf)])];
+}
+
+/**
+ * A construct's id, and the ids of what a runnable reaches through it — the
+ * `reaches` a construct like `Webhooks` lists, whose client opens its tenant
+ * and its key. Each is an edge of its own, so the deploy grants exactly them.
+ */
+function edgesOf(construct: Consumable): string[] {
+	const reaches = (construct as { reaches?: readonly Consumable[] }).reaches;
+	return [construct.id, ...(reaches ?? []).flatMap(edgesOf)];
 }
 
 /**

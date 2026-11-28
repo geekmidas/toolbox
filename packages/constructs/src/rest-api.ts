@@ -74,6 +74,7 @@ import {
 } from './endpoints/webhooks';
 import type { Telemetry } from './telemetry';
 import type { Topic, TopicEvents } from './topic/Topic';
+import { Webhooks, type WebhooksOptions } from './webhooks/Webhooks';
 
 /** The factory a surface builds its endpoints from. */
 type Endpoints = EndpointFactory<[], '', Logger>;
@@ -447,29 +448,49 @@ export class RestApi<
 	}
 
 	/**
-	 * Documents `topic`'s events as webhooks — the signed requests this service
-	 * sends to the URLs its users register. Each event appears under the
-	 * document's `webhooks`, with its `{ type, payload }` body and the
-	 * signature header a receiver checks.
+	 * Webhooks this API owns: the signed requests it sends to the URLs its
+	 * users register, for each event of `topic` they subscribed to. Its
+	 * document lists them; another API can `.dependsOn([hooks])` to manage the
+	 * subscriptions without listing them.
 	 *
 	 * ```ts
-	 * export const api = new RestApi('Api', {
-	 *   path: 'apps/api',
-	 *   defaultAuthorizer: 'none',
-	 * }).webhooks(
-	 *   users,
-	 *   { signature: { header: 'Webhook-Signature' } },
-	 * );
+	 * export const billingHooks = api.webhooks('BillingHooks', {
+	 *   topic: billing,
+	 *   events: ['invoice.paid', 'invoice.voided'],
+	 *   database: db.schema('Webhooks'),
+	 *   encryption: pii,
+	 * });
 	 * ```
-	 *
-	 * Documentation only: delivering the events is the service's own
-	 * subscriber's job. Returns the surface, so it chains where it is declared.
+	 */
+	webhooks<
+		THooks extends string,
+		TEvents extends TopicEvents,
+		TEvent extends keyof TEvents & string = keyof TEvents & string,
+	>(
+		id: ConstructName<THooks>,
+		options: WebhooksOptions<TEvents, TEvent>,
+	): Webhooks<THooks, TEvents, TEvent>;
+	/**
+	 * @deprecated Documents a topic's events without delivering them. Build
+	 * the webhooks from the API instead — `api.webhooks(id, { topic, … })` —
+	 * which stores, signs and delivers them too.
 	 */
 	webhooks<TEvents extends TopicEvents>(
 		topic: Topic<string, TEvents>,
 		options?: WebhookOptions<TEvents>,
-	): this {
-		registerWebhook(this.#webhooks, topic, options as WebhookOptions);
+	): this;
+	webhooks(
+		idOrTopic: string | Topic<string, TopicEvents>,
+		options?: WebhooksOptions<TopicEvents, string> | WebhookOptions,
+	): unknown {
+		if (typeof idOrTopic === 'string') {
+			return new Webhooks(
+				idOrTopic as ConstructName<string>,
+				this.id,
+				options as WebhooksOptions<TopicEvents, string>,
+			);
+		}
+		registerWebhook(this.#webhooks, idOrTopic, options as WebhookOptions);
 		return this;
 	}
 

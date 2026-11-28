@@ -277,6 +277,29 @@ export interface InboxDeclaration extends Node {
 }
 
 /**
+ * Webhooks — the signed requests a service sends to the URLs its users
+ * register, one per event of `topic` they subscribed to.
+ *
+ * A node of its own so its tables can be migrated (`gkm migration <id>`) and
+ * the graph says which API owns it. It provisions nothing and provides no
+ * keys: what it reaches is its tenant and its encryption key, and a runnable
+ * that depends on it gets edges to those two instead.
+ */
+export interface WebhooksDeclaration extends Node {
+	kind: 'webhooks';
+	/** The API whose document lists these webhooks — the one it was built from. */
+	owner: ConstructId;
+	/** The topic whose events are delivered. */
+	topic: ConstructId;
+	/** The topic's events that are delivered. */
+	events: readonly string[];
+	/** The schema tenant its subscriptions and deliveries are stored in. */
+	database: ConstructId;
+	/** The key its signing secrets are encrypted with. */
+	encryption: ConstructId;
+}
+
+/**
  * The Maps APIs a `Maps` construct calls: `maps` is the map itself, in a page
  * or a phone; the others are its web services.
  */
@@ -1178,7 +1201,8 @@ export type Declaration =
 	| FunctionDeclaration
 	| CronDeclaration
 	| TelemetryDeclaration
-	| MapsDeclaration;
+	| MapsDeclaration
+	| WebhooksDeclaration;
 
 /** A declaration that provisions nothing of its own and names a parent. */
 /**
@@ -1351,6 +1375,8 @@ export interface ProvidesByKind {
 	 * Where its raw messages are read from — its own bucket deployed, Mailpit's
 	 * API locally — and the stage's domain it receives on: `fixwell.example`.
 	 */
+	/** Nothing: a runnable that depends on webhooks reaches its tenant and key. */
+	webhooks: Record<never, never>;
 	inbox: {
 		url: string;
 		domain: string;
@@ -1498,6 +1524,8 @@ export const PUBLIC: {
 	// Not secret, but read by the decoder in front of a handler and nothing a
 	// browser needs.
 	inbox: [],
+	// Provides nothing: its runnables reach its tenant and key directly.
+	webhooks: [],
 	// A connection string is never shippable, whichever role it carries.
 	database: [],
 	'database-reader': [],

@@ -372,6 +372,8 @@ export async function migrationCommand(
 interface AuthConstruct {
 	id: string;
 	databaseId: string;
+	/** What its migration file is named when `--name` is not given. */
+	migrationName?: string;
 	pendingMigration(
 		options: ServiceRegisterOptions,
 	): Promise<string | undefined>;
@@ -426,7 +428,7 @@ async function writeAuthMigration(
 	const file = await write(
 		ready.workspace.root,
 		target,
-		`${stamp(options.now)}_${slug(options.name ?? 'better_auth')}.sql`,
+		`${stamp(options.now)}_${slug(options.name ?? auth.migrationName ?? 'better_auth')}.sql`,
 		`${pending.trim()}\n`,
 	);
 	logger.log(`📝 ${file}`);

@@ -777,6 +777,60 @@ it. The index key does not rotate: a rotated index key would make every stored
 index miss. On AWS neither command applies; KMS keeps every version it rotated
 through, so nothing is ever stranded.
 
+### Webhooks — what a service sends its users
+
+A `Webhooks` construct owns everything about the requests a service sends to
+the URLs its users register: who receives which events, the signing secrets,
+and (as it grows) the deliveries, their retries and their record. It is built
+from the API that owns it, whose OpenAPI document lists it.
+
+```typescript
+// constructs/webhooks.ts
+export const billingHooks = api.webhooks('BillingHooks', {
+  topic: billing,                          // what triggers deliveries
+  events: ['invoice.paid', 'invoice.voided'],  // every event of the topic when left out
+  database: db.schema('BillingHooksDb'),   // where subscriptions are stored
+  encryption: pii,                         // signing secrets encrypted at rest
+});
+```
+
+Its tables are a committed migration of its tenant, like an auth server's:
+
+```bash
+gkm migration BillingHooks    # writes db/BillingHooksDb/<stamp>_webhooks.sql
+```
+
+Endpoints manage subscriptions through it with `.dependsOn()`. Depending on it
+also gives the runnable edges to its tenant and its key, so the deploy grants
+exactly those:
+
+```typescript
+export const createWebhookEndpoint = router
+  .post('/webhook-endpoints')
+  .dependsOn([billingHooks])
+  .body(z.object({
+    url: z.url(),
+    events: z.array(z.enum(['invoice.paid', 'invoice.voided'])),
+  }))
+  .handle(async ({ body, session, services }) => {
+    const { subscription, secret } = await services.billingHooks.subscribe({
+      owner: session.accountId,
+      ...body,
+    });
+    return { id: subscription.id, secret };   // the secret is returned once
+  });
+```
+
+`services.billingHooks` also has `list(owner)`, `get(id)`, `disable(id, reason)`,
+`enable(id)`, `remove(id)` and `rotateSecret(id)` — a rotated-out secret keeps
+signing beside the new one for a day, so a receiver switches without missing a
+delivery.
+
+A subscription's URL must be public `https://` on a deployed stage: a local
+name (`localhost`, `*.internal`), a private or reserved address, or a URL
+carrying credentials throws `WebhookUrlNotDeliverable`. Under `gkm dev` and in
+tests, `http://localhost` is allowed.
+
 ### The database, and what comes off it
 
 ```typescript

@@ -184,6 +184,16 @@
 				"default": "./dist/inbox.cjs"
 			}
 		},
+		"./webhooks": {
+			"import": {
+				"types": "./dist/webhooks/index.d.mts",
+				"default": "./dist/webhooks/index.mjs"
+			},
+			"require": {
+				"types": "./dist/webhooks/index.d.cts",
+				"default": "./dist/webhooks/index.cjs"
+			}
+		},
 		"./cache": {
 			"import": {
 				"types": "./dist/cache.d.mts",
