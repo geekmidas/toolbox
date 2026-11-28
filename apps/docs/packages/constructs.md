@@ -777,6 +777,155 @@ it. The index key does not rotate: a rotated index key would make every stored
 index miss. On AWS neither command applies; KMS keeps every version it rotated
 through, so nothing is ever stranded.
 
+### Webhooks — what a service sends its users
+
+A `Webhooks` construct owns everything about the requests a service sends to
+the URLs its users register: who receives which events, the signing secrets,
+the deliveries, their retries and their record. It is built
+from the API that owns it, whose OpenAPI document lists it.
+
+```typescript
+// constructs/webhooks.ts
+export const billingHooks = api.webhooks('BillingHooks', {
+  topic: billing,                          // what triggers deliveries
+  events: ['invoice.paid', 'invoice.voided'],  // every event of the topic when left out
+  database: db.schema('BillingHooksDb'),   // where subscriptions are stored
+  encryption: pii,                         // signing secrets encrypted at rest
+});
+```
+
+Its tables are a committed migration of its tenant, like an auth server's:
+
+```bash
+gkm migration BillingHooks    # writes db/BillingHooksDb/<stamp>_webhooks.sql
+```
+
+Endpoints manage subscriptions through it with `.dependsOn()`. Depending on it
+also gives the runnable edges to its tenant and its key, so the deploy grants
+exactly those:
+
+```typescript
+export const createWebhookEndpoint = router
+  .post('/webhook-endpoints')
+  .dependsOn([billingHooks])
+  .body(z.object({
+    url: z.url(),
+    events: z.array(z.enum(['invoice.paid', 'invoice.voided'])),
+  }))
+  .handle(async ({ body, session, services }) => {
+    const { subscription, secret } = await services.billingHooks.subscribe({
+      owner: session.accountId,
+      ...body,
+    });
+    return { id: subscription.id, secret };   // the secret is returned once
+  });
+```
+
+`services.billingHooks` also has `list(owner)`, `get(id)`, `disable(id, reason)`,
+`enable(id)`, `remove(id)` and `rotateSecret(id)` — a rotated-out secret keeps
+signing beside the new one for a day, so a receiver switches without missing a
+delivery.
+
+A subscription's URL must be public `https://` on a deployed stage: a local
+name (`localhost`, `*.internal`), a private or reserved address, or a URL
+carrying credentials throws `WebhookUrlNotDeliverable`. Under `gkm dev` and in
+tests, `http://localhost` is allowed.
+
+#### Delivering
+
+A worker delivers them. `worker.webhooks(hooks)` returns two runnables, and
+discovery only finds exported ones, so export both:
+
+```typescript
+// subscribers/billingHooks.ts
+export const { deliver: deliverBilling, sweep: retryBilling } =
+  worker.webhooks(billingHooks);                  // { sweep: 'rate(5 minutes)' } to change it
+```
+
+- `deliver` subscribes to the topic, for the events the hooks send. In one
+  transaction it writes a `pending` delivery for each active subscription that
+  wants the event, then makes each one's first attempt. An event the broker
+  hands over twice is delivered once: `(event_id, subscription_id)` is unique,
+  and the event id is the one the topic's publisher stamped on the message when
+  it was published, which every redelivery keeps. Two occurrences with the same
+  payload have their own ids, and are each delivered.
+- `sweep` is a cron, every minute by default, that claims due deliveries
+  (`FOR UPDATE SKIP LOCKED`, leased while they are sent) and tries each again.
+
+Each request is signed per [Standard Webhooks](https://www.standardwebhooks.com/):
+
+| Header | Value |
+| --- | --- |
+| `webhook-id` | The delivery's id — the same on every attempt and on a redelivery |
+| `webhook-timestamp` | Unix seconds |
+| `webhook-signature` | `v1,<base64 HMAC-SHA256 of id.timestamp.body>`, one per secret, space-separated, while a rotation overlaps |
+
+The body is `{ id, type, occurredAt, payload }`, where `id` is the event's id.
+
+A receiver checks it with `verifyWebhook` from `@geekmidas/client/webhooks`,
+which uses only WebCrypto and so runs anywhere. It returns the event, typed by
+a generated client's `webhooks` map, and throws `WebhookSignatureInvalid`,
+`WebhookTimestampOutOfRange` (more than five minutes from now by default) or
+`WebhookHeadersMissing`:
+
+```typescript
+import { verifyWebhook } from '@geekmidas/client/webhooks';
+import type { webhooks } from './client';
+
+const event = await verifyWebhook<webhooks>(secret, request);
+if (event.type === 'invoice.paid') event.payload.invoiceId;
+```
+
+**Retries.** A delivery is tried at once, then 1m, 5m, 30m, 2h, 5h, 10h and
+10h after each failure: eight attempts, after which it is `abandoned`. A 2xx
+marks it `delivered` and resets the subscription's failure count. A 410
+disables the subscription (reason `'gone'`) and abandons the delivery. Anything
+else is a failed attempt: another status, a redirect (never followed), a
+timeout (10 s), or an address refused. After five abandoned deliveries in a row
+(`disableAfter` on the construct's options) the subscription is disabled.
+
+**Outbound safety.** On a deployed stage the default transport sends to
+`https://` only, resolves the host and refuses a private or reserved address
+at the connection (so a name re-pointed after it was registered still sends
+nothing), and reads at most 64 KiB of the answer. Under `gkm dev` and in tests
+it sends to `http://localhost` too.
+
+**Recording and redelivery.** Every attempt is recorded with its status,
+latency and error. `services.billingHooks.deliveries({ owner })` (or
+`{ subscriptionId }`) lists recent deliveries, newest first, each with its
+`history`. `redeliver(deliveryId)` sends one again as a new attempt under the
+same `webhook-id`, whatever its status.
+
+**Reacting.** The construct publishes what happens on a topic it owns,
+`billingHooks.events` (`BillingHooksEvents`): `delivery.succeeded`,
+`delivery.failed` (once per failed attempt), `delivery.abandoned`,
+`subscription.disabled` and `secret.rotated`. These are published after the
+delivery is recorded, so a reaction that throws, or a publish that fails, never
+retries or repeats a delivery:
+
+```typescript
+export const onDisabled = worker
+  .topic(billingHooks.events)
+  .subscribe(['subscription.disabled'])
+  .handle(async ({ events }) => { … });     // email the owner
+```
+
+**Testing.** All time comes from `billingHooks.clock` and every request goes
+through `billingHooks.transport`, so a test can swap either. The work itself
+is plain functions in `@geekmidas/constructs/webhooks`: `deliverEvent(hooks,
+deps, event)` and `sweepDue(hooks, deps)`, where `deps` is `{ db, cipher,
+publisher?, logger? }`.
+
+#### Testing webhooks
+
+In a `featureTest`, everything runs in the test's transaction, and only the hop
+to the customer's server and the clock are replaced. `hooks.transport` is sent
+through MSW, so `msw.use(http.post(url, …))` answers a delivery, and one that
+nothing answers fails as an unreachable server would, without reaching the
+network. `hooks.clock` reads the test's `clock` (`clock.advance('1m')`,
+`clock.set(date)`), and `cron(retryBilling).run()` runs the sweep on demand.
+See [Testing webhooks](/guide/testing#webhooks).
+
 ### The database, and what comes off it
 
 ```typescript
@@ -3155,34 +3304,61 @@ carry the contact, licence and servers.
 
 ### Webhooks and callbacks
 
-A service that sends signed events to its users' endpoints documents them
-from the topic that carries them. `.webhooks(topic, …)` on the `RestApi`
-lists each event under the document's `webhooks` (OpenAPI 3.1): a `POST`
-whose body is `{ type, payload }`, with the payload's schema from the topic,
-and the header a receiver checks.
+Ownership decides which document lists a service's webhooks. The API a
+`Webhooks` construct is built from — `api.webhooks('BillingHooks', …)` — owns
+it, and that API's document lists each event it delivers under `webhooks`
+(OpenAPI 3.1). Depending on it is not documenting it: an endpoint on another
+API that `.dependsOn([billingHooks])`, to manage subscriptions or redeliver,
+gets `services.billingHooks` and the edges that come with it, and its own
+document lists nothing.
 
 ```typescript
-export const api = new RestApi('Api', { path: 'apps/api', defaultAuthorizer: 'none' }).webhooks(billing, {
-  signature: {
-    header: 'Webhook-Signature',
-    description: 'HMAC-SHA256 of the raw body with the endpoint secret',
-  },
-  // Optional — the events that leave the service, when not all of them do.
+// constructs/api.ts — the public API, whose users receive the webhooks
+export const api = new RestApi('Api', { path: 'apps/api', defaultAuthorizer: 'none' });
+
+export const billingHooks = api.webhooks('BillingHooks', {
+  topic: billing,
   events: ['invoice.paid', 'invoice.voided'],
+  database: db.schema('BillingHooksDb'),
+  encryption: pii,
 });
+
+// constructs/admin.ts — a private API for support staff
+export const admin = new RestApi('Admin', { path: 'apps/admin', defaultAuthorizer: 'iam' });
+
+export const redeliver = admin
+  .post('/deliveries/:id/redeliver')
+  .dependsOn([billingHooks])        // reaches it; does not document it
+  .handle(async ({ params, services }) => { … });
 ```
 
-It documents; delivering the events is the service's own subscriber's job.
-The document is built from endpoints, so it lists the webhooks of the surfaces
-they were built from, whenever the topic was registered. Two delivered topics
-carrying the same event type are refused (`WebhookEventDeclaredTwice`): a
-receiver tells events apart by type. The generated client exports a
-`webhooks` interface, event type → body, for a receiver to type its handler:
+`Api`'s document lists `invoice.paid` and `invoice.voided`; `Admin`'s lists
+no webhooks. Each event is a `POST` documenting what a receiver is actually
+sent:
+
+- **The body** is the envelope `{ id, type, occurredAt, payload }`: `id` the
+  delivery's id, `type` the event, `occurredAt` a date-time, and `payload` the
+  topic's schema for the event (a `$ref` when the schema is registered).
+- **Three required headers**, as [Standard Webhooks](https://www.standardwebhooks.com/)
+  names them: `webhook-id`, `webhook-timestamp` (unix seconds) and
+  `webhook-signature` — `v1,<base64 HMAC-SHA256 of id.timestamp.body>`, keyed
+  with the subscription's secret, several space-separated while a secret is
+  being rotated.
+- **The retry rules**: attempted immediately, then after 1m, 5m, 30m, 2h, 5h,
+  10h and 10h. A `2xx` accepts it; a `410` disables the subscription — "stop
+  sending to this URL"; anything else is retried. Redirects are not followed.
+
+Two `Webhooks` delivering the same event type to one document are refused
+(`WebhookEventDeclaredTwice`): a receiver tells events apart by type. The
+generated client exports a `webhooks` interface, event type → envelope, for a
+receiver to type its handler:
 
 ```typescript
 import type { webhooks } from './client/openapi';
 
-function onEvent(event: webhooks[keyof webhooks]) { … }
+function onEvent(event: webhooks[keyof webhooks]) {
+  if (event.type === 'invoice.paid') event.payload.invoiceId;
+}
 ```
 
 An endpoint that calls back a URL its caller gave it declares the request with

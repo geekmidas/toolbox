@@ -125,10 +125,13 @@ export {
 	type UploadPost,
 } from './upload';
 export {
-	type Webhook,
+	type DeliveredWebhookEvent,
+	deliveredEventTypes,
+	type OwnedWebhooks,
+	WEBHOOK_DELIVERY_DESCRIPTION,
+	WEBHOOK_HEADERS,
 	WebhookEventDeclaredTwice,
 	WebhookEventNotOnTopic,
-	type WebhookOptions,
-	type WebhookSignature,
+	webhookEvents,
 	webhooksOf,
 } from './webhooks';

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { Worker } from '../../worker';
-import { Topic } from '../Topic';
+import { Topic, withMessageIds } from '../Topic';
 
 const events = {
 	'user.created': z.object({ userId: z.string(), email: z.string() }),
@@ -105,5 +105,29 @@ describe('subscriber .topic() binding', () => {
 		// A consumer does not publish, so binding a topic requires no publisher env.
 		const env = await subscriber.getEnvironment();
 		expect(env).not.toContain('USERS_PUBLISHER_CONNECTION_STRING');
+	});
+});
+
+describe('withMessageIds', () => {
+	it('gives each message an id of its own, once, and keeps one it already has', async () => {
+		const sent: { type: string; payload: unknown; id?: string }[][] = [];
+		const publisher = withMessageIds({
+			async publish(
+				messages: { type: string; payload: unknown; id?: string }[],
+			) {
+				sent.push(messages);
+			},
+		});
+
+		await publisher.publish([
+			{ type: 'a', payload: { n: 1 } },
+			{ type: 'a', payload: { n: 1 } },
+			{ type: 'a', payload: {}, id: 'kept' },
+		]);
+
+		const [first, second, kept] = sent[0]!;
+		expect(first!.id).toEqual(expect.any(String));
+		expect(second!.id).not.toBe(first!.id);
+		expect(kept!.id).toBe('kept');
 	});
 });

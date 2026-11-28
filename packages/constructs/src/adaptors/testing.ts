@@ -10,6 +10,11 @@ export { TestFunctionAdaptor } from '../functions/TestFunctionAdaptor';
 export { TestQueueAdaptor } from '../queue/TestQueueAdaptor';
 export { TestSubscriberAdaptor } from '../subscribers/TestSubscriberAdaptor';
 export {
+	InvalidClockDuration,
+	InvalidClockTime,
+	type TestClock,
+} from '../testing/clock';
+export {
 	type ClientOf,
 	type DatabaseOf,
 	type DatabaseSchemas,
@@ -27,8 +32,10 @@ export {
 	type ServiceClients,
 	SignInFailed,
 	signInWithMagicLink,
+	type TestCron,
 	type TestDatabases,
 	type TestFactories,
+	type TestNetwork,
 	type TestServices,
 	UnknownDatabase,
 	UnknownFactory,
@@ -55,6 +62,7 @@ export {
 	ReceiveFieldsOrRaw,
 	ReceiveNeedsRecipient,
 } from '../testing/receive';
+export { WebhookReceiverNotFaked } from '../testing/webhooks';
 export {
 	type CreateMswWebSocketHandlersOptions,
 	createMswWebSocketHandlers,

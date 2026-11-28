@@ -10,6 +10,12 @@ import type { StandardSchemaV1 } from '@standard-schema/spec';
 export type PublishableMessage<TType extends string, TPayload> = {
 	type: TType;
 	payload: TPayload;
+	/**
+	 * This occurrence's id — stamped once by a topic's publisher, so every
+	 * redelivery of it carries the same one and two occurrences with the same
+	 * payload never share one. What a consumer deduplicates on.
+	 */
+	id?: string;
 };
 
 /**

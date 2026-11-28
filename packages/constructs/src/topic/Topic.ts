@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import {
 	type EventPublisher,
 	type EventPublisherConnectionString,
@@ -124,9 +125,11 @@ export class Topic<
 
 				// Named as a topic, so a broker with one address for everything
 				// (pg-boss) fans each message out to every subscriber.
-				return Publisher.fromConnectionString<TopicMessage<TEvents>>(
-					connectionString as EventPublisherConnectionString,
-					{ topic },
+				return withMessageIds(
+					await Publisher.fromConnectionString<TopicMessage<TEvents>>(
+						connectionString as EventPublisherConnectionString,
+						{ topic },
+					),
 				);
 			},
 		};
@@ -166,4 +169,25 @@ export class Topic<
 export interface TopicOptions<TEvents extends TopicEvents> {
 	/** Each event this topic carries — its type, and its payload's schema. */
 	events: TEvents;
+}
+
+/**
+ * A publisher that gives each message an `id` when it has none — here, once,
+ * where the occurrence happens, so a broker's redelivery carries the same id
+ * and a second occurrence with an identical payload gets its own. A consumer
+ * that has to act once per occurrence (a webhook delivery) keys on it.
+ */
+export function withMessageIds<
+	TMessage extends { id?: string },
+	TPublisher extends { publish(messages: TMessage[]): Promise<void> },
+>(publisher: TPublisher): TPublisher {
+	const publish = publisher.publish.bind(publisher);
+	return Object.assign(Object.create(publisher), {
+		publish: (messages: TMessage[]) =>
+			publish(
+				messages.map((message) =>
+					message.id ? message : { ...message, id: randomUUID() },
+				),
+			),
+	});
 }

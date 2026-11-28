@@ -1,14 +1,22 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod/v4';
+import { KyselyDatabase } from '../../database/kysely';
+import { Encryption } from '../../encryption';
 import { RestApi } from '../../rest-api';
 import { Topic } from '../../topic/Topic';
 import { CallbackDeclaredTwice } from '../callbacks';
 import { Endpoint } from '../Endpoint';
-import { WebhookEventDeclaredTwice, WebhookEventNotOnTopic } from '../webhooks';
+import {
+	WEBHOOK_DELIVERY_DESCRIPTION,
+	WebhookEventDeclaredTwice,
+} from '../webhooks';
 
 /**
- * What a service sends to its users — topic events delivered to the URLs they
- * register, and requests an endpoint makes back to a URL its caller gave it.
+ * What a service sends to its users — the events a `Webhooks` construct
+ * delivers to the URLs they register, documented by the API that owns it, and
+ * requests an endpoint makes back to a URL its caller gave it.
+ *
+ * Only documents are built, so nothing here connects to the database.
  */
 const Invoice = z
 	.object({ invoiceId: z.string(), amount: z.number() })
@@ -22,90 +30,194 @@ const billing = new Topic('Billing', {
 	},
 });
 
+const accounts = new Topic('Accounts', {
+	events: {
+		'account.opened': z.object({ accountId: z.string() }),
+	},
+});
+
+const app = new KyselyDatabase('App');
+const pii = new Encryption('Pii');
+
+/** A `Webhooks` owned by `api`, stored in its own tenant of `App`. */
+function hooksOn(
+	api: RestApi<string>,
+	id: string,
+	topic: Topic<string, any>,
+	events?: string[],
+) {
+	return api.webhooks(id, {
+		topic,
+		...(events ? { events } : {}),
+		database: app.schema(`${id}Db`),
+		encryption: pii,
+	});
+}
+
+function webhooksOf(doc: { webhooks?: unknown }): Record<string, any> {
+	return (doc.webhooks ?? {}) as Record<string, any>;
+}
+
 describe('webhooks in the OpenAPI document', () => {
-	it('documents each delivered event with its payload and the signature header', async () => {
-		const api = new RestApi('Hooks', { path: '.' }).webhooks(billing, {
-			signature: {
-				header: 'Webhook-Signature',
-				description: 'HMAC-SHA256 of the raw body, hex',
-			},
-			events: ['invoice.paid', 'invoice.voided'],
+	it('lists the webhooks each API owns in its own document only', async () => {
+		const api = new RestApi('Api', { path: '.', defaultAuthorizer: 'none' });
+		const accountsApi = new RestApi('AccountsApi', {
+			path: '.',
+			defaultAuthorizer: 'none',
 		});
-		const health = api.get('/health').handle(async () => ({}));
+		hooksOn(api, 'BillingHooks', billing, ['invoice.paid', 'invoice.voided']);
+		hooksOn(accountsApi, 'AccountHooks', accounts);
 
-		const doc = await Endpoint.buildOpenApiSchema([health]);
+		const [billingDoc, accountsDoc] = await Promise.all([
+			Endpoint.buildOpenApiSchema([
+				api.get('/health').handle(async () => ({})),
+			]),
+			Endpoint.buildOpenApiSchema([
+				accountsApi.get('/health').handle(async () => ({})),
+			]),
+		]);
 
-		expect(Object.keys(doc.webhooks ?? {})).toEqual([
+		expect(Object.keys(webhooksOf(billingDoc))).toEqual([
 			'invoice.paid',
 			'invoice.voided',
 		]);
+		expect(Object.keys(webhooksOf(accountsDoc))).toEqual(['account.opened']);
+	});
 
-		const paid = (doc.webhooks as any)['invoice.paid'].post;
-		expect(paid.parameters).toEqual([
-			{
-				name: 'Webhook-Signature',
-				in: 'header',
-				required: true,
-				description: 'HMAC-SHA256 of the raw body, hex',
-				schema: { type: 'string' },
-			},
+	it('is not listed by another API that only depends on it', async () => {
+		const api = new RestApi('Api', { path: '.', defaultAuthorizer: 'none' });
+		const admin = new RestApi('Admin', {
+			path: '.',
+			defaultAuthorizer: 'none',
+		});
+		const billingHooks = hooksOn(api, 'BillingHooks', billing);
+
+		const redeliver = admin
+			.post('/deliveries/redeliver')
+			.dependsOn([billingHooks])
+			.handle(async () => ({}));
+
+		const adminDoc = await Endpoint.buildOpenApiSchema([redeliver]);
+
+		expect(adminDoc).not.toHaveProperty('webhooks');
+		// Depending on it is still an edge — it is only the document it skips.
+		expect(redeliver.constructs).toContain('BillingHooks');
+	});
+
+	it('documents the envelope sent, the signature headers and the answers', async () => {
+		const api = new RestApi('Api', { path: '.', defaultAuthorizer: 'none' });
+		hooksOn(api, 'BillingHooks', billing, ['invoice.paid', 'invoice.voided']);
+
+		const doc = await Endpoint.buildOpenApiSchema([
+			api.get('/health').handle(async () => ({})),
 		]);
+		const paid = webhooksOf(doc)['invoice.paid'].post;
+
+		expect(paid.operationId).toBe('invoicePaidWebhook');
+		expect(paid.summary).toBe('BillingHooks: invoice.paid');
+		expect(paid.requestBody.required).toBe(true);
 		expect(paid.requestBody.content['application/json'].schema).toEqual({
 			type: 'object',
 			properties: {
+				id: expect.objectContaining({ type: 'string' }),
 				type: { type: 'string', const: 'invoice.paid' },
+				occurredAt: { type: 'string', format: 'date-time' },
 				payload: { $ref: '#/components/schemas/WebhookInvoice' },
 			},
-			required: ['type', 'payload'],
+			required: ['id', 'type', 'occurredAt', 'payload'],
 		});
-		expect(paid.responses).toHaveProperty('2XX');
-		expect(paid.operationId).toBe('invoicePaidWebhook');
 
-		// A registered payload schema is defined in components, where its
-		// reference points.
+		expect(paid.parameters.map((p: any) => [p.name, p.in, p.required])).toEqual(
+			[
+				['webhook-id', 'header', true],
+				['webhook-timestamp', 'header', true],
+				['webhook-signature', 'header', true],
+			],
+		);
+		const [, timestamp, signature] = paid.parameters;
+		expect(timestamp.schema).toEqual({ type: 'integer' });
+		expect(timestamp.description).toContain('unix seconds');
+		expect(signature.description).toContain('v1,');
+		expect(signature.description).toContain('HMAC-SHA256');
+		expect(signature.description).toContain('space-separated');
+
+		expect(paid.description).toBe(WEBHOOK_DELIVERY_DESCRIPTION);
+		expect(paid.description).toContain(
+			'immediately, then retried after 1m, 5m, 30m, 2h, 5h, 10h and 10h',
+		);
+		expect(paid.description).toContain('`410 Gone`');
+		expect(paid.description).toContain('Redirects are not followed');
+
+		expect(Object.keys(paid.responses).sort()).toEqual(['2XX', '410']);
+		expect(paid.responses['410'].description).toContain(
+			'stop sending to this URL',
+		);
+	});
+
+	it('names a registered payload schema by reference', async () => {
+		const api = new RestApi('Api', { path: '.', defaultAuthorizer: 'none' });
+		hooksOn(api, 'BillingHooks', billing);
+
+		const doc = await Endpoint.buildOpenApiSchema([
+			api.get('/health').handle(async () => ({})),
+		]);
+
 		expect((doc.components?.schemas as any).WebhookInvoice).toMatchObject({
 			type: 'object',
 			properties: { invoiceId: { type: 'string' } },
 		});
-
-		const voided = (doc.webhooks as any)['invoice.voided'].post;
+		// An unregistered one is written in place.
 		expect(
-			voided.requestBody.content['application/json'].schema.properties.payload,
+			webhooksOf(doc)['invoice.voided'].post.requestBody.content[
+				'application/json'
+			].schema.properties.payload,
 		).toMatchObject({
 			type: 'object',
 			properties: { reason: { type: 'string' } },
 		});
 	});
 
-	it('reaches endpoints built before the topic was registered, from any branch', async () => {
-		const api = new RestApi('Late', { path: '.' });
-		const branch = api.route('/v1');
-		const early = branch.get('/early').handle(async () => ({}));
+	it('reaches endpoints built before the webhooks, from any branch', async () => {
+		const api = new RestApi('Api', { path: '.', defaultAuthorizer: 'none' });
+		const early = api
+			.route('/v1')
+			.get('/early')
+			.handle(async () => ({}));
 
-		api.webhooks(billing);
+		hooksOn(api, 'BillingHooks', billing);
 
 		const doc = await Endpoint.buildOpenApiSchema([early]);
 
-		expect(Object.keys(doc.webhooks ?? {})).toEqual(billing.eventTypes);
-		// No signature declared, so no header is required of the receiver.
-		expect((doc.webhooks as any)['invoice.paid'].post).not.toHaveProperty(
-			'parameters',
-		);
+		expect(Object.keys(webhooksOf(doc))).toEqual(billing.eventTypes);
 	});
 
-	it('is kept by `.auth()`, which copies the surface', async () => {
+	it('is kept by `.auth()`, whose copy shares the owned list', async () => {
 		const authenticator = { id: 'auth' } as any;
-		const api = new RestApi('Authed', { path: '.' })
-			.webhooks(billing, { events: ['invoice.paid'] })
-			.auth(authenticator);
-		const me = api.get('/me').handle(async () => ({}));
+		const api = new RestApi('Api', { path: '.', defaultAuthorizer: 'none' });
+		const authed = api.auth(authenticator);
 
-		const doc = await Endpoint.buildOpenApiSchema([me]);
+		// Owned before and after the copy, through either of them.
+		hooksOn(api, 'BillingHooks', billing, ['invoice.paid']);
+		hooksOn(authed, 'AccountHooks', accounts);
 
-		expect(Object.keys(doc.webhooks ?? {})).toEqual(['invoice.paid']);
+		const [fromCopy, fromOriginal] = await Promise.all([
+			Endpoint.buildOpenApiSchema([authed.get('/me').handle(async () => ({}))]),
+			Endpoint.buildOpenApiSchema([
+				api.get('/health').handle(async () => ({})),
+			]),
+		]);
+
+		expect(Object.keys(webhooksOf(fromCopy))).toEqual([
+			'invoice.paid',
+			'account.opened',
+		]);
+		expect(Object.keys(webhooksOf(fromOriginal))).toEqual([
+			'invoice.paid',
+			'account.opened',
+		]);
 	});
 
-	it('has no webhooks key when no surface declares one', async () => {
+	it('has no webhooks key when the API owns none', async () => {
 		const api = new RestApi('Plain', { path: '.' });
 		const ping = api.get('/ping').handle(async () => ({}));
 
@@ -114,26 +226,36 @@ describe('webhooks in the OpenAPI document', () => {
 		expect(doc).not.toHaveProperty('webhooks');
 	});
 
-	it('refuses two topics delivering the same event type', async () => {
+	it('refuses a second construct on one API delivering the same event type', () => {
 		const other = new Topic('Accounting', {
 			events: { 'invoice.paid': z.object({ ref: z.string() }) },
 		});
-		const api = new RestApi('Clash', { path: '.' })
-			.webhooks(billing)
-			.webhooks(other);
-		const ping = api.get('/ping').handle(async () => ({}));
+		const api = new RestApi('Api', { path: '.', defaultAuthorizer: 'none' });
+		hooksOn(api, 'BillingHooks', billing);
 
-		await expect(Endpoint.buildOpenApiSchema([ping])).rejects.toBeInstanceOf(
+		expect(() => hooksOn(api, 'AccountingHooks', other)).toThrow(
 			WebhookEventDeclaredTwice,
 		);
 	});
 
-	it('refuses an event the topic does not carry', () => {
-		const api = new RestApi('Typo', { path: '.' });
+	it('refuses a document whose APIs deliver the same event type', async () => {
+		const other = new Topic('Accounting', {
+			events: { 'invoice.paid': z.object({ ref: z.string() }) },
+		});
+		const api = new RestApi('Api', { path: '.', defaultAuthorizer: 'none' });
+		const second = new RestApi('Second', {
+			path: '.',
+			defaultAuthorizer: 'none',
+		});
+		hooksOn(api, 'BillingHooks', billing);
+		hooksOn(second, 'AccountingHooks', other);
 
-		expect(() =>
-			api.webhooks(billing, { events: ['invoice.lost' as any] }),
-		).toThrow(WebhookEventNotOnTopic);
+		await expect(
+			Endpoint.buildOpenApiSchema([
+				api.get('/a').handle(async () => ({})),
+				second.get('/b').handle(async () => ({})),
+			]),
+		).rejects.toBeInstanceOf(WebhookEventDeclaredTwice);
 	});
 });
 

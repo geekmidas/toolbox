@@ -67,13 +67,10 @@ import type { ErrorFormat } from './endpoints/problems';
 export { defineHeader } from './endpoints/headers';
 
 import { envParserFor } from './endpoints/surfaceEnv';
-import {
-	registerWebhook,
-	type Webhook,
-	type WebhookOptions,
-} from './endpoints/webhooks';
+import { type OwnedWebhooks, ownWebhooks } from './endpoints/webhooks';
 import type { Telemetry } from './telemetry';
-import type { Topic, TopicEvents } from './topic/Topic';
+import type { TopicEvents } from './topic/Topic';
+import { Webhooks, type WebhooksOptions } from './webhooks/Webhooks';
 
 /** The factory a surface builds its endpoints from. */
 type Endpoints = EndpointFactory<[], '', Logger>;
@@ -285,8 +282,8 @@ export class RestApi<
 		private readonly config: RestApiConfig<TAuthorizers>,
 		/** Internal: how `.auth()` carries the authenticator into its copy. */
 		private readonly authenticator?: Authenticator,
-		/** Internal: how `.auth()` keeps the webhooks its copy documents. */
-		webhooks: Webhook[] = [],
+		/** Internal: how `.auth()` keeps the webhooks its copy owns. */
+		webhooks: OwnedWebhooks[] = [],
 	) {
 		const canonical = canonicalId(id as string);
 		this.#webhooks = webhooks;
@@ -383,8 +380,11 @@ export class RestApi<
 	 */
 	readonly #endpoints: Endpoints;
 
-	/** The surface's webhooks — shared by reference with every endpoint. */
-	readonly #webhooks: Webhook[];
+	/**
+	 * The `Webhooks` this API owns — shared by reference with every endpoint
+	 * it builds, and with its `.auth()` copies, so its document lists them.
+	 */
+	readonly #webhooks: OwnedWebhooks[];
 
 	/** `api.get('/users')` — one route on this surface. */
 	readonly get: Endpoints['get'];
@@ -447,30 +447,34 @@ export class RestApi<
 	}
 
 	/**
-	 * Documents `topic`'s events as webhooks — the signed requests this service
-	 * sends to the URLs its users register. Each event appears under the
-	 * document's `webhooks`, with its `{ type, payload }` body and the
-	 * signature header a receiver checks.
+	 * Webhooks this API owns: the signed requests it sends to the URLs its
+	 * users register, for each event of `topic` they subscribed to. Its
+	 * document lists them, and refuses a second `Webhooks` delivering an event
+	 * type one already does (`WebhookEventDeclaredTwice`); another API can `.dependsOn([hooks])` to manage the
+	 * subscriptions without listing them.
 	 *
 	 * ```ts
-	 * export const api = new RestApi('Api', {
-	 *   path: 'apps/api',
-	 *   defaultAuthorizer: 'none',
-	 * }).webhooks(
-	 *   users,
-	 *   { signature: { header: 'Webhook-Signature' } },
-	 * );
+	 * export const billingHooks = api.webhooks('BillingHooks', {
+	 *   topic: billing,
+	 *   events: ['invoice.paid', 'invoice.voided'],
+	 *   database: db.schema('Webhooks'),
+	 *   encryption: pii,
+	 * });
 	 * ```
-	 *
-	 * Documentation only: delivering the events is the service's own
-	 * subscriber's job. Returns the surface, so it chains where it is declared.
 	 */
-	webhooks<TEvents extends TopicEvents>(
-		topic: Topic<string, TEvents>,
-		options?: WebhookOptions<TEvents>,
-	): this {
-		registerWebhook(this.#webhooks, topic, options as WebhookOptions);
-		return this;
+	webhooks<
+		THooks extends string,
+		TEvents extends TopicEvents,
+		TEvent extends keyof TEvents & string = keyof TEvents & string,
+	>(
+		id: ConstructName<THooks>,
+		options: WebhooksOptions<TEvents, TEvent>,
+	): Webhooks<THooks, TEvents, TEvent> {
+		const hooks = new Webhooks<THooks, TEvents, TEvent>(id, this.id, options);
+		// Recorded on the surface, where its document finds it. Depending on it
+		// from another API reaches it without adding it to that API's list.
+		ownWebhooks(this.#webhooks, hooks);
+		return hooks;
 	}
 
 	/**

@@ -22,6 +22,7 @@ export default defineConfig({
 		'src/telemetry.ts',
 		'src/email.ts',
 		'src/inbox.ts',
+		'src/webhooks/index.ts',
 		'src/maps.ts',
 		'src/maps/fake.ts',
 		'src/maps/expo.ts',

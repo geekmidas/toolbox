@@ -54,11 +54,13 @@ import { TransactionRegistry } from '@geekmidas/testkit/transactions';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import { Hono } from 'hono';
 import type { Kysely } from 'kysely';
-import { http } from 'msw';
+import { http, type RequestHandler } from 'msw';
 import { type SetupServer, setupServer } from 'msw/node';
 import { afterAll, beforeAll, test } from 'vitest';
 import { BetterAuth } from '../auth';
 import { type Consumable, isConsumable } from '../construct-interface';
+import type { Cron } from '../crons/Cron';
+import { runCron } from '../crons/runCron';
 import { KyselyDatabase } from '../database/kysely';
 import { Email } from '../email';
 import { Endpoint } from '../endpoints/Endpoint';
@@ -72,9 +74,11 @@ import { TestQueueAdaptor } from '../queue/TestQueueAdaptor';
 import type { Subscriber } from '../subscribers/Subscriber';
 import { TestSubscriberAdaptor } from '../subscribers/TestSubscriberAdaptor';
 import { Topic } from '../topic/Topic';
+import { Webhooks } from '../webhooks/Webhooks';
 import type { WebSocketMessages } from '../websocket/publisher';
 import type { TestWebSocketPublisher } from '../websocket/testing';
 import { WebSocketApi } from '../websocket-api';
+import { type TestClock, testClock } from './clock';
 import { loadTestManifest, type TestManifest } from './manifest';
 import { inProcessBindings } from './peer';
 import {
@@ -83,6 +87,7 @@ import {
 	receiveInTest,
 	type TestInbox,
 } from './receive';
+import { onTestSeams, unmatchedDelivery } from './webhooks';
 
 /** How each database's test factory is built, keyed by its service name. */
 export type FactoryBuilders = Record<string, (db: Kysely<any>) => unknown>;
@@ -246,6 +251,27 @@ export interface FeatureContext<
 		queue: Q,
 	) => QueueAdaptorOf<Q>;
 	/**
+	 * A cron, run now rather than on its schedule — `await cron(retry).run()` —
+	 * with this test's services, as the server side of the test: its database
+	 * is this test's transaction, and what it publishes is delivered before
+	 * `run` resolves. Resolves to its output.
+	 */
+	cron: (cron: Cron<any, any, any, any, any, any>) => TestCron;
+	/**
+	 * This test's time, as every `Webhooks` construct reckons it: frozen at
+	 * the test's start, moved only by `clock.set(date)` and
+	 * `clock.advance('1m' | ms)`. Nothing else is faked — timers, `Date` and
+	 * Postgres keep the real time.
+	 */
+	clock: TestClock;
+	/**
+	 * The test's network, for answering what the app calls out to —
+	 * `msw.use(http.post('https://acme.test/hooks', …))` — for this test only.
+	 * A webhook delivery nothing answers fails as an unreachable server would,
+	 * and never leaves the process.
+	 */
+	msw: TestNetwork;
+	/**
 	 * A bucket's objects, as its subscribers see them change.
 	 *
 	 * An upload or delete through the bucket's client — `services.uploads`,
@@ -256,6 +282,17 @@ export interface FeatureContext<
 	objects: (bucket: { id: string }) => {
 		emit: (...events: EmittedObjectEvent[]) => Promise<void>;
 	};
+}
+
+/** A cron, run on demand. */
+export interface TestCron {
+	/** Run it once, now; resolves once what it published has been delivered. */
+	run(): Promise<unknown>;
+}
+
+/** What a test adds to its network: handlers, dropped after the test. */
+export interface TestNetwork {
+	use(...handlers: RequestHandler[]): void;
 }
 
 /** `mailbox(address)` reads what was sent; `mailbox.receive(…)` sends to an inbox. */
@@ -334,6 +371,8 @@ export type DatabaseOf<C> =
 export interface PublishedMessage {
 	type: string;
 	payload: unknown;
+	/** This occurrence's id, when the publisher gave it one. */
+	id?: string;
 }
 
 type FeatureFn<
@@ -391,6 +430,8 @@ interface ContextState {
 	}[];
 	/** Set while delivering, so a consumer's own requests do not deliver again. */
 	delivering: boolean;
+	/** The time this test's `Webhooks` constructs reckon by. */
+	clock: TestClock;
 }
 
 /** Every test in flight in this process, by id. */
@@ -414,6 +455,8 @@ interface LoadedApp {
 	surfaces: WebSocketApi<string, any>[];
 	/** Every inbox — what `mailbox.receive` routes to. */
 	inboxes: TestInbox[];
+	/** Every `Webhooks` construct — whose transport and clock a test swaps. */
+	webhooks: Webhooks<any, any, any>[];
 	/** The environment `gkm test` resolved. */
 	env: Readonly<Record<string, string | undefined>>;
 	/** Every construct a handler can depend on — what `services` resolves. */
@@ -445,6 +488,7 @@ export function featureTest<
 	let owned: KyselyDatabase[] = [];
 	let network: SetupServer;
 	let restoreFetch: () => void = () => {};
+	let restoreSeams: () => void = () => {};
 
 	beforeAll(async () => {
 		app = await load(manifest, options.modules ?? {});
@@ -461,6 +505,8 @@ export function featureTest<
 				fakeHandler(id, fake, manifest.env),
 			),
 			...mapsHandlers(manifest, options.fakes ?? {}),
+			// Last, after whatever a test adds with `msw.use`, which goes first.
+			unmatchedDelivery,
 		);
 		network.listen({
 			onUnhandledRequest(request, print) {
@@ -483,8 +529,15 @@ export function featureTest<
 			globalThis.fetch = stamped;
 			restoreStamp();
 		};
+		// Deliveries through MSW, never the network; time from the test's clock.
+		restoreSeams = onTestSeams(app.webhooks, (fallback) => {
+			const context = currentTestContext();
+			const state = context && contexts.get(context.id);
+			return state ? state.clock.now() : fallback();
+		});
 	});
 	afterAll(() => {
+		restoreSeams();
 		restoreFetch();
 		network?.close();
 	});
@@ -507,7 +560,9 @@ export function featureTest<
 				sockets: new Map(),
 				pending: [],
 				delivering: false,
+				clock: testClock(),
 			};
+			let addedHandlers = false;
 			const readMail = app.readMail;
 			if (readMail) {
 				state.mailbox = (address) => {
@@ -626,6 +681,22 @@ export function featureTest<
 								thenDeliver(new TestQueueAdaptor(queue, state.discovery), () =>
 									deliver(app, state, id),
 								) as QueueAdaptorOf<typeof queue>,
+							cron: (cron) => ({
+								run: async () => {
+									const output = await runAsServer(id, () =>
+										runCron(cron, state.discovery),
+									);
+									await deliver(app, state, id);
+									return output;
+								},
+							}),
+							clock: state.clock,
+							msw: {
+								use: (...handlers) => {
+									addedHandlers = true;
+									network.use(...handlers);
+								},
+							},
 							objects: (bucket) => ({
 								emit: async (...events) => {
 									const watched = app.watched.find(
@@ -652,6 +723,7 @@ export function featureTest<
 				});
 			} finally {
 				contexts.delete(id);
+				if (addedHandlers) network.resetHandlers();
 				await Promise.all([
 					state.transactions.rollbackAll(),
 					...[...state.addresses].map((address) =>
@@ -735,11 +807,16 @@ async function load(
 	);
 
 	const unique = <T>(values: T[]) => [...new Set(values)];
-	const databases = unique(
-		constructs.filter(
+	// A `Webhooks` construct's tenant is a database of the app's even when it
+	// is not exported on its own: bound to the test's transaction with the rest.
+	const databases = unique([
+		...constructs.filter(
 			(value): value is KyselyDatabase => value instanceof KyselyDatabase,
 		),
-	);
+		...constructs
+			.filter((value): value is Webhooks => value instanceof Webhooks)
+			.map((hooks) => hooks.database),
+	]);
 	const auths = unique(
 		constructs.filter(
 			(value): value is BetterAuth => value instanceof BetterAuth,
@@ -749,12 +826,17 @@ async function load(
 		constructs.filter((value): value is Email => value instanceof Email),
 	);
 	const consumables = unique(constructs.filter(isConsumable));
-	const channels = unique(
-		constructs.filter(
+	// A `Webhooks` construct's lifecycle topic is declared with it, never
+	// exported on its own: recorded, and delivered in-process, with the rest.
+	const channels = unique([
+		...constructs.filter(
 			(value): value is Topic<any, any> | Queue<any, any> =>
 				value instanceof Topic || value instanceof Queue,
 		),
-	);
+		...constructs
+			.filter((value): value is Webhooks => value instanceof Webhooks)
+			.map((hooks) => hooks.events as Topic<any, any>),
+	]);
 	const watched = unique(
 		constructs.filter(
 			(value): value is ObjectStorage =>
@@ -766,6 +848,11 @@ async function load(
 	);
 
 	const inboxes = unique(constructs.filter(isInboxConstruct));
+	const webhooks = unique(
+		constructs.filter(
+			(value): value is Webhooks<any, any, any> => value instanceof Webhooks,
+		),
+	);
 	const surfaces = unique(
 		constructs.filter(
 			(value): value is WebSocketApi<string, any> =>
@@ -787,6 +874,7 @@ async function load(
 		watched,
 		inboxes,
 		surfaces,
+		webhooks,
 		env: manifest.env,
 		consumables,
 		subscribers,
@@ -811,7 +899,17 @@ function recorders(
 					...(state.published.get(channel.id) ?? []),
 					...sent,
 				]);
-				state.pending.push({ channel, messages: sent });
+				// Delivered with an id, as a topic's publisher stamps one — what a
+				// consumer that acts once per occurrence keys on. `published()`
+				// keeps what the handler sent.
+				state.pending.push({
+					channel,
+					messages: messages.map(({ type, payload, id }) => ({
+						type,
+						payload,
+						id: id ?? randomUUID(),
+					})),
+				});
 			},
 		};
 		return {
