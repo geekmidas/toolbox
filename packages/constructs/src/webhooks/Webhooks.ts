@@ -10,14 +10,20 @@ import type { Consumable } from '../construct-interface';
 import type { KyselyDatabase } from '../database/kysely';
 import type { Encryption } from '../encryption';
 import { WebhookEventNotOnTopic } from '../endpoints/webhooks';
-import type { Topic, TopicEvents } from '../topic/Topic';
+import { Topic, type TopicEvents } from '../topic/Topic';
 import { type WebhooksClient, webhooksClient } from './client';
+import { WEBHOOK_DISABLE_AFTER, type WebhookDeps } from './deliver';
+import {
+	WEBHOOK_LIFECYCLE_EVENTS,
+	type WebhookLifecycleEvents,
+	type WebhookLifecycleMessage,
+} from './lifecycle';
 import {
 	WEBHOOK_TABLES,
 	WEBHOOK_TABLES_SQL,
 	type WebhookTables,
 } from './schema';
-import { fetchTransport, type WebhookTransport } from './transport';
+import { defaultTransport, type WebhookTransport } from './transport';
 
 /** What `api.webhooks(id, options)` is given. */
 export interface WebhooksOptions<
@@ -36,6 +42,11 @@ export interface WebhooksOptions<
 	database: KyselyDatabase<any, any>;
 	/** The key each subscription's signing secret is encrypted with. */
 	encryption: Encryption;
+	/**
+	 * Consecutive abandoned deliveries after which a subscription is disabled,
+	 * and `subscription.disabled` published. Five by default.
+	 */
+	disableAfter?: number;
 }
 
 /**
@@ -60,20 +71,37 @@ export class Webhooks<
 	/** The API whose document lists these webhooks. */
 	readonly owner: string;
 	readonly topic: Topic<string, TEvents>;
-	/** The events delivered, in the order given. */
-	readonly events: readonly TEvent[];
+	/** The events of `topic` delivered, in the order given. */
+	readonly eventTypes: readonly TEvent[];
+	/**
+	 * What happens to deliveries, as events: a topic this construct owns,
+	 * `<id>Events`, carrying `delivery.succeeded`, `delivery.failed` (one per
+	 * failed attempt), `delivery.abandoned`, `subscription.disabled` and
+	 * `secret.rotated`. Apps react with `worker.topic(hooks.events)`; a
+	 * reaction that throws never retries or repeats a delivery.
+	 */
+	readonly events: Topic<`${TName}Events`, WebhookLifecycleEvents>;
 	readonly database: KyselyDatabase<any, any>;
 	readonly encryption: Encryption;
+	/** Consecutive abandoned deliveries after which a subscription is disabled. */
+	readonly disableAfter: number;
 	/**
 	 * What a runnable depending on this reaches through it — and so is given
-	 * an edge to, beside this one.
+	 * an edge to, beside this one: its tenant, its key, and its lifecycle
+	 * topic, which managing a subscription publishes to.
 	 */
 	readonly reaches: readonly Consumable[];
-	/** How a delivery's request leaves the process. A test swaps it. */
-	transport: WebhookTransport = fetchTransport;
 	/**
-	 * The time everything it schedules is reckoned by — when a delivery is
-	 * next due, when a rotated secret stops signing. A test swaps it.
+	 * How a delivery's request leaves the process: {@link defaultTransport},
+	 * which checks every address it connects to, follows no redirect, times
+	 * out after ten seconds and reads 64 KiB of an answer at most. A test
+	 * swaps it.
+	 */
+	transport: WebhookTransport = defaultTransport;
+	/**
+	 * What time it is, for everything this construct schedules and signs —
+	 * the next attempt, the signature's timestamp, a rotated secret's expiry.
+	 * A test swaps it to move time.
 	 */
 	clock: () => Date = () => new Date();
 
@@ -93,34 +121,60 @@ export class Webhooks<
 		this.id = canonical as TName;
 		this.owner = owner;
 		this.topic = options.topic;
-		this.events = [...(options.events ?? (offered as TEvent[]))];
+		this.eventTypes = [...(options.events ?? (offered as TEvent[]))];
 		this.database = options.database;
 		this.encryption = options.encryption;
-		this.reaches = [options.database, options.encryption];
+		this.disableAfter = options.disableAfter ?? WEBHOOK_DISABLE_AFTER;
+		this.events = new Topic(`${canonical}Events` as ConstructName<string>, {
+			events: WEBHOOK_LIFECYCLE_EVENTS,
+		}) as Topic<`${TName}Events`, WebhookLifecycleEvents>;
+		this.reaches = [options.database, options.encryption, this.events];
 
 		this.service = {
 			serviceName: serviceKey(canonical) as Uncapitalize<TName>,
 			register: async (register) =>
-				webhooksClient<TEvent>({
-					id: this.id,
-					events: this.events,
-					db: (await this.database.service.register(
-						register,
-					)) as unknown as Kysely<WebhookTables>,
-					cipher: await this.encryption.service.register(register),
-					now: () => this.clock(),
-				}),
+				webhooksClient<TEvent>(this, await this.connect(register)),
+		};
+	}
+
+	/**
+	 * What delivering and managing need, registered: the tenant, the key, and
+	 * the lifecycle topic's publisher — connected at its first publish, so a
+	 * client that never publishes opens no broker connection, and a broker
+	 * that can't be reached fails a publish (logged) rather than the client.
+	 */
+	async connect(register: ServiceRegisterOptions): Promise<WebhookDeps> {
+		let publisher:
+			| Promise<{ publish(messages: WebhookLifecycleMessage[]): Promise<void> }>
+			| undefined;
+		return {
+			db: (await this.database.service.register(
+				register,
+			)) as unknown as Kysely<WebhookTables>,
+			cipher: await this.encryption.service.register(register),
+			publisher: {
+				publish: async (messages) => {
+					publisher ??= Promise.resolve(this.events.service.register(register));
+					const connected = await publisher.catch((error) => {
+						publisher = undefined;
+						throw error;
+					});
+					await connected.publish(messages);
+				},
+			},
 		};
 	}
 
 	declare(): Declaration[] {
 		return [
+			// Its lifecycle topic is its own, declared with it — as an inbox's.
+			...this.events.declare(),
 			{
 				kind: 'webhooks',
 				id: this.id,
 				owner: this.owner,
 				topic: this.topic.id,
-				events: [...this.events],
+				events: [...this.eventTypes],
 				database: this.database.id,
 				encryption: this.encryption.id,
 			},

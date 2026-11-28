@@ -824,12 +824,17 @@ async function load(
 		constructs.filter((value): value is Email => value instanceof Email),
 	);
 	const consumables = unique(constructs.filter(isConsumable));
-	const channels = unique(
-		constructs.filter(
+	// A `Webhooks` construct's lifecycle topic is declared with it, never
+	// exported on its own: recorded, and delivered in-process, with the rest.
+	const channels = unique([
+		...constructs.filter(
 			(value): value is Topic<any, any> | Queue<any, any> =>
 				value instanceof Topic || value instanceof Queue,
 		),
-	);
+		...constructs
+			.filter((value): value is Webhooks => value instanceof Webhooks)
+			.map((hooks) => hooks.events as Topic<any, any>),
+	]);
 	const watched = unique(
 		constructs.filter(
 			(value): value is ObjectStorage =>

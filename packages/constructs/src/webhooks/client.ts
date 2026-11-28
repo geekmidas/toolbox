@@ -1,12 +1,22 @@
 import { randomBytes, randomUUID } from 'node:crypto';
-import type { Kysely, Selectable } from 'kysely';
-import type { Cipher } from '../encryption/cipher';
+import type { Selectable } from 'kysely';
+import {
+	announce,
+	redeliver,
+	type WebhookAttemptOutcome,
+	type WebhookDeps,
+	type WebhooksRuntime,
+} from './deliver';
 import type {
+	WebhookAttemptRow,
+	WebhookDeliveryRow,
+	WebhookDeliveryStatus,
 	WebhookSubscriptionRow,
 	WebhookSubscriptionStatus,
-	WebhookTables,
 } from './schema';
 import { assertDeliverableUrl } from './url';
+
+export { signingSecrets } from './secrets';
 
 /** A subscription as the app sees it — never with its secret. */
 export interface WebhookSubscription<TEvent extends string = string> {
@@ -18,6 +28,41 @@ export interface WebhookSubscription<TEvent extends string = string> {
 	disabledReason: string | null;
 	createdAt: Date;
 }
+
+/** One request made for a delivery, and what came back. */
+export interface WebhookAttempt {
+	attemptedAt: Date;
+	/** What the receiver answered, or `null` when it never did. */
+	status: number | null;
+	latencyMs: number;
+	error: string | null;
+}
+
+/** One event owed to one subscription, with every request made for it. */
+export interface WebhookDelivery<TEvent extends string = string> {
+	/** Sent as `webhook-id`: the same on every attempt, a redelivery included. */
+	id: string;
+	subscriptionId: string;
+	eventId: string;
+	type: TEvent;
+	payload: unknown;
+	occurredAt: Date;
+	status: WebhookDeliveryStatus;
+	/** How many requests were made for it. */
+	attempts: number;
+	nextAttemptAt: Date | null;
+	lastStatus: number | null;
+	lastError: string | null;
+	createdAt: Date;
+	deliveredAt: Date | null;
+	/** Each request made for it, oldest first. */
+	history: WebhookAttempt[];
+}
+
+/** Whose deliveries `deliveries()` lists. */
+export type WebhookDeliveriesFilter =
+	| { owner: string }
+	| { subscriptionId: string };
 
 /** What `subscribe` stores. */
 export interface SubscribeInput<TEvent extends string = string> {
@@ -61,6 +106,22 @@ export interface WebhooksClient<TEvent extends string = string> {
 		id: string,
 		options?: { overlapMs?: number },
 	): Promise<{ secret: string }>;
+	/**
+	 * An owner's or a subscription's deliveries, newest first, each with its
+	 * attempts. Fifty by default.
+	 */
+	deliveries(
+		filter: WebhookDeliveriesFilter,
+		options?: { limit?: number },
+	): Promise<WebhookDelivery<TEvent>[]>;
+	/**
+	 * Send a delivery again, under the same `webhook-id`, as a new attempt —
+	 * whatever its status. A 2xx marks it delivered; a failure is recorded and
+	 * changes no schedule.
+	 *
+	 * @throws {WebhookDeliveryNotFound}
+	 */
+	redeliver(deliveryId: string): Promise<WebhookAttemptOutcome>;
 }
 
 /** No subscription has this id. */
@@ -111,15 +172,19 @@ export function newSigningSecret(): string {
 	return `whsec_${randomBytes(24).toString('base64')}`;
 }
 
-export function webhooksClient<TEvent extends string>(options: {
-	id: string;
-	events: readonly TEvent[];
-	db: Kysely<WebhookTables>;
-	cipher: Cipher;
-	now?: () => Date;
-}): WebhooksClient<TEvent> {
-	const { id, events, db, cipher } = options;
-	const now = options.now ?? (() => new Date());
+/**
+ * The client `services.<hooks>` is: subscriptions over the construct's tenant,
+ * its deliveries, and redelivery through its transport. Time is the
+ * construct's clock, read at each call, so a test that moves it moves this.
+ */
+export function webhooksClient<TEvent extends string>(
+	hooks: WebhooksRuntime,
+	deps: WebhookDeps,
+): WebhooksClient<TEvent> {
+	const { db, cipher } = deps;
+	const id = hooks.id;
+	const events = hooks.eventTypes as readonly TEvent[];
+	const now = () => hooks.clock();
 
 	const find = async (subscriptionId: string) => {
 		const row = await db
@@ -189,11 +254,18 @@ export function webhooksClient<TEvent extends string>(options: {
 			return toSubscription<TEvent>(await find(subscriptionId));
 		},
 
-		disable(subscriptionId, reason) {
-			return update(subscriptionId, {
+		async disable(subscriptionId, reason) {
+			const subscription = await update(subscriptionId, {
 				status: 'disabled',
 				disabled_reason: reason,
 			});
+			await announce(hooks, deps, [
+				{
+					type: 'subscription.disabled',
+					payload: { subscriptionId, owner: subscription.owner, reason },
+				},
+			]);
+			return subscription;
 		},
 
 		enable(subscriptionId) {
@@ -217,39 +289,92 @@ export function webhooksClient<TEvent extends string>(options: {
 		async rotateSecret(subscriptionId, rotate = {}) {
 			const current = await find(subscriptionId);
 			const secret = newSigningSecret();
+			const expiresAt = new Date(
+				now().getTime() + (rotate.overlapMs ?? SECRET_OVERLAP_MS),
+			);
 			await update(subscriptionId, {
 				secret: await cipher.encrypt(secret),
 				previous_secret: current.secret,
-				previous_secret_expires_at: new Date(
-					now().getTime() + (rotate.overlapMs ?? SECRET_OVERLAP_MS),
-				),
+				previous_secret_expires_at: expiresAt,
 			});
+			await announce(hooks, deps, [
+				{
+					type: 'secret.rotated',
+					payload: {
+						subscriptionId,
+						owner: current.owner,
+						previousExpiresAt: expiresAt.toISOString(),
+					},
+				},
+			]);
 			return { secret };
+		},
+
+		async deliveries(filter, options = {}) {
+			let query = db
+				.selectFrom('webhook_deliveries as d')
+				.innerJoin('webhook_subscriptions as s', 's.id', 'd.subscription_id')
+				.selectAll('d')
+				.orderBy('d.created_at', 'desc')
+				.orderBy('d.id', 'desc')
+				.limit(options.limit ?? 50);
+			query =
+				'owner' in filter
+					? query.where('s.owner', '=', filter.owner)
+					: query.where('d.subscription_id', '=', filter.subscriptionId);
+			const rows = await query.execute();
+			if (rows.length === 0) return [];
+
+			const attempts = await db
+				.selectFrom('webhook_attempts')
+				.selectAll()
+				.where(
+					'delivery_id',
+					'in',
+					rows.map((row) => row.id),
+				)
+				.orderBy('attempted_at', 'asc')
+				.orderBy('id', 'asc')
+				.execute();
+			return rows.map((row) =>
+				toDelivery<TEvent>(
+					row,
+					attempts.filter((a) => a.delivery_id === row.id),
+				),
+			);
+		},
+
+		redeliver(deliveryId) {
+			return redeliver(hooks, deps, deliveryId);
 		},
 	};
 }
 
-/**
- * The secrets a delivery to this subscription is signed with, in plaintext:
- * its current one, and the one it replaced while that still overlaps.
- */
-export async function signingSecrets(
-	row: Pick<
-		Selectable<WebhookSubscriptionRow>,
-		'secret' | 'previous_secret' | 'previous_secret_expires_at'
-	>,
-	cipher: Cipher,
-	now: Date = new Date(),
-): Promise<string[]> {
-	const secrets = [await cipher.decrypt(row.secret)];
-	if (
-		row.previous_secret &&
-		row.previous_secret_expires_at &&
-		row.previous_secret_expires_at > now
-	) {
-		secrets.push(await cipher.decrypt(row.previous_secret));
-	}
-	return secrets;
+function toDelivery<TEvent extends string>(
+	row: Selectable<WebhookDeliveryRow>,
+	attempts: Selectable<WebhookAttemptRow>[],
+): WebhookDelivery<TEvent> {
+	return {
+		id: row.id,
+		subscriptionId: row.subscription_id,
+		eventId: row.event_id,
+		type: row.event_type as TEvent,
+		payload: row.payload,
+		occurredAt: row.occurred_at,
+		status: row.status,
+		attempts: row.attempts,
+		nextAttemptAt: row.next_attempt_at,
+		lastStatus: row.last_status,
+		lastError: row.last_error,
+		createdAt: row.created_at,
+		deliveredAt: row.delivered_at,
+		history: attempts.map((attempt) => ({
+			attemptedAt: attempt.attempted_at,
+			status: attempt.status,
+			latencyMs: attempt.latency_ms,
+			error: attempt.error,
+		})),
+	};
 }
 
 function toSubscription<TEvent extends string>(

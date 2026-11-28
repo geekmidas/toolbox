@@ -781,7 +781,7 @@ through, so nothing is ever stranded.
 
 A `Webhooks` construct owns everything about the requests a service sends to
 the URLs its users register: who receives which events, the signing secrets,
-and (as it grows) the deliveries, their retries and their record. It is built
+the deliveries, their retries and their record. It is built
 from the API that owns it, whose OpenAPI document lists it.
 
 ```typescript
@@ -830,6 +830,91 @@ A subscription's URL must be public `https://` on a deployed stage: a local
 name (`localhost`, `*.internal`), a private or reserved address, or a URL
 carrying credentials throws `WebhookUrlNotDeliverable`. Under `gkm dev` and in
 tests, `http://localhost` is allowed.
+
+#### Delivering
+
+A worker delivers them. `worker.webhooks(hooks)` returns two runnables, and
+discovery only finds exported ones, so export both:
+
+```typescript
+// subscribers/billingHooks.ts
+export const { deliver: deliverBilling, sweep: retryBilling } =
+  worker.webhooks(billingHooks);                  // { sweep: 'rate(5 minutes)' } to change it
+```
+
+- `deliver` subscribes to the topic, for the events the hooks send. In one
+  transaction it writes a `pending` delivery for each active subscription that
+  wants the event, then makes each one's first attempt. An event the broker
+  hands over twice is delivered once: `(event_id, subscription_id)` is unique,
+  and the event id is derived from the topic, type and payload, since a topic
+  message carries no id of its own. Two events with the same type and payload
+  are one event, so a payload names what happened (`invoiceId`).
+- `sweep` is a cron, every minute by default, that claims due deliveries
+  (`FOR UPDATE SKIP LOCKED`, leased while they are sent) and tries each again.
+
+Each request is signed per [Standard Webhooks](https://www.standardwebhooks.com/):
+
+| Header | Value |
+| --- | --- |
+| `webhook-id` | The delivery's id — the same on every attempt and on a redelivery |
+| `webhook-timestamp` | Unix seconds |
+| `webhook-signature` | `v1,<base64 HMAC-SHA256 of id.timestamp.body>`, one per secret, space-separated, while a rotation overlaps |
+
+The body is `{ id, type, occurredAt, payload }`, where `id` is the event's id.
+
+A receiver checks it with `verifyWebhook` from `@geekmidas/client/webhooks`,
+which uses only WebCrypto and so runs anywhere. It returns the event, typed by
+a generated client's `webhooks` map, and throws `WebhookSignatureInvalid`,
+`WebhookTimestampOutOfRange` (more than five minutes from now by default) or
+`WebhookHeadersMissing`:
+
+```typescript
+import { verifyWebhook } from '@geekmidas/client/webhooks';
+import type { webhooks } from './client';
+
+const event = await verifyWebhook<webhooks>(secret, request);
+if (event.type === 'invoice.paid') event.payload.invoiceId;
+```
+
+**Retries.** A delivery is tried at once, then 1m, 5m, 30m, 2h, 5h, 10h and
+10h after each failure: eight attempts, after which it is `abandoned`. A 2xx
+marks it `delivered` and resets the subscription's failure count. A 410
+disables the subscription (reason `'gone'`) and abandons the delivery. Anything
+else is a failed attempt: another status, a redirect (never followed), a
+timeout (10 s), or an address refused. After five abandoned deliveries in a row
+(`disableAfter` on the construct's options) the subscription is disabled.
+
+**Outbound safety.** On a deployed stage the default transport sends to
+`https://` only, resolves the host and refuses a private or reserved address
+at the connection (so a name re-pointed after it was registered still sends
+nothing), and reads at most 64 KiB of the answer. Under `gkm dev` and in tests
+it sends to `http://localhost` too.
+
+**Recording and redelivery.** Every attempt is recorded with its status,
+latency and error. `services.billingHooks.deliveries({ owner })` (or
+`{ subscriptionId }`) lists recent deliveries, newest first, each with its
+`history`. `redeliver(deliveryId)` sends one again as a new attempt under the
+same `webhook-id`, whatever its status.
+
+**Reacting.** The construct publishes what happens on a topic it owns,
+`billingHooks.events` (`BillingHooksEvents`): `delivery.succeeded`,
+`delivery.failed` (once per failed attempt), `delivery.abandoned`,
+`subscription.disabled` and `secret.rotated`. These are published after the
+delivery is recorded, so a reaction that throws, or a publish that fails, never
+retries or repeats a delivery:
+
+```typescript
+export const onDisabled = worker
+  .topic(billingHooks.events)
+  .subscribe(['subscription.disabled'])
+  .handle(async ({ events }) => { … });     // email the owner
+```
+
+**Testing.** All time comes from `billingHooks.clock` and every request goes
+through `billingHooks.transport`, so a test can swap either. The work itself
+is plain functions in `@geekmidas/constructs/webhooks`: `deliverEvent(hooks,
+deps, event)` and `sweepDue(hooks, deps)`, where `deps` is `{ db, cipher,
+publisher?, logger? }`.
 
 #### Testing webhooks
 

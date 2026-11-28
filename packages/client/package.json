@@ -54,6 +54,16 @@
 				"default": "./dist/openapi-hooks.cjs"
 			}
 		},
+		"./webhooks": {
+			"import": {
+				"types": "./dist/webhooks.d.mts",
+				"default": "./dist/webhooks.mjs"
+			},
+			"require": {
+				"types": "./dist/webhooks.d.cts",
+				"default": "./dist/webhooks.cjs"
+			}
+		},
 		"./types": {
 			"import": {
 				"types": "./dist/types.d.mts",

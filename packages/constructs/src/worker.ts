@@ -100,6 +100,8 @@ import { ObjectSubscriberBuilder } from './subscribers/ObjectSubscriberBuilder';
 import { SubscriberBuilder } from './subscribers/SubscriberBuilder';
 import type { Telemetry } from './telemetry';
 import type { Topic, TopicEvents } from './topic/Topic';
+import { deliverEvent, sweepDue, webhookDepsFrom } from './webhooks/deliver';
+import type { Webhooks } from './webhooks/Webhooks';
 
 export interface WorkerConfig {
 	/**
@@ -357,6 +359,63 @@ export class Worker<
 				TDatabaseServiceName
 			>().logger(this.logger),
 		).topic(topic);
+	}
+
+	/**
+	 * The two runnables that deliver a {@link Webhooks} construct's events:
+	 *
+	 * - `deliver` subscribes to its topic, for the events it delivers: each
+	 *   event is fanned out to the subscriptions that want it, and each
+	 *   delivery's first attempt is made at once.
+	 * - `sweep` is a cron — every minute unless `options.sweep` says — that
+	 *   makes each retry that is due.
+	 *
+	 * Discovery only finds exported runnables, so export both:
+	 *
+	 * ```ts
+	 * export const { deliver: deliverBilling, sweep: retryBilling } =
+	 *   worker.webhooks(billingHooks);
+	 * ```
+	 *
+	 * Both depend on the construct, and so reach its tenant, its key and its
+	 * lifecycle topic. The work itself is `deliverEvent` and `sweepDue` from
+	 * `@geekmidas/constructs/webhooks`.
+	 */
+	webhooks<THooks extends Webhooks<string, any, any>>(
+		hooks: THooks,
+		options: { sweep?: ScheduleExpression } = {},
+	) {
+		const reached = [
+			hooks,
+			hooks.database,
+			hooks.encryption,
+			hooks.events,
+		] as const;
+
+		const deliver = this.topic(hooks.topic as Topic<string, TopicEvents>)
+			.subscribe([...hooks.eventTypes] as never)
+			.dependsOn(reached)
+			.handle(async ({ events, services, logger }) => {
+				const deps = webhookDepsFrom(
+					hooks,
+					services as Record<string, unknown>,
+					logger,
+				);
+				for (const event of events as { type: string; payload: unknown }[]) {
+					await deliverEvent(hooks, deps, event);
+				}
+			});
+
+		const sweep = this.cron(options.sweep ?? 'rate(1 minute)')
+			.dependsOn(reached)
+			.handle(async ({ services, logger }) => {
+				await sweepDue(
+					hooks,
+					webhookDepsFrom(hooks, services as Record<string, unknown>, logger),
+				);
+			});
+
+		return { deliver, sweep };
 	}
 
 	/**

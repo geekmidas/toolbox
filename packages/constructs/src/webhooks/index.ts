@@ -5,11 +5,44 @@ export {
 	type SubscribeInput,
 	signingSecrets,
 	UnknownWebhookEvent,
+	type WebhookAttempt,
+	type WebhookDeliveriesFilter,
+	type WebhookDelivery,
 	type WebhookSubscription,
 	WebhookSubscriptionNotFound,
 	type WebhooksClient,
 	webhooksClient,
 } from './client';
+export {
+	announce,
+	deliverEvent,
+	GONE_REASON,
+	redeliver,
+	signWebhook,
+	sweepDue,
+	WEBHOOK_DISABLE_AFTER,
+	WEBHOOK_LEASE_MS,
+	WEBHOOK_MAX_ATTEMPTS,
+	WEBHOOK_RETRY_SCHEDULE_MS,
+	type WebhookAttemptOutcome,
+	WebhookDeliveryNotFound,
+	type WebhookDeps,
+	type WebhookSourceEvent,
+	type WebhooksRuntime,
+	webhookDepsFrom,
+	webhookEventId,
+} from './deliver';
+export {
+	type DeliveryAbandoned,
+	type DeliveryFailed,
+	type DeliverySucceeded,
+	type SecretRotated,
+	type SubscriptionDisabled,
+	WEBHOOK_LIFECYCLE_EVENTS,
+	type WebhookDeliveryRef,
+	type WebhookLifecycleEvents,
+	type WebhookLifecycleMessage,
+} from './lifecycle';
 export {
 	WEBHOOK_TABLES,
 	WEBHOOK_TABLES_SQL,
@@ -20,7 +53,16 @@ export {
 	type WebhookSubscriptionStatus,
 	type WebhookTables,
 } from './schema';
-export { fetchTransport, type WebhookTransport } from './transport';
+export {
+	defaultTransport,
+	WEBHOOK_MAX_RESPONSE_BYTES,
+	WEBHOOK_TIMEOUT_MS,
+	WebhookAddressRefused,
+	WebhookRequestTimedOut,
+	type WebhookTransport,
+	type WebhookTransportOptions,
+	webhookTransport,
+} from './transport';
 export {
 	assertDeliverableUrl,
 	deliversLocally,

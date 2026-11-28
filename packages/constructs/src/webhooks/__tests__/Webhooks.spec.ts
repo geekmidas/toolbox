@@ -19,7 +19,6 @@ import {
 	UnknownWebhookEvent,
 	WEBHOOK_TABLES_SQL,
 	WebhookSubscriptionNotFound,
-	Webhooks,
 	WebhookUrlNotDeliverable,
 } from '../index';
 
@@ -75,6 +74,20 @@ describe('Webhooks', () => {
 	it('is owned by the API it was built from, and declares what it reaches', () => {
 		expect(hooks.owner).toBe('Api');
 		expect(hooks.declare()).toEqual([
+			// Its lifecycle topic, declared with it.
+			{
+				kind: 'topic',
+				id: 'BillingHooksEvents',
+				provides: ['BILLING_HOOKS_EVENTS_PUBLISHER_CONNECTION_STRING'],
+				events: [
+					'delivery.succeeded',
+					'delivery.failed',
+					'delivery.abandoned',
+					'subscription.disabled',
+					'secret.rotated',
+				],
+				subscribers: [],
+			},
 			{
 				kind: 'webhooks',
 				id: 'BillingHooks',
@@ -85,8 +98,14 @@ describe('Webhooks', () => {
 				encryption: 'Pii',
 			},
 		]);
-		// A runnable that depends on it is given edges to its tenant and key.
-		expect(idsOf([hooks])).toEqual(['BillingHooks', 'BillingHooksDb', 'Pii']);
+		// A runnable that depends on it is given edges to its tenant, its key
+		// and its lifecycle topic.
+		expect(idsOf([hooks])).toEqual([
+			'BillingHooks',
+			'BillingHooksDb',
+			'Pii',
+			'BillingHooksEvents',
+		]);
 	});
 
 	it('delivers every event of the topic when it names none', () => {
@@ -100,7 +119,7 @@ describe('Webhooks', () => {
 			database: tenant,
 			encryption: pii,
 		});
-		expect(all.events).toEqual([
+		expect(all.eventTypes).toEqual([
 			'invoice.paid',
 			'invoice.voided',
 			'invoice.drafted',

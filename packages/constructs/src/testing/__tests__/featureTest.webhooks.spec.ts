@@ -15,7 +15,7 @@ import { Encryption } from '../../encryption';
 import { RestApi } from '../../rest-api';
 import { Topic } from '../../topic/Topic';
 import {
-	fetchTransport,
+	defaultTransport,
 	WEBHOOK_TABLES_SQL,
 	type WebhooksClient,
 	type WebhookTables,
@@ -398,7 +398,7 @@ describe('the test seams', () => {
 		expect(hooks.clock()).toBe(fixed);
 
 		restore();
-		expect(hooks.transport).toBe(fetchTransport);
+		expect(hooks.transport).toBe(defaultTransport);
 		expect(Math.abs(hooks.clock().getTime() - Date.now())).toBeLessThan(5_000);
 	});
 
