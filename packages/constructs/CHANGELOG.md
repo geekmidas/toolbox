@@ -1,5 +1,169 @@
 # @geekmidas/constructs
 
+## 10.0.0-alpha.201
+
+### Minor Changes
+
+- [#580](https://github.com/geekmidas/toolbox/pull/580) [`3006562`](https://github.com/geekmidas/toolbox/commit/3006562840b0ec6239d0e8c4dbee31f2544e1b19) Thanks [@geekmidas](https://github.com/geekmidas)! - An endpoint documents its refusals, and can answer them as RFC 9457 problem details
+
+  - **`.error(status, code, { description?, details? })`** on an endpoint, and
+    on a branch (`api.session(…).error(401, 'SIGNED_OUT')`), declares a refusal.
+    The OpenAPI document lists each status under `responses`. Its body is
+    `application/problem+json`: `allOf` a shared `Problem` component, with
+    `code` narrowed to the codes declared for that status.
+  - ✨ **`new RestApi('Api', { errors: 'problem' })`** answers every failure, on
+    Hono and on API Gateway, as `application/problem+json`:
+    `{ type, title, status, detail, code, details }`. A request that its input
+    schemas reject is a 422 `VALIDATION_FAILED`, with the issues as its
+    `details`. A 5xx keeps its `details` out of the response outside `gkm dev`.
+    Without the option, a surface answers with the body it always has.
+  - **The generated client** types each declared status under `responses`.
+  - **`createHttpError(409, msg, { code })`** keeps the `code` and the `cause`.
+    Before, the subclasses it builds dropped both. `412`, `413` and `415` now
+    have their reason phrases.
+
+- [#580](https://github.com/geekmidas/toolbox/pull/580) [`3006562`](https://github.com/geekmidas/toolbox/commit/3006562840b0ec6239d0e8c4dbee31f2544e1b19) Thanks [@geekmidas](https://github.com/geekmidas)! - An endpoint has a summary, can be deprecated, carry `x-` extensions, and is grouped under described tags
+
+  `.summary()`, `.deprecated()` and `.extensions({ 'x-…': … })` on the builder
+  are written onto the endpoint's operation, and onto its JSDoc in the
+  generated client — `@deprecated` included. A key that is not `x-` throws
+  `NotAnExtension`.
+
+  A tag is a branch: `api.tag('payments', 'Taking money')` is a factory whose
+  endpoints carry the tag, and it chains like `.database()`. `.tag(name,
+description?)` on a builder adds one more. The document lists each tag once,
+  in the order first named, with its description. `.tags([...])` now adds to
+  an endpoint's tags rather than replacing them.
+
+  A document with no title is titled after its surface's id rather than `API`,
+  and the generated server no longer hard-codes `API Documentation` over it.
+
+- [#580](https://github.com/geekmidas/toolbox/pull/580) [`3006562`](https://github.com/geekmidas/toolbox/commit/3006562840b0ec6239d0e8c4dbee31f2544e1b19) Thanks [@geekmidas](https://github.com/geekmidas)! - An optional request body is documented, and accepted, as optional
+
+  A `.body()` schema that accepts `undefined` — `z.object({…}).optional()` —
+  is now `requestBody.required: false` in the OpenAPI document and an optional
+  `requestBody?` in the generated `paths`, so the client lets a caller leave
+  `body` out. A Hono server hands such an endpoint `undefined` when the request
+  sends no body, where it used to hand the schema `{}` and refuse it for the
+  fields an empty object lacks. Every body used to be documented as required.
+
+- [#580](https://github.com/geekmidas/toolbox/pull/580) [`3006562`](https://github.com/geekmidas/toolbox/commit/3006562840b0ec6239d0e8c4dbee31f2544e1b19) Thanks [@geekmidas](https://github.com/geekmidas)! - The OpenAPI document says which scopes an endpoint needs, and every way to call it
+
+  - **Scopes.** `.authorizer('partners', { scopes: ['orders:write'] })` documents
+    `security: [{ partners: ['orders:write'] }]`; before, scopes were always
+    `[]`. A branch takes them too: `api.authorizer('partners', { scopes })`.
+  - **Alternatives.** `.authorizers(['session', { name: 'partners', scopes }])`
+    is an endpoint that accepts either, documented as
+    `security: [{ session: [] }, { partners: [...] }]`. `endpoint.authorizer`
+    is still the first, which is what API Gateway and the manifest read;
+    `endpoint.security` lists them all.
+  - **OAuth 2 schemes.** `oauth2ClientCredentials({ tokenUrl, scopes })`
+    (RFC 6749 §4.4) and `oauth2AuthorizationCode({ authorizationUrl, tokenUrl,
+scopes })`, with PKCE by default as `x-usePkce: 'SHA-256'` (RFC 7636),
+    declared with `RestApi`'s new `securitySchemes` option.
+  - **Generated client.** `gkm openapi --ts` collects every alternative's scheme.
+    `endpointAuth` lists an endpoint's alternatives (`['session', 'partners']`)
+    and still writes a single scheme as a string. The auth fetcher sends the
+    first alternative it has a strategy for, and `authStrategies` requires a
+    strategy only for a scheme some endpoint accepts on its own.
+  - An unknown authorizer throws `AuthorizerNotAvailable`, and an empty
+    `.authorizers([])` `NoAuthorizersGiven`, rather than a bare `Error`.
+
+- [#580](https://github.com/geekmidas/toolbox/pull/580) [`3006562`](https://github.com/geekmidas/toolbox/commit/3006562840b0ec6239d0e8c4dbee31f2544e1b19) Thanks [@geekmidas](https://github.com/geekmidas)! - An OpenAPI document lists its servers, contact and licence
+
+  A surface's document now lists `servers`, one per stage in the workspace's
+  `domains`, at the surface's label under that stage's domain —
+  `https://api.staging.myapp.com`, `https://api.myapp.com`. The served
+  `/__docs` document and the generated client's `apiInfo.servers` both carry
+  them.
+
+  `new RestApi(id, { contact, license })` fills the document's `info.contact`
+  and `info.license`, and the generated client's `apiInfo`.
+
+- [#580](https://github.com/geekmidas/toolbox/pull/580) [`3006562`](https://github.com/geekmidas/toolbox/commit/3006562840b0ec6239d0e8c4dbee31f2544e1b19) Thanks [@geekmidas](https://github.com/geekmidas)! - An endpoint documents every response it answers: `.response(status, content)`
+
+  A handler could answer another status with `response.status()`, but the
+  document named one status and one content type. `.response(status, content,
+{ description })` declares another beside the default `.output()`/`.status()`/
+  `.responseType()` — repeatable. `content` is a schema (JSON) or a schema per
+  content type (`{ 'application/json': Report, 'text/csv': z.string(),
+'application/pdf': binary() }`); `binary()` declares an opaque body.
+
+  - **Document:** each status and content type appears under the operation's
+    `responses`.
+  - **Runtime:** a body answered with a declared status is checked against that
+    response, not `.output()`, in the content type the handler set with
+    `response.header('content-type', …)` or the first listed. A content type
+    other than JSON is emitted as-is; on API Gateway, bytes are base64-encoded.
+    One the response does not list fails with `UndeclaredResponseContentType`.
+    Declared events and audits follow `.output()` and are not sent for another
+    status.
+  - **Client:** the handler may return any declared body; the generated client
+    and `InferOpenApi` type each status and content type, and a call resolves to
+    the union of every 2xx JSON body rather than only the 200's (or the 201's).
+    The generated client also types `.output()` under the status it answers
+    rather than always 200.
+
+- [#580](https://github.com/geekmidas/toolbox/pull/580) [`3006562`](https://github.com/geekmidas/toolbox/commit/3006562840b0ec6239d0e8c4dbee31f2544e1b19) Thanks [@geekmidas](https://github.com/geekmidas)! - Request headers are typed and validated, and response headers are documented
+
+  `.headers()` declares the request headers an endpoint reads — an object
+  schema with lower-case keys, or headers one by one, each a schema or a shared
+  `defineHeader()`. Incoming names are lower-cased, the headers are validated
+  on Hono, API Gateway and in a test, and the handler and authorizer read them
+  as `headers`, typed. A missing required header, or one its schema refuses,
+  is answered with 400 (`RequestHeadersInvalid`). They are documented as
+  `in: header` parameters, and the generated client writes them as
+  `parameters.header` and requires `headers` when one is required, still
+  taking any other header.
+
+  `.responseHeaders({ ETag, Location: { schema, description } })` documents
+  the headers a successful response carries under that response's `headers`,
+  and in the generated `paths`. A `defineHeader()` is written once, under
+  `components.parameters` or `components.headers`, and referred to with `$ref`.
+  Headers such as `Idempotency-Key`, `If-Match`, `ETag`, `Location` and
+  `Retry-After` used to be invisible to the document and the client.
+
+- [#580](https://github.com/geekmidas/toolbox/pull/580) [`3006562`](https://github.com/geekmidas/toolbox/commit/3006562840b0ec6239d0e8c4dbee31f2544e1b19) Thanks [@geekmidas](https://github.com/geekmidas)! - The OpenAPI document describes what a service sends: webhooks and callbacks
+
+  **Webhooks.** `api.webhooks(topic, { signature, events?, description? })`
+  documents a topic's events as the requests a service delivers to the URLs its
+  users register. Each appears under the document's `webhooks` (OpenAPI 3.1) as
+  a `POST` with a `{ type, payload }` body — the payload's schema from the topic
+  — and the signature header a receiver checks. The list lives on the surface,
+  so every endpoint built from it reaches the document, whenever the topic was
+  registered. Two delivered topics carrying the same event type are refused
+  (`WebhookEventDeclaredTwice`), as is an `events` entry the topic does not carry
+  (`WebhookEventNotOnTopic`).
+
+  **Callbacks.** `.callback(name, { url, method?, body?, response? })` on an
+  endpoint, repeatable, documents a request it makes back to a URL its caller
+  gave it under the operation's `callbacks`. `url` is a runtime expression such
+  as `{$request.body#/callbackUrl}`. A name declared twice is refused
+  (`CallbackDeclaredTwice`).
+
+  **The generated client** exports a `webhooks` interface, event type → the
+  body a receiver is sent, so a receiver can type its handler.
+
+### Patch Changes
+
+- Updated dependencies [[`3006562`](https://github.com/geekmidas/toolbox/commit/3006562840b0ec6239d0e8c4dbee31f2544e1b19), [`3006562`](https://github.com/geekmidas/toolbox/commit/3006562840b0ec6239d0e8c4dbee31f2544e1b19), [`3006562`](https://github.com/geekmidas/toolbox/commit/3006562840b0ec6239d0e8c4dbee31f2544e1b19)]:
+  - @geekmidas/errors@10.0.0-alpha.201
+  - @geekmidas/schema@10.0.0-alpha.201
+  - @geekmidas/audit@10.0.0-alpha.201
+  - @geekmidas/auth@10.0.0-alpha.201
+  - @geekmidas/cache@10.0.0-alpha.201
+  - @geekmidas/db@10.0.0-alpha.201
+  - @geekmidas/emailkit@10.0.0-alpha.201
+  - @geekmidas/envkit@10.0.0-alpha.201
+  - @geekmidas/events@10.0.0-alpha.201
+  - @geekmidas/logger@10.0.0-alpha.201
+  - @geekmidas/manifest@10.0.0-alpha.201
+  - @geekmidas/rate-limit@10.0.0-alpha.201
+  - @geekmidas/services@10.0.0-alpha.201
+  - @geekmidas/storage@10.0.0-alpha.201
+  - @geekmidas/telescope@10.0.0-alpha.201
+  - @geekmidas/testkit@10.0.0-alpha.201
+
 ## 10.0.0-alpha.200
 
 ### Minor Changes

@@ -1,5 +1,18 @@
 # @file-drop/workspace
 
+## 0.0.1-alpha.41
+
+### Patch Changes
+
+- Updated dependencies [[`3006562`](https://github.com/geekmidas/toolbox/commit/3006562840b0ec6239d0e8c4dbee31f2544e1b19), [`3006562`](https://github.com/geekmidas/toolbox/commit/3006562840b0ec6239d0e8c4dbee31f2544e1b19), [`3006562`](https://github.com/geekmidas/toolbox/commit/3006562840b0ec6239d0e8c4dbee31f2544e1b19), [`3006562`](https://github.com/geekmidas/toolbox/commit/3006562840b0ec6239d0e8c4dbee31f2544e1b19), [`3006562`](https://github.com/geekmidas/toolbox/commit/3006562840b0ec6239d0e8c4dbee31f2544e1b19), [`3006562`](https://github.com/geekmidas/toolbox/commit/3006562840b0ec6239d0e8c4dbee31f2544e1b19), [`3006562`](https://github.com/geekmidas/toolbox/commit/3006562840b0ec6239d0e8c4dbee31f2544e1b19), [`3006562`](https://github.com/geekmidas/toolbox/commit/3006562840b0ec6239d0e8c4dbee31f2544e1b19)]:
+  - @geekmidas/constructs@10.0.0-alpha.201
+  - @geekmidas/cli@10.0.0-alpha.201
+  - @geekmidas/envkit@10.0.0-alpha.201
+  - @geekmidas/logger@10.0.0-alpha.201
+  - @geekmidas/services@10.0.0-alpha.201
+  - @geekmidas/storage@10.0.0-alpha.201
+  - @geekmidas/telescope@10.0.0-alpha.201
+
 ## 0.0.1-alpha.40
 
 ### Patch Changes

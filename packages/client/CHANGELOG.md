@@ -1,5 +1,89 @@
 # @geekmidas/client
 
+## 10.0.0-alpha.201
+
+### Minor Changes
+
+- [#580](https://github.com/geekmidas/toolbox/pull/580) [`3006562`](https://github.com/geekmidas/toolbox/commit/3006562840b0ec6239d0e8c4dbee31f2544e1b19) Thanks [@geekmidas](https://github.com/geekmidas)! - An optional request body is documented, and accepted, as optional
+
+  A `.body()` schema that accepts `undefined` — `z.object({…}).optional()` —
+  is now `requestBody.required: false` in the OpenAPI document and an optional
+  `requestBody?` in the generated `paths`, so the client lets a caller leave
+  `body` out. A Hono server hands such an endpoint `undefined` when the request
+  sends no body, where it used to hand the schema `{}` and refuse it for the
+  fields an empty object lacks. Every body used to be documented as required.
+
+- [#580](https://github.com/geekmidas/toolbox/pull/580) [`3006562`](https://github.com/geekmidas/toolbox/commit/3006562840b0ec6239d0e8c4dbee31f2544e1b19) Thanks [@geekmidas](https://github.com/geekmidas)! - The OpenAPI document says which scopes an endpoint needs, and every way to call it
+
+  - **Scopes.** `.authorizer('partners', { scopes: ['orders:write'] })` documents
+    `security: [{ partners: ['orders:write'] }]`; before, scopes were always
+    `[]`. A branch takes them too: `api.authorizer('partners', { scopes })`.
+  - **Alternatives.** `.authorizers(['session', { name: 'partners', scopes }])`
+    is an endpoint that accepts either, documented as
+    `security: [{ session: [] }, { partners: [...] }]`. `endpoint.authorizer`
+    is still the first, which is what API Gateway and the manifest read;
+    `endpoint.security` lists them all.
+  - **OAuth 2 schemes.** `oauth2ClientCredentials({ tokenUrl, scopes })`
+    (RFC 6749 §4.4) and `oauth2AuthorizationCode({ authorizationUrl, tokenUrl,
+scopes })`, with PKCE by default as `x-usePkce: 'SHA-256'` (RFC 7636),
+    declared with `RestApi`'s new `securitySchemes` option.
+  - **Generated client.** `gkm openapi --ts` collects every alternative's scheme.
+    `endpointAuth` lists an endpoint's alternatives (`['session', 'partners']`)
+    and still writes a single scheme as a string. The auth fetcher sends the
+    first alternative it has a strategy for, and `authStrategies` requires a
+    strategy only for a scheme some endpoint accepts on its own.
+  - An unknown authorizer throws `AuthorizerNotAvailable`, and an empty
+    `.authorizers([])` `NoAuthorizersGiven`, rather than a bare `Error`.
+
+- [#580](https://github.com/geekmidas/toolbox/pull/580) [`3006562`](https://github.com/geekmidas/toolbox/commit/3006562840b0ec6239d0e8c4dbee31f2544e1b19) Thanks [@geekmidas](https://github.com/geekmidas)! - An endpoint documents every response it answers: `.response(status, content)`
+
+  A handler could answer another status with `response.status()`, but the
+  document named one status and one content type. `.response(status, content,
+{ description })` declares another beside the default `.output()`/`.status()`/
+  `.responseType()` — repeatable. `content` is a schema (JSON) or a schema per
+  content type (`{ 'application/json': Report, 'text/csv': z.string(),
+'application/pdf': binary() }`); `binary()` declares an opaque body.
+
+  - **Document:** each status and content type appears under the operation's
+    `responses`.
+  - **Runtime:** a body answered with a declared status is checked against that
+    response, not `.output()`, in the content type the handler set with
+    `response.header('content-type', …)` or the first listed. A content type
+    other than JSON is emitted as-is; on API Gateway, bytes are base64-encoded.
+    One the response does not list fails with `UndeclaredResponseContentType`.
+    Declared events and audits follow `.output()` and are not sent for another
+    status.
+  - **Client:** the handler may return any declared body; the generated client
+    and `InferOpenApi` type each status and content type, and a call resolves to
+    the union of every 2xx JSON body rather than only the 200's (or the 201's).
+    The generated client also types `.output()` under the status it answers
+    rather than always 200.
+
+- [#580](https://github.com/geekmidas/toolbox/pull/580) [`3006562`](https://github.com/geekmidas/toolbox/commit/3006562840b0ec6239d0e8c4dbee31f2544e1b19) Thanks [@geekmidas](https://github.com/geekmidas)! - Request headers are typed and validated, and response headers are documented
+
+  `.headers()` declares the request headers an endpoint reads — an object
+  schema with lower-case keys, or headers one by one, each a schema or a shared
+  `defineHeader()`. Incoming names are lower-cased, the headers are validated
+  on Hono, API Gateway and in a test, and the handler and authorizer read them
+  as `headers`, typed. A missing required header, or one its schema refuses,
+  is answered with 400 (`RequestHeadersInvalid`). They are documented as
+  `in: header` parameters, and the generated client writes them as
+  `parameters.header` and requires `headers` when one is required, still
+  taking any other header.
+
+  `.responseHeaders({ ETag, Location: { schema, description } })` documents
+  the headers a successful response carries under that response's `headers`,
+  and in the generated `paths`. A `defineHeader()` is written once, under
+  `components.parameters` or `components.headers`, and referred to with `$ref`.
+  Headers such as `Idempotency-Key`, `If-Match`, `ETag`, `Location` and
+  `Retry-After` used to be invisible to the document and the client.
+
+### Patch Changes
+
+- Updated dependencies [[`3006562`](https://github.com/geekmidas/toolbox/commit/3006562840b0ec6239d0e8c4dbee31f2544e1b19), [`3006562`](https://github.com/geekmidas/toolbox/commit/3006562840b0ec6239d0e8c4dbee31f2544e1b19), [`3006562`](https://github.com/geekmidas/toolbox/commit/3006562840b0ec6239d0e8c4dbee31f2544e1b19), [`3006562`](https://github.com/geekmidas/toolbox/commit/3006562840b0ec6239d0e8c4dbee31f2544e1b19), [`3006562`](https://github.com/geekmidas/toolbox/commit/3006562840b0ec6239d0e8c4dbee31f2544e1b19), [`3006562`](https://github.com/geekmidas/toolbox/commit/3006562840b0ec6239d0e8c4dbee31f2544e1b19), [`3006562`](https://github.com/geekmidas/toolbox/commit/3006562840b0ec6239d0e8c4dbee31f2544e1b19), [`3006562`](https://github.com/geekmidas/toolbox/commit/3006562840b0ec6239d0e8c4dbee31f2544e1b19)]:
+  - @geekmidas/constructs@10.0.0-alpha.201
+  - @geekmidas/schema@10.0.0-alpha.201
+
 ## 10.0.0-alpha.200
 
 ### Patch Changes

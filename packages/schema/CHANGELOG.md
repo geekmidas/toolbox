@@ -1,5 +1,44 @@
 # @geekmidas/schema
 
+## 10.0.0-alpha.201
+
+### Minor Changes
+
+- [#580](https://github.com/geekmidas/toolbox/pull/580) [`3006562`](https://github.com/geekmidas/toolbox/commit/3006562840b0ec6239d0e8c4dbee31f2544e1b19) Thanks [@geekmidas](https://github.com/geekmidas)! - An endpoint has a summary, can be deprecated, carry `x-` extensions, and is grouped under described tags
+
+  `.summary()`, `.deprecated()` and `.extensions({ 'x-…': … })` on the builder
+  are written onto the endpoint's operation, and onto its JSDoc in the
+  generated client — `@deprecated` included. A key that is not `x-` throws
+  `NotAnExtension`.
+
+  A tag is a branch: `api.tag('payments', 'Taking money')` is a factory whose
+  endpoints carry the tag, and it chains like `.database()`. `.tag(name,
+description?)` on a builder adds one more. The document lists each tag once,
+  in the order first named, with its description. `.tags([...])` now adds to
+  an endpoint's tags rather than replacing them.
+
+  A document with no title is titled after its surface's id rather than `API`,
+  and the generated server no longer hard-codes `API Documentation` over it.
+
+- [#580](https://github.com/geekmidas/toolbox/pull/580) [`3006562`](https://github.com/geekmidas/toolbox/commit/3006562840b0ec6239d0e8c4dbee31f2544e1b19) Thanks [@geekmidas](https://github.com/geekmidas)! - Request headers are typed and validated, and response headers are documented
+
+  `.headers()` declares the request headers an endpoint reads — an object
+  schema with lower-case keys, or headers one by one, each a schema or a shared
+  `defineHeader()`. Incoming names are lower-cased, the headers are validated
+  on Hono, API Gateway and in a test, and the handler and authorizer read them
+  as `headers`, typed. A missing required header, or one its schema refuses,
+  is answered with 400 (`RequestHeadersInvalid`). They are documented as
+  `in: header` parameters, and the generated client writes them as
+  `parameters.header` and requires `headers` when one is required, still
+  taking any other header.
+
+  `.responseHeaders({ ETag, Location: { schema, description } })` documents
+  the headers a successful response carries under that response's `headers`,
+  and in the generated `paths`. A `defineHeader()` is written once, under
+  `components.parameters` or `components.headers`, and referred to with `$ref`.
+  Headers such as `Idempotency-Key`, `If-Match`, `ETag`, `Location` and
+  `Retry-After` used to be invisible to the document and the client.
+
 ## 10.0.0-alpha.200
 
 ## 10.0.0-alpha.199
