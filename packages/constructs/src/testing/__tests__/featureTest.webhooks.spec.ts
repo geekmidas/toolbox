@@ -381,7 +381,12 @@ describe('featureTest with webhooks', () => {
 
 describe('the test seams', () => {
 	test('a construct gets its own transport and clock back', () => {
-		const hooks = api.webhooks('SeamHooks', {
+		// Its own API: one API delivers an event type through one construct.
+		const seams = new RestApi('Seams', {
+			path: '.',
+			defaultAuthorizer: 'none',
+		});
+		const hooks = seams.webhooks('SeamHooks', {
 			topic: billing,
 			database: tenant,
 			encryption: pii,
