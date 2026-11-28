@@ -846,9 +846,9 @@ export const { deliver: deliverBilling, sweep: retryBilling } =
   transaction it writes a `pending` delivery for each active subscription that
   wants the event, then makes each one's first attempt. An event the broker
   hands over twice is delivered once: `(event_id, subscription_id)` is unique,
-  and the event id is derived from the topic, type and payload, since a topic
-  message carries no id of its own. Two events with the same type and payload
-  are one event, so a payload names what happened (`invoiceId`).
+  and the event id is the one the topic's publisher stamped on the message when
+  it was published, which every redelivery keeps. Two occurrences with the same
+  payload have their own ids, and are each delivered.
 - `sweep` is a cron, every minute by default, that claims due deliveries
   (`FOR UPDATE SKIP LOCKED`, leased while they are sent) and tries each again.
 

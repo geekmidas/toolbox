@@ -248,6 +248,39 @@ describe('fan-out', () => {
 		).toEqual([{ n: 1 }]);
 	});
 
+	it('delivers each occurrence once, by the id its publisher stamped', async () => {
+		const transport = receiver();
+		hooks.transport = transport;
+		await client().subscribe({
+			owner: 'acct_1',
+			url: 'https://paid.example/hooks',
+			events: ['invoice.paid'],
+		});
+		const payload = { invoiceId: 'inv_4' };
+
+		// Two occurrences with an identical payload are two events.
+		await deliverEvent(hooks, deps, {
+			type: 'invoice.paid',
+			payload,
+			id: 'e1',
+		});
+		await deliverEvent(hooks, deps, {
+			type: 'invoice.paid',
+			payload,
+			id: 'e2',
+		});
+		// The broker redelivers the first: the same id, sent nothing again.
+		expect(
+			await deliverEvent(hooks, deps, {
+				type: 'invoice.paid',
+				payload,
+				id: 'e1',
+			}),
+		).toEqual([]);
+
+		expect(transport.received).toHaveLength(2);
+	});
+
 	it('sends nothing for an event the construct does not deliver', async () => {
 		const transport = receiver();
 		hooks.transport = transport;

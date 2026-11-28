@@ -119,7 +119,7 @@ describe('webhooks in the OpenAPI document', () => {
 		expect(paid.requestBody.content['application/json'].schema).toEqual({
 			type: 'object',
 			properties: {
-				id: { type: 'string' },
+				id: expect.objectContaining({ type: 'string' }),
 				type: { type: 'string', const: 'invoice.paid' },
 				occurredAt: { type: 'string', format: 'date-time' },
 				payload: { $ref: '#/components/schemas/WebhookInvoice' },

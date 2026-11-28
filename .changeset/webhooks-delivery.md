@@ -1,6 +1,7 @@
 ---
 '@geekmidas/constructs': minor
 '@geekmidas/client': minor
+'@geekmidas/events': minor
 ---
 
 Webhooks are delivered, signed, retried and recorded
@@ -31,3 +32,9 @@ and `sweepDue` are exported from `@geekmidas/constructs/webhooks`.
 
 `verifyWebhook(secret, request)` from `@geekmidas/client/webhooks` checks a
 delivery with WebCrypto and returns its typed event.
+
+Each message a topic publishes now carries an `id`, stamped once by the
+topic's publisher: a broker's redelivery keeps it, and a second occurrence with
+the same payload gets its own. A webhook delivery is keyed on it, so each
+occurrence is sent once to each subscription — never dropped as a duplicate of
+an earlier one, never sent twice because the broker redelivered it.

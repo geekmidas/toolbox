@@ -171,7 +171,8 @@ export const WEBHOOK_HEADERS: readonly OpenAPIV3_1.ParameterObject[] = [
 		in: 'header',
 		required: true,
 		description:
-			"The delivery's id: the envelope's `id`, the same on every attempt.",
+			"This delivery's id — one per subscription, the same on every " +
+			'attempt. What a receiver deduplicates on.',
 		schema: { type: 'string' },
 	},
 	{
@@ -223,7 +224,12 @@ export async function buildOpenApiWebhooks(
 						schema: {
 							type: 'object',
 							properties: {
-								id: { type: 'string' },
+								id: {
+									type: 'string',
+									description:
+										"The event's id — the same in every subscription's " +
+										'delivery of this occurrence of it.',
+								},
 								type: { type: 'string', const: event.type },
 								occurredAt: { type: 'string', format: 'date-time' },
 								payload: payload ?? {},

@@ -371,6 +371,8 @@ export type DatabaseOf<C> =
 export interface PublishedMessage {
 	type: string;
 	payload: unknown;
+	/** This occurrence's id, when the publisher gave it one. */
+	id?: string;
 }
 
 type FeatureFn<
@@ -897,7 +899,17 @@ function recorders(
 					...(state.published.get(channel.id) ?? []),
 					...sent,
 				]);
-				state.pending.push({ channel, messages: sent });
+				// Delivered with an id, as a topic's publisher stamps one — what a
+				// consumer that acts once per occurrence keys on. `published()`
+				// keeps what the handler sent.
+				state.pending.push({
+					channel,
+					messages: messages.map(({ type, payload, id }) => ({
+						type,
+						payload,
+						id: id ?? randomUUID(),
+					})),
+				});
 			},
 		};
 		return {

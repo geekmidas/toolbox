@@ -401,7 +401,11 @@ export class Worker<
 					services as Record<string, unknown>,
 					logger,
 				);
-				for (const event of events as { type: string; payload: unknown }[]) {
+				for (const event of events as {
+					type: string;
+					payload: unknown;
+					id?: string;
+				}[]) {
 					await deliverEvent(hooks, deps, event);
 				}
 			});

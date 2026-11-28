@@ -131,17 +131,13 @@ export class WebhookDeliveryNotFound extends Error {
 }
 
 /**
- * The id of an event a topic delivered.
+ * The event's id: the one its topic's publisher stamped on it — the same on
+ * every redelivery, and different for a second occurrence with the same
+ * payload — so `(event_id, subscription_id)` sends each occurrence once.
  *
- * A topic's message is `{ type, payload }` and nothing else: no broker hands
- * a subscriber an id of the publisher's. pg-boss copies a job into each
- * subscriber's queue, so its id differs per subscriber, and SNS's differs per
- * publish. So the id is derived from what the message *is* — its topic, type
- * and payload — which is the same however often the broker redelivers it.
- *
- * The consequence: two events with identical type and payload are one event,
- * and delivered once. A payload names what happened (`invoiceId`), and an
- * event that can recur should carry what tells the occurrences apart.
+ * A message published without one (by something other than a topic's
+ * publisher) falls back to a hash of topic, type and payload: redeliveries
+ * still deduplicate, but two identical occurrences become one.
  */
 export function webhookEventId(
 	topic: string,
