@@ -3067,3 +3067,364 @@ const schema = await Endpoint.buildOpenApiSchema(
 ```
 
 The Hono adapter automatically serves OpenAPI docs at `/docs` (configurable).
+
+The document — and the client `gkm openapi` generates — describes what each
+endpoint does, from what the endpoint already declares. What follows is what
+each part is written from.
+
+### Optional request bodies
+
+A body whose schema accepts `undefined` may be left out. The document says
+`requestBody.required: false`, the generated client lets the caller omit
+`body`, and a request that sends none reaches the handler as `undefined`
+rather than being refused for the fields an empty object lacks.
+
+```typescript
+export const touch = router
+  .patch('/sessions/:id')
+  .body(z.object({ note: z.string() }).optional())
+  .handle(async ({ body }) => touchSession(body?.note));
+```
+
+### Summary, deprecation and vendor extensions
+
+```typescript
+export const listCharges = router
+  .get('/v1/charges')
+  .summary('List charges')          // the line a reference lists it under
+  .description('Oldest first.')     // the text beneath
+  .deprecated()                     // `deprecated: true`, `@deprecated` in the client
+  .extensions({ 'x-internal': true })
+  .handle(async () => listAll());
+```
+
+`.extensions()` takes `x-` keys only and merges across calls; any other key
+throws `NotAnExtension`, since OpenAPI defines it and the endpoint writes it.
+
+### Tags
+
+A tag groups endpoints into a section of the API reference. It is a branch,
+like `.database()`: endpoints built from it carry it, its description is
+written once, and it chains — a second `.tag()` adds a second tag.
+
+```typescript
+// endpoints/router.ts
+export const payments = api.tag('payments', 'Taking money');
+export const refunds = api.database(database).tag('refunds', 'Giving it back');
+
+// endpoints/charges.ts
+export const charge = payments
+  .post('/charges')
+  .tag('beta', 'Not yet stable')   // and on the endpoint itself
+  .handle(async () => …);
+```
+
+`.tags(['a', 'b'])` adds several by name. The document lists every tag once,
+in the order the endpoints first name it, with the description any of them
+gave it.
+
+### Contact, licence and servers
+
+A document is titled after its surface's id. Its `info.contact` and
+`info.license` are the `RestApi`'s:
+
+```typescript
+export const api = new RestApi('Api', {
+  path: 'apps/api',
+  defaultAuthorizer: 'none',
+  contact: { name: 'Platform', email: 'platform@example.com' },
+  license: { name: 'Apache-2.0', identifier: 'Apache-2.0' },
+});
+```
+
+Its `servers` are derived from the workspace: one per stage in `domains`, at
+the surface's label (its `subdomain`, or its id kebab-cased) under that
+stage's domain, described by the stage's name.
+
+```typescript
+// gkm.config.ts — domains: { staging: 'staging.myapp.com', production: 'myapp.com' }
+// gives the Api surface:
+//   servers: [
+//     { url: 'https://api.staging.myapp.com', description: 'staging' },
+//     { url: 'https://api.myapp.com', description: 'production' },
+//   ]
+```
+
+The document served at `/__docs` and the generated client's `apiInfo` both
+carry the contact, licence and servers.
+
+### Webhooks and callbacks
+
+A service that sends signed events to its users' endpoints documents them
+from the topic that carries them. `.webhooks(topic, …)` on the `RestApi`
+lists each event under the document's `webhooks` (OpenAPI 3.1): a `POST`
+whose body is `{ type, payload }`, with the payload's schema from the topic,
+and the header a receiver checks.
+
+```typescript
+export const api = new RestApi('Api', { path: 'apps/api', defaultAuthorizer: 'none' }).webhooks(billing, {
+  signature: {
+    header: 'Webhook-Signature',
+    description: 'HMAC-SHA256 of the raw body with the endpoint secret',
+  },
+  // Optional — the events that leave the service, when not all of them do.
+  events: ['invoice.paid', 'invoice.voided'],
+});
+```
+
+It documents; delivering the events is the service's own subscriber's job.
+The document is built from endpoints, so it lists the webhooks of the surfaces
+they were built from, whenever the topic was registered. Two delivered topics
+carrying the same event type are refused (`WebhookEventDeclaredTwice`): a
+receiver tells events apart by type. The generated client exports a
+`webhooks` interface, event type → body, for a receiver to type its handler:
+
+```typescript
+import type { webhooks } from './client/openapi';
+
+function onEvent(event: webhooks[keyof webhooks]) { … }
+```
+
+An endpoint that calls back a URL its caller gave it declares the request with
+`.callback(name, …)`, repeatable, documented under the operation's
+`callbacks`. `url` is an OpenAPI runtime expression; `method` defaults to
+`post` and the expected response to a `200`.
+
+```typescript
+export const startExport = api
+  .post('/exports')
+  .body(z.object({ callbackUrl: z.url() }))
+  .callback('exportReady', {
+    url: '{$request.body#/callbackUrl}',
+    body: z.object({ exportId: z.string(), downloadUrl: z.url() }),
+    response: { status: 204, description: 'Acknowledged' },
+  })
+  .handle(async ({ body }) => { … });
+```
+
+### Security requirements and scopes
+
+An endpoint's authorizer becomes its `security` requirement, and its scheme a
+`components.securitySchemes` entry. Scopes go beside the name, and an endpoint
+that accepts more than one credential lists each as an alternative, any one of
+which is enough:
+
+```typescript
+import {
+  oauth2AuthorizationCode,
+  oauth2ClientCredentials,
+  RestApi,
+} from '@geekmidas/constructs/rest-api';
+
+export const api = new RestApi('Api', {
+  path: 'apps/api',
+  securitySchemes: {
+    session: { type: 'apiKey', in: 'cookie', name: 'session' },
+    // RFC 6749 §4.4: a service trades its client id and secret for a token
+    partners: oauth2ClientCredentials({
+      tokenUrl: 'https://auth.example.com/oauth/token',
+      scopes: { 'orders:read': 'Read orders', 'orders:write': 'Change orders' },
+    }),
+    // Authorization code with PKCE (RFC 7636), written as `x-usePkce: SHA-256`
+    app: oauth2AuthorizationCode({
+      authorizationUrl: 'https://auth.example.com/oauth/authorize',
+      tokenUrl: 'https://auth.example.com/oauth/token',
+      scopes: { profile: 'Read your profile' },
+    }),
+  },
+  authorizers: ['session', 'partners', 'app'],
+  defaultAuthorizer: 'none',
+});
+
+// security: [{ partners: ['orders:write'] }]
+export const createOrder = api
+  .post('/orders')
+  .authorizer('partners', { scopes: ['orders:write'] })
+  .handle(async () => { … });
+
+// security: [{ session: [] }, { partners: ['orders:read'] }]
+export const listOrders = api
+  .get('/orders')
+  .authorizers(['session', { name: 'partners', scopes: ['orders:read'] }])
+  .handle(async () => { … });
+
+// A branch's default: every endpoint built from it requires `orders:read`
+export const partnerApi = api.authorizer('partners', { scopes: ['orders:read'] });
+```
+
+Scopes are documentation: checking them is the authorizer's job. The first
+alternative is the endpoint's `authorizer`, the one API Gateway enforces;
+`endpoint.security` holds them all.
+
+The client `gkm openapi --ts` generates knows every alternative too. In
+`endpointAuth` an endpoint that accepts several lists them
+(`'GET /orders': ['session', 'partners']`), and the fetcher sends the first one
+it has an `authStrategies` entry for, so a browser app configures `session`
+and a back-office script `partners`, and neither needs the other. A strategy is
+required only for a scheme some endpoint accepts on its own.
+
+### Errors
+
+An endpoint declares the refusals it can answer with `.error(status, code, {
+description?, details? })`, one call per code. A branch can declare one for
+every endpoint built from it:
+
+```typescript
+import { createHttpError } from '@geekmidas/errors';
+
+export const api = new RestApi('Api', {
+  path: 'apps/api',
+  defaultAuthorizer: 'none',
+  errors: 'problem', // RFC 9457 problem details
+});
+
+const router = api.session(readSession).error(401, 'SIGNED_OUT');
+
+export const createUser = router
+  .post('/users')
+  .body(z.object({ email: z.email() }))
+  .error(409, 'EMAIL_TAKEN', {
+    description: 'The email is already registered.',
+    details: z.object({ email: z.email() }),
+  })
+  .handle(async ({ body }) => {
+    throw createHttpError(409, 'That email is registered', {
+      code: 'EMAIL_TAKEN',
+      details: { email: body.email },
+    });
+  });
+```
+
+With `errors: 'problem'`, every failure is answered as
+`application/problem+json`:
+
+```json
+{
+  "type": "about:blank",
+  "title": "Conflict",
+  "status": 409,
+  "detail": "That email is registered",
+  "code": "EMAIL_TAKEN",
+  "details": { "email": "ada@example.com" }
+}
+```
+
+A request that its body, query or params schema rejects is a 422 with the code
+`VALIDATION_FAILED`, and its issues are the `details`. A 5xx keeps its
+`details` out of the response unless it runs under `gkm dev`.
+
+The document lists each declared status under `responses`. Its schema is
+`allOf` the shared `#/components/schemas/Problem`, with `code` narrowed to the
+codes declared for that status. The typed client that `gkm` generates carries
+the same bodies. Without `errors`, a surface keeps the error body it has always
+sent. The document still lists the statuses, but it does not describe a body.
+
+### Several responses, and content types beside JSON
+
+`.output()`, `.status()` and `.responseType()` describe the default response.
+`.response(status, content, { description })` declares another — repeatable,
+after `.output()`. `content` is a schema (JSON), a schema per content type, or
+nothing (a 204); `binary()` declares bytes such as a PDF.
+
+```typescript
+import { binary } from '@geekmidas/constructs/endpoints';
+
+// 201 when it creates, 200 when a retry hands back the original
+export const putOrder = router
+  .put('/orders/:id')
+  .output(Order)
+  .status(201)
+  .response(200, Order, { description: 'A retry: the order already created' })
+  .handle(async ({ params, db }, response) => {
+    const existing = await findOrder(db, params.id);
+    if (existing) return response.status(200).send(existing);
+    return createOrder(db, params.id);
+  });
+
+// JSON, CSV or a PDF, as the caller accepts
+export const getReport = router
+  .get('/reports/:id')
+  .response(200, {
+    'application/json': Report,
+    'text/csv': z.string(),
+    'application/pdf': binary(),
+  })
+  .handle(async ({ params, header }, response) => {
+    const report = await loadReport(params.id);
+    if (header('accept')?.includes('text/csv')) {
+      return response.header('content-type', 'text/csv').send(toCsv(report));
+    }
+    return report;
+  });
+```
+
+Every status and content type appears in the document (`binary()` as
+`{ type: 'string', format: 'binary' }`). When the handler answers a declared
+status, its body is checked against that response rather than `.output()`, in
+the content type the handler set or the first listed; one that is not
+`application/json` is emitted as-is (on Lambda, bytes are base64-encoded). A
+content type the response does not list fails with
+`UndeclaredResponseContentType`. Declared events and audits follow `.output()`,
+so they are not sent for another status.
+
+The generated client and `InferOpenApi` type each status and content type, and
+a call resolves to the union of every 2xx JSON body — `Order | Retry`.
+
+### Request and response headers
+
+`.headers()` declares the request headers an endpoint reads. They are
+validated like the query and handed to the handler as `headers`; a missing
+required header, or one its schema refuses, is answered with **400**
+(`RequestHeadersInvalid`), not the 422 a body or query gets. The document
+lists them as `in: header` parameters, and the generated client types them —
+required when one is, beside any other header the caller sends.
+
+Header names are case-insensitive, so incoming names are lower-cased before
+validation and the handler reads them by lower-case name. Give an object
+schema with lower-case keys (an upper-case key throws
+`HeaderNameNotLowerCase`), or the headers one by one under their names:
+
+```typescript
+// constructs/headers.ts — declared once, `$ref`'d from every operation
+import { defineHeader } from '@geekmidas/constructs/rest-api';
+
+export const IdempotencyKey = defineHeader('Idempotency-Key', {
+  schema: z.string().min(1).max(255),
+  description: 'Makes a retried request safe to repeat.',
+});
+export const ETag = defineHeader('ETag', {
+  schema: z.string(),
+  description: 'The version of the resource (RFC 9110 §8.8.3).',
+});
+
+// endpoints/payments.ts
+export const pay = router
+  .post('/payments')
+  .headers({
+    'Idempotency-Key': IdempotencyKey,
+    'if-match': z.string().optional(),
+  })
+  .responseHeaders({
+    ETag,
+    Location: { schema: z.string(), description: 'Where the payment is' },
+    'Retry-After': { schema: z.string().optional() },
+  })
+  .status(201)
+  .handle(async ({ headers }, response) => {
+    const payment = await charge(headers['idempotency-key']);
+    return response
+      .header('ETag', `"${payment.version}"`)
+      .header('Location', `/payments/${payment.id}`)
+      .send(payment);
+  });
+
+// or: .headers(z.object({ 'if-none-match': z.string().optional() }))
+```
+
+`.responseHeaders()` documents the headers a successful response carries,
+under that response's `headers`; the handler still sets them with
+`response.header()`. A header with a schema is required unless the schema
+accepts `undefined`; one without is an optional string; `required` says
+otherwise. A `defineHeader()` is written once — under `components.parameters`
+as a request header, `components.headers` as a response header — and every
+operation refers to it with `$ref`.

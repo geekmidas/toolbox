@@ -51,10 +51,29 @@ export type { Authenticator } from './construct-interface';
 import {
 	type BuiltInSecuritySchemeId,
 	getSecurityScheme,
+	type SecurityScheme,
 } from './endpoints/Authorizer';
+
+export {
+	oauth2AuthorizationCode,
+	oauth2ClientCredentials,
+	type SecurityScheme,
+} from './endpoints/Authorizer';
+
 import { EndpointFactory } from './endpoints/EndpointFactory';
+import type { ErrorFormat } from './endpoints/problems';
+
+/** A header many endpoints read or send, declared once — see `.headers()`. */
+export { defineHeader } from './endpoints/headers';
+
 import { envParserFor } from './endpoints/surfaceEnv';
+import {
+	registerWebhook,
+	type Webhook,
+	type WebhookOptions,
+} from './endpoints/webhooks';
 import type { Telemetry } from './telemetry';
+import type { Topic, TopicEvents } from './topic/Topic';
 
 /** The factory a surface builds its endpoints from. */
 type Endpoints = EndpointFactory<[], '', Logger>;
@@ -106,6 +125,20 @@ export interface RestApiConfig<
 	 * belongs to the target and never to portable code.
 	 */
 	authorizers?: TAuthorizers;
+	/**
+	 * The OpenAPI security schemes behind names in `authorizers` that are not
+	 * built in — an OAuth 2 scheme with its flows and scopes, a session
+	 * cookie. Documentation only, like the built-ins:
+	 *
+	 * ```ts
+	 * securitySchemes: {
+	 *   partners: oauth2ClientCredentials({ tokenUrl, scopes }),
+	 *   session: { type: 'apiKey', in: 'cookie', name: 'session' },
+	 * },
+	 * authorizers: ['session', 'partners'],
+	 * ```
+	 */
+	securitySchemes?: Record<string, SecurityScheme>;
 	/**
 	 * The authorizer applied to an endpoint that names none.
 	 *
@@ -161,6 +194,24 @@ export interface RestApiConfig<
 	 * per stage.
 	 */
 	telemetry?: Telemetry;
+	/**
+	 * Who to contact about this API — its OpenAPI document's `info.contact`,
+	 * and the generated client's `apiInfo`.
+	 */
+	contact?: { name?: string; url?: string; email?: string };
+	/**
+	 * The licence this API is offered under — `info.license`. An SPDX
+	 * `identifier`, or a `url` to the text.
+	 */
+	license?: { name: string; identifier?: string; url?: string };
+	/**
+	 * How a failed request is answered. `'problem'` is RFC 9457 problem
+	 * details — `application/problem+json`, `{ type, title, status, detail,
+	 * code, details }` — which the OpenAPI document describes for each refusal
+	 * an endpoint declares with `.error()`. Unset, the body it always was, so
+	 * an existing client keeps working until its API opts in.
+	 */
+	errors?: ErrorFormat;
 }
 
 /**
@@ -234,8 +285,11 @@ export class RestApi<
 		private readonly config: RestApiConfig<TAuthorizers>,
 		/** Internal: how `.auth()` carries the authenticator into its copy. */
 		private readonly authenticator?: Authenticator,
+		/** Internal: how `.auth()` keeps the webhooks its copy documents. */
+		webhooks: Webhook[] = [],
 	) {
 		const canonical = canonicalId(id as string);
+		this.#webhooks = webhooks;
 
 		this.id = canonical as TName;
 		assertHostLabels({
@@ -267,13 +321,19 @@ export class RestApi<
 
 		this.#endpoints = new EndpointFactory({
 			defaultLogger: this.logger,
+			...(config.securitySchemes
+				? { customSecuritySchemes: config.securitySchemes }
+				: {}),
 			...(config.authorizers
 				? {
 						// With the scheme a built-in name stands for, as the factory's own
 						// `.authorizers()` resolves it. Bare names reached the OpenAPI
 						// document with no scheme, so a guarded endpoint read as public.
 						availableAuthorizers: config.authorizers.map((name) => {
-							const securityScheme = getSecurityScheme(name);
+							const securityScheme = getSecurityScheme(
+								name,
+								config.securitySchemes,
+							);
 							return securityScheme ? { name, securityScheme } : { name };
 						}),
 					}
@@ -286,7 +346,12 @@ export class RestApi<
 			surface: {
 				id: this.id,
 				envParser: this.envParser,
+				...(config.subdomain ? { subdomain: config.subdomain } : {}),
+				...(config.contact ? { contact: config.contact } : {}),
+				...(config.license ? { license: config.license } : {}),
 				...(authenticator ? { auth: authenticator } : {}),
+				webhooks: this.#webhooks,
+				...(config.errors ? { errors: config.errors } : {}),
 			},
 		});
 
@@ -305,6 +370,8 @@ export class RestApi<
 		this.authorize = endpoints.authorize.bind(endpoints);
 		this.rls = endpoints.rls.bind(endpoints);
 		this.route = endpoints.route.bind(endpoints);
+		this.tag = endpoints.tag.bind(endpoints);
+		this.error = endpoints.error.bind(endpoints);
 	}
 
 	/**
@@ -315,6 +382,9 @@ export class RestApi<
 	 * thing as `api.database(db)` with one more word to learn.
 	 */
 	readonly #endpoints: Endpoints;
+
+	/** The surface's webhooks — shared by reference with every endpoint. */
+	readonly #webhooks: Webhook[];
 
 	/** `api.get('/users')` — one route on this surface. */
 	readonly get: Endpoints['get'];
@@ -349,6 +419,9 @@ export class RestApi<
 	readonly authorize: Endpoints['authorize'];
 	readonly rls: Endpoints['rls'];
 	readonly route: Endpoints['route'];
+	readonly tag: Endpoints['tag'];
+	/** A refusal every endpoint on the branch can answer — see `.error()`. */
+	readonly error: Endpoints['error'];
 
 	/**
 	 * What authenticates this surface.
@@ -369,7 +442,35 @@ export class RestApi<
 			this.id as ConstructName<TName>,
 			this.config,
 			construct,
+			this.#webhooks,
 		);
+	}
+
+	/**
+	 * Documents `topic`'s events as webhooks — the signed requests this service
+	 * sends to the URLs its users register. Each event appears under the
+	 * document's `webhooks`, with its `{ type, payload }` body and the
+	 * signature header a receiver checks.
+	 *
+	 * ```ts
+	 * export const api = new RestApi('Api', {
+	 *   path: 'apps/api',
+	 *   defaultAuthorizer: 'none',
+	 * }).webhooks(
+	 *   users,
+	 *   { signature: { header: 'Webhook-Signature' } },
+	 * );
+	 * ```
+	 *
+	 * Documentation only: delivering the events is the service's own
+	 * subscriber's job. Returns the surface, so it chains where it is declared.
+	 */
+	webhooks<TEvents extends TopicEvents>(
+		topic: Topic<string, TEvents>,
+		options?: WebhookOptions<TEvents>,
+	): this {
+		registerWebhook(this.#webhooks, topic, options as WebhookOptions);
+		return this;
 	}
 
 	/**

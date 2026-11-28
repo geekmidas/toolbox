@@ -7,6 +7,7 @@ import type { Logger } from '@geekmidas/logger';
 import { DEFAULT_LOGGER } from '@geekmidas/logger/console';
 import type { Service } from '@geekmidas/services';
 import uniqBy from 'lodash.uniqby';
+import { cloneWith } from '../clone';
 import {
 	type Consumable,
 	idsOf,
@@ -18,13 +19,27 @@ import {
 import type { HttpMethod } from '../types';
 import {
 	type Authorizer,
+	type AuthorizerOptions,
+	assertAuthorizerAvailable,
 	type BuiltInSecuritySchemeId,
 	getSecurityScheme,
 	type SecurityScheme,
 } from './Authorizer';
 import type { ActorExtractor } from './audit';
-import type { AuthorizeFn, EndpointSurface, SessionFn } from './Endpoint';
+import type {
+	AuthorizeFn,
+	EndpointSurface,
+	EndpointTag,
+	SessionFn,
+} from './Endpoint';
+import { withTag } from './Endpoint';
 import { EndpointBuilder } from './EndpointBuilder';
+import {
+	type EndpointErrorOptions,
+	type ErrorStatus,
+	endpointError,
+	withSurfaceError,
+} from './problems';
 import type { RlsConfig } from './rls';
 
 // Re-export SecurityScheme to make the type portable in declaration files
@@ -89,6 +104,7 @@ export class EndpointFactory<
 	private surface: EndpointSurface;
 	private availableAuthorizers: Authorizer[];
 	private defaultAuthorizerName?: TAuthorizers[number];
+	private defaultAuthorizerScopes?: string[];
 	private defaultAuditorStorage:
 		| Service<TAuditStorageServiceName, TAuditStorage>
 		| undefined;
@@ -98,6 +114,8 @@ export class EndpointFactory<
 	private defaultActorExtractor?: ActorExtractor<TServices, TSession, TLogger>;
 	private customSecuritySchemes: TSecuritySchemes;
 	private defaultRlsConfig?: TRlsConfig;
+	/** The tags every endpoint built from it is grouped under, in order. */
+	private defaultTags: EndpointTag[];
 
 	constructor({
 		basePath,
@@ -109,12 +127,14 @@ export class EndpointFactory<
 		defaultConstructs = [] as string[],
 		availableAuthorizers = [],
 		defaultAuthorizerName,
+		defaultAuthorizerScopes,
 		defaultAuditorStorage,
 		defaultDatabaseService,
 		defaultActorExtractor,
 		customSecuritySchemes = {} as TSecuritySchemes,
 		defaultRlsConfig,
 		surface,
+		defaultTags = [],
 	}: EndpointFactoryOptions<
 		TServices,
 		TBasePath,
@@ -141,12 +161,14 @@ export class EndpointFactory<
 		this.defaultSessionExtractor = defaultSessionExtractor;
 		this.availableAuthorizers = availableAuthorizers;
 		this.defaultAuthorizerName = defaultAuthorizerName;
+		this.defaultAuthorizerScopes = defaultAuthorizerScopes;
 		this.defaultAuditorStorage = defaultAuditorStorage;
 		this.defaultDatabaseService = defaultDatabaseService;
 		this.defaultActorExtractor = defaultActorExtractor;
 		this.customSecuritySchemes = customSecuritySchemes;
 		this.defaultRlsConfig = defaultRlsConfig;
 		this.surface = surface;
+		this.defaultTags = defaultTags;
 	}
 
 	static joinPaths<TBasePath extends string, P extends string>(
@@ -229,11 +251,13 @@ export class EndpointFactory<
 			defaultSessionExtractor: this.defaultSessionExtractor,
 			availableAuthorizers: authorizerConfigs,
 			defaultAuthorizerName: this.defaultAuthorizerName,
+			defaultAuthorizerScopes: this.defaultAuthorizerScopes,
 			defaultAuditorStorage: this.defaultAuditorStorage,
 			defaultDatabaseService: this.defaultDatabaseService,
 			defaultActorExtractor: this.defaultActorExtractor,
 			customSecuritySchemes: this.customSecuritySchemes,
 			surface: this.surface,
+			defaultTags: this.defaultTags,
 			defaultRlsConfig: this.defaultRlsConfig,
 		});
 	}
@@ -292,6 +316,7 @@ export class EndpointFactory<
 			defaultSessionExtractor: this.defaultSessionExtractor,
 			availableAuthorizers: this.availableAuthorizers,
 			defaultAuthorizerName: this.defaultAuthorizerName,
+			defaultAuthorizerScopes: this.defaultAuthorizerScopes,
 			defaultAuditorStorage: this.defaultAuditorStorage,
 			defaultDatabaseService: this.defaultDatabaseService,
 			defaultActorExtractor: this.defaultActorExtractor,
@@ -300,6 +325,7 @@ export class EndpointFactory<
 				...schemes,
 			} as TSecuritySchemes & T,
 			surface: this.surface,
+			defaultTags: this.defaultTags,
 			defaultRlsConfig: this.defaultRlsConfig,
 		});
 	}
@@ -313,6 +339,9 @@ export class EndpointFactory<
 	 * - Built-in security scheme names: 'jwt', 'bearer', 'apiKey', 'oauth2', 'oidc'
 	 * - Custom security scheme names defined via `.securitySchemes()`
 	 * - 'none' to disable authorization
+	 *
+	 * `options.scopes` are the scopes every endpoint built from it requires of
+	 * that authorizer, unless the endpoint names its own.
 	 */
 	authorizer(
 		name:
@@ -320,6 +349,7 @@ export class EndpointFactory<
 			| keyof TSecuritySchemes
 			| TAuthorizers[number]
 			| 'none',
+		options?: AuthorizerOptions,
 	): EndpointFactory<
 		TServices,
 		TBasePath,
@@ -335,18 +365,8 @@ export class EndpointFactory<
 		TRlsConfig
 	> {
 		// Validate that the authorizer exists in available authorizers (if authorizers() was called)
-		if (name !== 'none' && this.availableAuthorizers.length > 0) {
-			const authorizerExists = this.availableAuthorizers.some(
-				(a) => a.name === name,
-			);
-			if (!authorizerExists) {
-				const available = this.availableAuthorizers
-					.map((a) => a.name)
-					.join(', ');
-				throw new Error(
-					`Authorizer "${name as string}" not found in available authorizers: ${available}`,
-				);
-			}
+		if (name !== 'none') {
+			assertAuthorizerAvailable(name as string, this.availableAuthorizers);
 		}
 
 		return new EndpointFactory<
@@ -372,11 +392,14 @@ export class EndpointFactory<
 			availableAuthorizers: this.availableAuthorizers,
 			defaultAuthorizerName:
 				name === 'none' ? undefined : (name as TAuthorizers[number]),
+			defaultAuthorizerScopes:
+				name === 'none' || !options?.scopes ? undefined : [...options.scopes],
 			defaultAuditorStorage: this.defaultAuditorStorage,
 			defaultDatabaseService: this.defaultDatabaseService,
 			defaultActorExtractor: this.defaultActorExtractor,
 			customSecuritySchemes: this.customSecuritySchemes,
 			surface: this.surface,
+			defaultTags: this.defaultTags,
 			defaultRlsConfig: this.defaultRlsConfig,
 		});
 	}
@@ -421,11 +444,13 @@ export class EndpointFactory<
 			defaultSessionExtractor: this.defaultSessionExtractor,
 			availableAuthorizers: this.availableAuthorizers,
 			defaultAuthorizerName: this.defaultAuthorizerName,
+			defaultAuthorizerScopes: this.defaultAuthorizerScopes,
 			defaultAuditorStorage: this.defaultAuditorStorage,
 			defaultDatabaseService: this.defaultDatabaseService,
 			defaultActorExtractor: this.defaultActorExtractor,
 			customSecuritySchemes: this.customSecuritySchemes,
 			surface: this.surface,
+			defaultTags: this.defaultTags,
 			defaultRlsConfig: this.defaultRlsConfig,
 		});
 	}
@@ -469,11 +494,13 @@ export class EndpointFactory<
 			defaultSessionExtractor: this.defaultSessionExtractor,
 			availableAuthorizers: this.availableAuthorizers,
 			defaultAuthorizerName: this.defaultAuthorizerName,
+			defaultAuthorizerScopes: this.defaultAuthorizerScopes,
 			defaultAuditorStorage: this.defaultAuditorStorage,
 			defaultDatabaseService: this.defaultDatabaseService,
 			defaultActorExtractor: this.defaultActorExtractor,
 			customSecuritySchemes: this.customSecuritySchemes,
 			surface: this.surface,
+			defaultTags: this.defaultTags,
 			defaultRlsConfig: this.defaultRlsConfig,
 		});
 	}
@@ -577,6 +604,7 @@ export class EndpointFactory<
 				| undefined,
 			availableAuthorizers: this.availableAuthorizers,
 			defaultAuthorizerName: this.defaultAuthorizerName,
+			defaultAuthorizerScopes: this.defaultAuthorizerScopes,
 			defaultAuditorStorage: this.defaultAuditorStorage,
 			defaultDatabaseService: this.defaultDatabaseService,
 			defaultActorExtractor: this.defaultActorExtractor as unknown as
@@ -584,6 +612,7 @@ export class EndpointFactory<
 				| undefined,
 			customSecuritySchemes: this.customSecuritySchemes,
 			surface: this.surface,
+			defaultTags: this.defaultTags,
 			defaultRlsConfig: this.defaultRlsConfig as unknown as
 				| RlsConfig<[...S, ...TServices], TSession, TLogger>
 				| undefined,
@@ -637,6 +666,7 @@ export class EndpointFactory<
 			>,
 			availableAuthorizers: this.availableAuthorizers,
 			defaultAuthorizerName: this.defaultAuthorizerName,
+			defaultAuthorizerScopes: this.defaultAuthorizerScopes,
 			defaultAuditorStorage: this.defaultAuditorStorage,
 			defaultDatabaseService: this.defaultDatabaseService,
 			defaultActorExtractor: this
@@ -647,6 +677,7 @@ export class EndpointFactory<
 			>,
 			customSecuritySchemes: this.customSecuritySchemes,
 			surface: this.surface,
+			defaultTags: this.defaultTags,
 			defaultRlsConfig: this.defaultRlsConfig as unknown as
 				| RlsConfig<TServices, TSession, L>
 				| undefined,
@@ -695,6 +726,7 @@ export class EndpointFactory<
 			defaultSessionExtractor: session,
 			availableAuthorizers: this.availableAuthorizers,
 			defaultAuthorizerName: this.defaultAuthorizerName,
+			defaultAuthorizerScopes: this.defaultAuthorizerScopes,
 			defaultAuditorStorage: this.defaultAuditorStorage,
 			defaultDatabaseService: this.defaultDatabaseService,
 			defaultActorExtractor: this
@@ -705,6 +737,7 @@ export class EndpointFactory<
 			>,
 			customSecuritySchemes: this.customSecuritySchemes,
 			surface: this.surface,
+			defaultTags: this.defaultTags,
 			defaultRlsConfig: this.defaultRlsConfig as unknown as
 				| RlsConfig<TServices, T, TLogger>
 				| undefined,
@@ -767,10 +800,12 @@ export class EndpointFactory<
 				| undefined,
 			availableAuthorizers: this.availableAuthorizers,
 			defaultAuthorizerName: this.defaultAuthorizerName,
+			defaultAuthorizerScopes: this.defaultAuthorizerScopes,
 			defaultAuditorStorage: this.defaultAuditorStorage,
 			defaultDatabaseService: service,
 			customSecuritySchemes: this.customSecuritySchemes,
 			surface: this.surface,
+			defaultTags: this.defaultTags,
 			defaultRlsConfig: this.defaultRlsConfig,
 		});
 	}
@@ -818,6 +853,7 @@ export class EndpointFactory<
 			defaultSessionExtractor: this.defaultSessionExtractor,
 			availableAuthorizers: this.availableAuthorizers,
 			defaultAuthorizerName: this.defaultAuthorizerName,
+			defaultAuthorizerScopes: this.defaultAuthorizerScopes,
 			defaultAuditorStorage: storage,
 			defaultDatabaseService: this.defaultDatabaseService,
 			defaultActorExtractor: this
@@ -828,6 +864,7 @@ export class EndpointFactory<
 			>,
 			customSecuritySchemes: this.customSecuritySchemes,
 			surface: this.surface,
+			defaultTags: this.defaultTags,
 			defaultRlsConfig: this.defaultRlsConfig,
 		});
 	}
@@ -874,11 +911,13 @@ export class EndpointFactory<
 			defaultSessionExtractor: this.defaultSessionExtractor,
 			availableAuthorizers: this.availableAuthorizers,
 			defaultAuthorizerName: this.defaultAuthorizerName,
+			defaultAuthorizerScopes: this.defaultAuthorizerScopes,
 			defaultAuditorStorage: this.defaultAuditorStorage,
 			defaultDatabaseService: this.defaultDatabaseService,
 			defaultActorExtractor: extractor,
 			customSecuritySchemes: this.customSecuritySchemes,
 			surface: this.surface,
+			defaultTags: this.defaultTags,
 			defaultRlsConfig: this.defaultRlsConfig,
 		});
 	}
@@ -939,12 +978,69 @@ export class EndpointFactory<
 			defaultSessionExtractor: this.defaultSessionExtractor,
 			availableAuthorizers: this.availableAuthorizers,
 			defaultAuthorizerName: this.defaultAuthorizerName,
+			defaultAuthorizerScopes: this.defaultAuthorizerScopes,
 			defaultAuditorStorage: this.defaultAuditorStorage,
 			defaultDatabaseService: this.defaultDatabaseService,
 			defaultActorExtractor: this.defaultActorExtractor,
 			customSecuritySchemes: this.customSecuritySchemes,
 			surface: this.surface,
+			defaultTags: this.defaultTags,
 			defaultRlsConfig: config,
+		});
+	}
+
+	/**
+	 * Group every endpoint built from here under a tag — a section of the API
+	 * reference, with the description written once, where the group is.
+	 * A branch like `.database()`: it chains, and a second `.tag()` adds a
+	 * second tag. Tags are listed in the document in the order first met.
+	 *
+	 * @example
+	 * ```typescript
+	 * export const payments = api.tag('payments', 'Taking money');
+	 * export const charge = payments.post('/charges').handle(…);
+	 * ```
+	 */
+	tag(name: string, description?: string): this {
+		return new EndpointFactory({
+			defaultServices: this.defaultServices,
+			defaultConstructs: this.defaultConstructs,
+			basePath: this.basePath,
+			defaultAuthorizeFn: this.defaultAuthorizeFn,
+			defaultLogger: this.defaultLogger,
+			defaultSessionExtractor: this.defaultSessionExtractor,
+			availableAuthorizers: this.availableAuthorizers,
+			defaultAuthorizerName: this.defaultAuthorizerName,
+			defaultAuditorStorage: this.defaultAuditorStorage,
+			defaultDatabaseService: this.defaultDatabaseService,
+			defaultActorExtractor: this.defaultActorExtractor,
+			customSecuritySchemes: this.customSecuritySchemes,
+			surface: this.surface,
+			defaultTags: withTag(this.defaultTags, { name, description }),
+			defaultRlsConfig: this.defaultRlsConfig,
+		}) as unknown as this;
+	}
+
+	/**
+	 * A refusal every endpoint built from this branch can answer — a 401 the
+	 * branch's session check sends. A new factory, like every branch; each
+	 * endpoint adds its own with `.error()`.
+	 *
+	 * @example
+	 * ```ts
+	 * const router = api.session(readSession).error(401, 'SIGNED_OUT');
+	 * ```
+	 */
+	error(
+		status: ErrorStatus,
+		code: string,
+		options?: EndpointErrorOptions,
+	): this {
+		return cloneWith(this, {
+			surface: withSurfaceError(
+				this.surface,
+				endpointError(status, code, options),
+			),
 		});
 	}
 
@@ -1001,6 +1097,7 @@ export class EndpointFactory<
 		}
 
 		builder._surface = this.surface;
+		if (this.defaultTags.length) builder._tagList = [...this.defaultTags];
 
 		if (this.defaultSessionExtractor) {
 			builder._getSession = this.defaultSessionExtractor as SessionFn<
@@ -1014,6 +1111,14 @@ export class EndpointFactory<
 		builder._availableAuthorizers = this.availableAuthorizers;
 		if (this.defaultAuthorizerName) {
 			builder._authorizerName = this.defaultAuthorizerName;
+			if (this.defaultAuthorizerScopes) {
+				builder._security = [
+					{
+						name: this.defaultAuthorizerName as string,
+						scopes: this.defaultAuthorizerScopes,
+					},
+				];
+			}
 		}
 
 		// Set auditor storage if configured
@@ -1127,11 +1232,15 @@ export interface EndpointFactoryOptions<
 	defaultSessionExtractor?: SessionFn<TServices, TLogger, TSession, TDatabase>;
 	availableAuthorizers?: Authorizer[];
 	defaultAuthorizerName?: TAuthorizers[number];
+	/** The scopes `defaultAuthorizerName` must grant, from `.authorizer(name, { scopes })`. */
+	defaultAuthorizerScopes?: string[];
 	defaultAuditorStorage?: Service<TAuditStorageServiceName, TAuditStorage>;
 	defaultDatabaseService?: Service<TDatabaseServiceName, TDatabase>;
 	defaultActorExtractor?: ActorExtractor<TServices, TSession, TLogger>;
 	customSecuritySchemes?: TSecuritySchemes;
 	defaultRlsConfig?: TRlsConfig;
+	/** Tags from `.tag()`, carried to every endpoint it builds. */
+	defaultTags?: EndpointTag[];
 	/**
 	 * The surface this factory belongs to.
 	 *

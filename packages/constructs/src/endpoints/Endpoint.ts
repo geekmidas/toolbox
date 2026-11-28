@@ -25,10 +25,28 @@ import { Function, type FunctionHandler } from '../functions';
 import type { TopicEvent } from '../publisher';
 import type { EndpointTelemetry } from '../telemetry';
 import type { HttpMethod, LowerHttpMethod, RemoveUndefined } from '../types';
-import type { Authorizer } from './Authorizer';
+import type { Authorizer, SecurityRequirement } from './Authorizer';
 import type { ActorExtractor, MappedAudit } from './audit';
+import { buildOpenApiCallbacks, type EndpointCallback } from './callbacks';
+import {
+	documentRequestHeaders,
+	documentResponseHeaders,
+	type ResponseHeaders,
+} from './headers';
+import {
+	addErrorResponses,
+	type EndpointError,
+	type ErrorFormat,
+} from './problems';
+import {
+	type DeclaredResponse,
+	declaredContentType,
+	documentDeclaredResponses,
+	findDeclaredResponse,
+} from './responses';
 import type { RlsConfig } from './rls';
 import { type SessionAuth, sessionAuth } from './sessionAuth';
+import { type Webhook, withWebhooks } from './webhooks';
 
 /**
  * Represents an HTTP endpoint that can handle requests with type-safe input/output validation,
@@ -108,6 +126,16 @@ export class Endpoint<
 	description?: string;
 	/** Optional tags for OpenAPI documentation */
 	tags?: string[];
+	/** What each of its tags is, where one was described — `.tag(name, description)` */
+	tagDescriptions?: Record<string, string>;
+	/** A one-line summary of what it does, for the API reference */
+	summary?: string;
+	/** Whether callers should stop using it — `deprecated: true` in the document */
+	deprecated?: boolean;
+	/** Vendor extensions written onto its operation — `x-…` keys only */
+	extensions?: OperationExtensions;
+	/** The headers its successful response carries — `.responseHeaders()` */
+	responseHeaders?: ResponseHeaders;
 	/** The HTTP status code to return (default: 200) */
 	public readonly status: EndpointStatus;
 	/**
@@ -116,12 +144,20 @@ export class Endpoint<
 	 * Content-Type header instead of JSON-serializing.
 	 */
 	public readonly responseType: string;
+	/**
+	 * The responses `.response()` declared beside the default one — each
+	 * documented, typed by the client, and checked when the handler answers
+	 * its status.
+	 */
+	public readonly declaredResponses: DeclaredResponse[] = [];
 
 	/**
 	 * This route's telemetry — `.telemetry({ ignore, attributes })` — read by
 	 * the build, which hands it to the request middleware.
 	 */
 	public telemetry?: EndpointTelemetry;
+	/** The refusals it declared with `.error()`, beside its branch's. */
+	public readonly errors: EndpointError[] = [];
 	/** Default headers to apply to all responses */
 	public readonly defaultHeaders: Record<string, string> = {};
 	/** Function to extract session data from the request context */
@@ -146,6 +182,12 @@ export class Endpoint<
 	public rateLimit?: RateLimitConfig;
 	/** Optional authorizer for this endpoint */
 	public authorizer?: Authorizer;
+	/**
+	 * Every way to call it: each authorizer it accepts, with the scopes that
+	 * one must grant. Any one is enough. `authorizer` is the first, which is
+	 * what a gateway enforces; this is what the document describes.
+	 */
+	public security: SecurityRequirement[] = [];
 	/** Optional actor extractor for audit records */
 	public actorExtractor?: ActorExtractor<TServices, TSession, TLogger>;
 	/** Declarative audit definitions */
@@ -156,6 +198,8 @@ export class Endpoint<
 	public rlsConfig?: RlsConfig<TServices, TSession, TLogger>;
 	/** Whether to bypass RLS for this endpoint */
 	public rlsBypass?: boolean;
+	/** Requests it makes back to its caller — `.callback(name, …)`. */
+	public callbacks?: Record<string, EndpointCallback>;
 	/** The endpoint handler function */
 	private endpointFn!: EndpointHandler<
 		TInput,
@@ -190,7 +234,54 @@ export class Endpoint<
 		endpoints: Endpoint<any, any, any, any, any, any>[],
 		options?: OpenApiSchemaOptions,
 	) {
-		return buildOpenApiSchema(endpoints, options);
+		const doc = await buildOpenApiSchema(endpoints, {
+			...Endpoint.surfaceInfo(endpoints),
+			tags: Endpoint.documentTags(endpoints),
+			...definedOnly(options ?? {}),
+		});
+		// Webhooks are the surfaces', which the endpoints carry.
+		return withWebhooks(doc, endpoints);
+	}
+
+	/**
+	 * What the endpoints' surface says about the API: titled after it, with
+	 * the contact and licence it was given. Nothing when the endpoints come
+	 * from several surfaces, which no one document's `info` can describe.
+	 */
+	static surfaceInfo(
+		endpoints: Endpoint<any, any, any, any, any, any>[],
+	): OpenApiSchemaOptions {
+		const surfaces = new Map(
+			endpoints
+				.map((endpoint) => endpoint.surface)
+				.filter(Boolean)
+				.map((surface) => [surface.id, surface] as const),
+		);
+		if (surfaces.size !== 1) return {};
+
+		const [surface] = surfaces.values();
+		return {
+			title: surface!.id,
+			...(surface!.contact ? { contact: surface!.contact } : {}),
+			...(surface!.license ? { license: surface!.license } : {}),
+		};
+	}
+
+	/**
+	 * The document's tags, in the order the endpoints first name them, each
+	 * with the description any endpoint gave it.
+	 */
+	static documentTags(
+		endpoints: Endpoint<any, any, any, any, any, any>[],
+	): EndpointTag[] {
+		let tags: EndpointTag[] = [];
+		for (const endpoint of endpoints) {
+			for (const name of endpoint.tags ?? []) {
+				const description = endpoint.tagDescriptions?.[name];
+				tags = withTag(tags, description ? { name, description } : { name });
+			}
+		}
+		return tags;
 	}
 
 	/**
@@ -230,6 +321,59 @@ export class Endpoint<
 		return this.parseInput(body, 'body') as Promise<
 			InferStandardSchema<TInput['body']>
 		>;
+	}
+
+	private bodyOptional?: Promise<boolean>;
+
+	/**
+	 * Whether the request may leave its body out — the `.body()` schema accepts
+	 * `undefined`, as `z.object({…}).optional()` does. Asked of the schema
+	 * itself, so an optional body is declared once, the way the handler reads
+	 * it, and the document and the adaptors agree with the type.
+	 */
+	isBodyOptional(): Promise<boolean> {
+		const schema = this.input?.body as StandardSchemaV1 | undefined;
+		if (!schema) return Promise.resolve(true);
+		this.bodyOptional ??= Promise.resolve(
+			schema['~standard'].validate(undefined),
+		).then(
+			(result) => !result.issues,
+			() => false,
+		);
+		return this.bodyOptional;
+	}
+
+	/** The response `.response()` declared for `status` (default: `.status()`). */
+	responseFor(status?: number): DeclaredResponse | undefined {
+		return findDeclaredResponse(this.declaredResponses, status ?? this.status);
+	}
+
+	/**
+	 * Whether `status` is a declared response other than the default one. Its
+	 * body is not `.output()`'s, so what is derived from the output — declared
+	 * events and audits — is not sent, as for a redirect.
+	 */
+	isAlternateStatus(status: number | undefined): boolean {
+		return (
+			status !== undefined &&
+			status !== this.status &&
+			this.responseFor(status) !== undefined
+		);
+	}
+
+	/**
+	 * The content type a response with `status` is emitted in: a declared
+	 * response's (the one the handler set, or the first it lists), otherwise
+	 * `.responseType()`.
+	 */
+	contentTypeFor(
+		status: number | undefined,
+		headers: Record<string, string> | undefined,
+	): string {
+		const declared = this.responseFor(status);
+		return declared
+			? declaredContentType(declared, headers)
+			: this.responseType;
 	}
 
 	static isSuccessStatus(status: number): boolean {
@@ -377,6 +521,10 @@ export class Endpoint<
 				input[key] = (ctx as Record<string, unknown>)[key];
 			}
 		}
+		// Only when declared: an event's own `headers` are the raw ones.
+		if (this.input?.headers && 'headers' in ctx) {
+			input.headers = (ctx as Record<string, unknown>).headers;
+		}
 
 		return input as InferComposableStandardSchema<TInput>;
 	}
@@ -484,9 +632,12 @@ export class Endpoint<
 		// 201, not as the 200 every endpoint used to claim.
 		const status = String(this.status);
 		const operation: OpenAPIV3_1.OperationObject = {
+			...this.extensions,
 			operationId: this.operationId,
+			...(this.summary && { summary: this.summary }),
 			...(this.description && { description: this.description }),
 			...(this.tags && this.tags.length > 0 && { tags: this.tags }),
+			...(this.deprecated && { deprecated: true }),
 			responses: {
 				[status]: {
 					description: 'Successful response',
@@ -496,14 +647,23 @@ export class Endpoint<
 
 		// What protects it. Without this every endpoint read as public in the
 		// document, including the ones an authorizer guards.
-		const scheme = this.authorizer?.securityScheme;
-		if (this.authorizer && scheme && componentCollector) {
-			componentCollector.addSecurityScheme(
-				this.authorizer.name,
-				scheme as OpenAPIV3_1.SecuritySchemeObject,
-			);
-			operation.security = [{ [this.authorizer.name]: [] }];
+		// Each alternative is its own requirement object, so any one will do,
+		// and each carries the scopes that authorizer must grant.
+		const security = this.security.filter((s) => s.authorizer.securityScheme);
+		if (componentCollector && security.length > 0) {
+			for (const { authorizer } of security) {
+				componentCollector.addSecurityScheme(
+					authorizer.name,
+					authorizer.securityScheme as OpenAPIV3_1.SecuritySchemeObject,
+				);
+			}
+			operation.security = security.map(({ authorizer, scopes }) => ({
+				[authorizer.name]: scopes,
+			}));
 		}
+
+		// Every refusal it can answer, beside its success.
+		await addErrorResponses(operation, this, componentCollector);
 
 		// Add response schema
 		if (this.outputSchema) {
@@ -517,6 +677,11 @@ export class Endpoint<
 				};
 			}
 		}
+		await documentDeclaredResponses(
+			operation,
+			this.declaredResponses,
+			componentCollector,
+		);
 
 		// Separate path and query parameters
 		const pathParameters: OpenAPIV3_1.ParameterObject[] = [];
@@ -538,7 +703,7 @@ export class Endpoint<
 				);
 				if (bodySchema) {
 					operation.requestBody = {
-						required: true,
+						required: !(await this.isBodyOptional()),
 						content: {
 							'application/json': {
 								schema: bodySchema,
@@ -598,6 +763,34 @@ export class Endpoint<
 			operation.parameters = queryParameters;
 		}
 
+		// The requests it makes back to a URL its caller gave it.
+		if (this.callbacks && Object.keys(this.callbacks).length > 0) {
+			operation.callbacks = await buildOpenApiCallbacks(
+				this.callbacks,
+				componentCollector,
+			);
+		}
+
+		// Request headers — `.headers()` — and the response's — `.responseHeaders()`
+		const headerParameters = await documentRequestHeaders(
+			this.input?.headers,
+			componentCollector,
+		);
+		if (headerParameters.length > 0) {
+			operation.parameters = [
+				...(operation.parameters ?? []),
+				...headerParameters,
+			];
+		}
+		const responseHeaders = await documentResponseHeaders(
+			this.responseHeaders,
+			componentCollector,
+		);
+		if (responseHeaders) {
+			(operation.responses![status] as OpenAPIV3_1.ResponseObject).headers =
+				responseHeaders;
+		}
+
 		// Build the route object with path parameters at the route level
 		const routeObject: any = {};
 		if (pathParameters.length > 0) {
@@ -634,6 +827,9 @@ export class Endpoint<
 		route,
 		description,
 		tags,
+		summary,
+		deprecated,
+		extensions,
 		input,
 		logger,
 		output: outputSchema,
@@ -647,6 +843,7 @@ export class Endpoint<
 		status = SuccessStatus.OK,
 		events,
 		authorizer,
+		security,
 		surface,
 		auditorStorageService,
 		actorExtractor,
@@ -656,6 +853,9 @@ export class Endpoint<
 		rlsBypass,
 		responseType,
 		telemetry,
+		errors,
+		responses,
+		responseHeaders,
 	}: EndpointOptions<
 		TRoute,
 		TMethod,
@@ -689,11 +889,28 @@ export class Endpoint<
 		this.route = route;
 		this.method = method;
 		this.description = description;
-		this.tags = tags;
+		if (tags) {
+			this.tags = tags.map((tag) => (typeof tag === 'string' ? tag : tag.name));
+			const described = tags.filter(
+				(tag): tag is EndpointTag & { description: string } =>
+					typeof tag !== 'string' && Boolean(tag.description),
+			);
+			if (described.length) {
+				this.tagDescriptions = Object.fromEntries(
+					described.map((tag) => [tag.name, tag.description]),
+				);
+			}
+		}
+		if (summary) this.summary = summary;
+		if (deprecated) this.deprecated = deprecated;
+		if (extensions) this.extensions = extensions;
 		this.status = status;
 		this.responseType = responseType ?? 'application/json';
 		this.endpointFn = fn;
 		if (telemetry) this.telemetry = telemetry;
+		if (errors) this.errors = errors;
+		if (responses) this.declaredResponses = responses;
+		if (responseHeaders) this.responseHeaders = responseHeaders;
 
 		if (getSession) {
 			this.hasSession = true;
@@ -715,6 +932,9 @@ export class Endpoint<
 		if (authorizer) {
 			this.authorizer = authorizer;
 		}
+		// Given just an authorizer, that is the one way to call it.
+		this.security =
+			security ?? (authorizer ? [{ authorizer, scopes: [] }] : []);
 
 		this.surface = surface;
 
@@ -738,6 +958,13 @@ export class Endpoint<
 			this.rlsBypass = rlsBypass;
 		}
 	}
+}
+
+/** `options` without the keys it sets to `undefined`, so they do not erase. */
+function definedOnly<T extends object>(options: T): Partial<T> {
+	return Object.fromEntries(
+		Object.entries(options).filter(([, value]) => value !== undefined),
+	) as Partial<T>;
 }
 
 /**
@@ -799,6 +1026,47 @@ export interface EndpointSurface {
 	 * `RestApi.auth()`, which session callbacks read from as `auth`.
 	 */
 	auth?: Authenticator;
+	/**
+	 * The label it answers on under a stage's domain, when it is not its id
+	 * kebab-cased — what its document's `servers` are derived from.
+	 */
+	subdomain?: string;
+	/** Who to contact about the API — its document's `info.contact`. */
+	contact?: OpenAPIV3_1.ContactObject;
+	/** The licence the API is offered under — its document's `info.license`. */
+	license?: OpenAPIV3_1.LicenseObject;
+	/**
+	 * Topics whose events this surface delivers to its users' URLs —
+	 * `api.webhooks(topic, …)`. One list shared by every endpoint the surface
+	 * built, so the document finds it from any of them.
+	 */
+	webhooks?: Webhook[];
+	/**
+	 * How a failed request is answered: `'problem'` for RFC 9457 problem
+	 * details. Unset, the body it always was.
+	 */
+	errors?: ErrorFormat;
+	/** The refusals a branch's `.error()` declared for every endpoint on it. */
+	refusals?: readonly EndpointError[];
+}
+
+/** A tag an endpoint is grouped under, and what the group is. */
+export interface EndpointTag {
+	name: string;
+	description?: string;
+}
+
+/**
+ * `tags` with `tag` added — once: naming a tag again keeps its place, and
+ * takes a description it did not have.
+ */
+export function withTag(tags: EndpointTag[], tag: EndpointTag): EndpointTag[] {
+	const existing = tags.find((t) => t.name === tag.name);
+	if (!existing) {
+		return [...tags, tag.description ? tag : { name: tag.name }];
+	}
+	if (!tag.description || existing.description) return tags;
+	return tags.map((t) => (t.name === tag.name ? { ...t, ...tag } : t));
 }
 
 /**
@@ -851,8 +1119,14 @@ export interface EndpointOptions<
 		| undefined;
 	/** Optional description for documentation */
 	description: string | undefined;
-	/** Optional tags for OpenAPI documentation */
-	tags?: string[];
+	/** Its tags — names, or names with what each is */
+	tags?: (string | EndpointTag)[];
+	/** A one-line summary for the API reference */
+	summary?: string;
+	/** Whether the endpoint is deprecated */
+	deprecated?: boolean;
+	/** Vendor extensions on its operation */
+	extensions?: OperationExtensions;
 	/** Optional execution timeout in milliseconds */
 	timeout: number | undefined;
 	/** Optional memory size in MB for serverless deployments */
@@ -882,6 +1156,11 @@ export interface EndpointOptions<
 	events?: TopicEvent[];
 	/** Optional authorizer configuration */
 	authorizer?: Authorizer;
+	/**
+	 * Every authorizer it accepts, with its scopes. Absent, `authorizer` with
+	 * no scopes. Its first entry should be `authorizer`.
+	 */
+	security?: SecurityRequirement[];
 	/** The surface this endpoint was built from. Every endpoint has one. */
 	surface: EndpointSurface;
 	/**
@@ -898,6 +1177,8 @@ export interface EndpointOptions<
 	rlsConfig?: RlsConfig<TServices, TSession, TLogger>;
 	/** Whether to bypass RLS for this endpoint */
 	rlsBypass?: boolean;
+	/** The refusals it declared with `.error()`. */
+	errors?: EndpointError[];
 	/**
 	 * Response content type (e.g. `'application/json'`, `'text/html'`).
 	 * Defaults to `'application/json'` when omitted.
@@ -905,7 +1186,18 @@ export interface EndpointOptions<
 	responseType?: string;
 	/** This route's telemetry — `.telemetry({ ignore, attributes })`. */
 	telemetry?: EndpointTelemetry;
+	/** The responses `.response()` declared beside the default one. */
+	responses?: DeclaredResponse[];
+	/** The headers its successful response carries. */
+	responseHeaders?: ResponseHeaders;
 }
+
+/**
+ * Vendor extensions on an operation — `x-codegen-request-body-name`,
+ * `x-internal`, a gateway's own keys. Only `x-` keys: anything else would
+ * be a field OpenAPI defines, written from the endpoint already.
+ */
+export type OperationExtensions = Record<`x-${string}`, unknown>;
 
 /**
  * Defines the possible input schema types for an endpoint.
@@ -918,6 +1210,8 @@ export type EndpointSchemas = Partial<{
 	query: StandardSchemaV1;
 	/** Schema for request body (POST, PUT, PATCH) */
 	body: StandardSchemaV1;
+	/** Schema for request headers, keyed by lower-case name — `.headers()` */
+	headers: StandardSchemaV1;
 }>;
 
 export type AuthorizeContext<

@@ -705,6 +705,7 @@ export async function buildApp(input: BuildAppInput): Promise<AppBuildOutput> {
 		// names, so there is no choice to read here.
 		emailBackend: DEFAULT_EMAIL,
 		markOptional: input.markOptional ?? false,
+		...(input.workspace?.domains ? { domains: input.workspace.domains } : {}),
 	};
 
 	// Initialize generators
@@ -1003,6 +1004,7 @@ export async function buildApp(input: BuildAppInput): Promise<AppBuildOutput> {
 		{
 			openapi: config.openapi,
 			root: workspaceRoot,
+			...(input.workspace?.domains ? { domains: input.workspace.domains } : {}),
 			...(derived.surface
 				? clientTelemetry({
 						manifest: declared,

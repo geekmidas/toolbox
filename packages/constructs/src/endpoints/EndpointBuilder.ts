@@ -24,21 +24,55 @@ import type { EventFor } from '../publisher';
 import type { EndpointTelemetry } from '../telemetry';
 import type { Topic } from '../topic/Topic';
 import type { HttpMethod } from '../types';
-import type { Authorizer, SecurityScheme } from './Authorizer';
-import { getSecurityScheme } from './Authorizer';
+import type {
+	Authorizer,
+	AuthorizerOptions,
+	AuthorizerRequirement,
+	SecurityScheme,
+} from './Authorizer';
+import {
+	assertAuthorizerAvailable,
+	NoAuthorizersGiven,
+	normalizeAuthorizerRequirement,
+	resolveAuthorizer,
+} from './Authorizer';
 import type { ActorExtractor, MappedAudit } from './audit';
+import { CallbackDeclaredTwice, type EndpointCallback } from './callbacks';
 import type {
 	AuthorizeFn,
 	EndpointContext,
 	EndpointHandler,
 	EndpointStatus,
+	EndpointTag,
+	OperationExtensions,
 	SessionFn,
 } from './Endpoint';
 import {
 	Endpoint,
 	type EndpointSchemas,
 	type EndpointSurface,
+	withTag,
 } from './Endpoint';
+import {
+	type RequestHeadersInput,
+	type RequestHeadersSchema,
+	type ResponseHeaders,
+	requestHeadersSchema,
+} from './headers';
+import {
+	type EndpointError,
+	type EndpointErrorOptions,
+	type ErrorStatus,
+	endpointError,
+	mergeEndpointErrors,
+} from './problems';
+import {
+	type DeclaredResponse,
+	declareResponse,
+	type ResponseContent,
+	type ResponseOptions,
+	type WithResponse,
+} from './responses';
 import type { RlsBypass, RlsConfig } from './rls';
 import { RLS_BYPASS } from './rls';
 import {
@@ -48,6 +82,19 @@ import {
 	type UploadOptions,
 	type UploadPost,
 } from './upload';
+
+/**
+ * A key given to `.extensions()` that is not a vendor extension. OpenAPI
+ * reserves every other key on an operation for fields it defines.
+ */
+export class NotAnExtension extends Error {
+	constructor(readonly key: string) {
+		super(
+			`'${key}' is not a vendor extension. Name it 'x-${key}': only x- keys can be added to an operation, and the fields OpenAPI defines are written from the endpoint — .summary(), .description(), .tags(), .deprecated().`,
+		);
+		this.name = 'NotAnExtension';
+	}
+}
 
 export class EndpointBuilder<
 	TRoute extends string,
@@ -79,7 +126,11 @@ export class EndpointBuilder<
 	protected schemas: TInput = {} as TInput;
 	protected _description?: string;
 	protected _status?: EndpointStatus;
-	protected _tags?: string[];
+	/** Its tags, in order, each with the description it was given. */
+	_tagList: EndpointTag[] = [];
+	protected _summary?: string;
+	protected _deprecated?: boolean;
+	protected _extensions?: OperationExtensions;
 	protected _memorySize?: number;
 	protected _responseType: string = 'application/json';
 	/** Set by a factory's `.session()`; absent, the endpoint reads none. */
@@ -89,6 +140,12 @@ export class EndpointBuilder<
 	_rateLimit?: RateLimitConfig;
 	_availableAuthorizers: Authorizer[] = [];
 	_authorizerName?: TAuthorizers[number];
+	/**
+	 * Every authorizer the endpoint accepts, with scopes — set by
+	 * `.authorizer(name, { scopes })`, `.authorizers([...])` or a factory
+	 * default with scopes. Absent, `_authorizerName` alone with none.
+	 */
+	_security?: { name: string; scopes: string[] }[];
 	_actorExtractor?: ActorExtractor<TServices, TSession, TLogger>;
 	_audits: MappedAudit<TAuditAction, OutSchema>[] = [];
 	/**
@@ -102,6 +159,10 @@ export class EndpointBuilder<
 	_rlsConfig?: RlsConfig<TServices, TSession, TLogger>;
 	_rlsBypass?: boolean;
 	_telemetry?: EndpointTelemetry;
+	_callbacks?: Record<string, EndpointCallback>;
+	_errors: EndpointError[] = [];
+	_responses: DeclaredResponse[] = [];
+	_responseHeaders?: ResponseHeaders;
 
 	constructor(
 		readonly route: TRoute,
@@ -185,8 +246,110 @@ export class EndpointBuilder<
 		>;
 	}
 
+	/**
+	 * Group the endpoint under a tag — a section of the API reference. Adds
+	 * to the tags it has, including those of the factory it came from
+	 * (`api.tag(…)`), so it chains.
+	 */
+	tag(name: string, description?: string): this {
+		return cloneWith(this, {
+			_tagList: withTag(this._tagList, { name, description }),
+		});
+	}
+
+	/** Several tags at once, by name — `.tag()` for each. */
 	tags(tags: string[]): this {
-		return cloneWith(this, { _tags: tags });
+		return cloneWith(this, {
+			_tagList: tags.reduce(
+				(list, name) => withTag(list, { name }),
+				this._tagList,
+			),
+		});
+	}
+
+	/**
+	 * A one-line summary of what the endpoint does — the line an API
+	 * reference lists it under. `.description()` is the longer text beneath.
+	 */
+	summary(summary: string): this {
+		return cloneWith(this, { _summary: summary });
+	}
+
+	/**
+	 * Mark the endpoint deprecated: `deprecated: true` in the document, and
+	 * `@deprecated` on its entry in the generated client. It still serves.
+	 */
+	deprecated(deprecated = true): this {
+		return cloneWith(this, { _deprecated: deprecated });
+	}
+
+	/**
+	 * Vendor extensions written onto the endpoint's operation, merged with
+	 * any given before. Only `x-` keys; what OpenAPI defines is written from
+	 * the endpoint itself.
+	 *
+	 * @example
+	 * ```ts
+	 * router.get('/internal/stats').extensions({ 'x-internal': true })
+	 * ```
+	 */
+	extensions(extensions: OperationExtensions): this {
+		for (const key of Object.keys(extensions)) {
+			if (!key.startsWith('x-')) throw new NotAnExtension(key);
+		}
+		return cloneWith(this, {
+			_extensions: { ...this._extensions, ...extensions },
+		});
+	}
+
+	/**
+	 * A request this endpoint makes back to a URL its caller gave it,
+	 * documented under the operation's `callbacks`. Repeatable, one name each.
+	 *
+	 * @example
+	 * ```ts
+	 * api.post('/exports')
+	 *   .body(z.object({ callbackUrl: z.url() }))
+	 *   .callback('exportReady', {
+	 *     url: '{$request.body#/callbackUrl}',
+	 *     body: z.object({ exportId: z.string() }),
+	 *     response: { status: 204 },
+	 *   })
+	 * ```
+	 */
+	callback(name: string, callback: EndpointCallback): this {
+		if (this._callbacks && name in this._callbacks) {
+			throw new CallbackDeclaredTwice(name, `${this.method} ${this.route}`);
+		}
+		return cloneWith(this, {
+			_callbacks: { ...this._callbacks, [name]: callback },
+		});
+	}
+
+	/**
+	 * A refusal this endpoint can answer — repeatable, one call per code. The
+	 * document lists each status under `responses`, as
+	 * `application/problem+json` with the status's codes as an enum. The
+	 * handler answers it by throwing an `HttpError` with that status and code.
+	 *
+	 * @example
+	 * ```ts
+	 * router.post('/users')
+	 *   .error(409, 'EMAIL_TAKEN', { description: 'The email is registered.' })
+	 *   .handle(async () => {
+	 *     throw createHttpError(409, 'Email taken', { code: 'EMAIL_TAKEN' });
+	 *   });
+	 * ```
+	 */
+	error(
+		status: ErrorStatus,
+		code: string,
+		options?: EndpointErrorOptions,
+	): this {
+		const declared = endpointError(status, code, options);
+		return cloneWith(this, {
+			_errors: mergeEndpointErrors(this._errors, [declared]),
+		});
 	}
 
 	memorySize(memorySize: number): this {
@@ -227,6 +390,66 @@ export class EndpointBuilder<
 	 */
 	responseType(type: string): this {
 		return cloneWith(this, { _responseType: type });
+	}
+
+	/**
+	 * Another response the handler may answer with, beside the default one
+	 * `.output()`, `.status()` and `.responseType()` describe — repeatable.
+	 * `content` is a schema (JSON) or a schema per content type; `binary()`
+	 * declares bytes. Declare it after `.output()`, which starts the types over.
+	 *
+	 * When the handler answers `status` (`response.status(200)`), the body is
+	 * checked against this response rather than `.output()`, in the content
+	 * type the handler set (`response.header('content-type', 'text/csv')`) or
+	 * the first one listed; one that is not JSON is emitted as-is. Declared
+	 * events and audits follow `.output()`, so they are not sent for it.
+	 *
+	 * @example
+	 * ```typescript
+	 * api.put('/orders/:id')
+	 *   .output(Order)
+	 *   .status(201)
+	 *   .response(200, Order, { description: 'A retry: the original order' })
+	 *   .response(202, undefined, { description: 'Queued' })
+	 *   .handle(async ({ params }, response) => …);
+	 *
+	 * api.get('/reports/:id')
+	 *   .response(200, {
+	 *     'application/json': Report,
+	 *     'text/csv': z.string(),
+	 *     'application/pdf': binary(),
+	 *   })
+	 *   .handle(async ({ header }, response) => …);
+	 * ```
+	 */
+	response<
+		TStatus extends EndpointStatus,
+		TContent extends ResponseContent | undefined = undefined,
+	>(
+		status: TStatus,
+		content?: TContent,
+		options?: ResponseOptions,
+	): EndpointBuilder<
+		TRoute,
+		TMethod,
+		TInput,
+		TServices,
+		TLogger,
+		WithResponse<OutSchema, TStatus, TContent>,
+		TSession,
+		TAuthorizers,
+		TAuditStorage,
+		TAuditStorageServiceName,
+		TAuditAction,
+		TDatabase,
+		TDatabaseServiceName
+	> {
+		return cloneWith(this, {
+			_responses: [
+				...this._responses,
+				declareResponse(status, content, options),
+			],
+		}) as never;
 	}
 
 	body<T extends StandardSchemaV1>(
@@ -315,6 +538,63 @@ export class EndpointBuilder<
 		return this;
 	}
 
+	/**
+	 * The request headers the endpoint reads — validated like the query, and
+	 * handed to the handler as `headers`, keyed by lower-case name. A missing
+	 * required header, or one its schema refuses, is answered with 400.
+	 *
+	 * Give an object schema whose keys are lower-case, or the headers one by
+	 * one — each a schema or a shared `defineHeader()` — under their names.
+	 *
+	 * @example
+	 * ```ts
+	 * router
+	 *   .post('/payments')
+	 *   .headers({ 'Idempotency-Key': IdempotencyKey, 'if-match': z.string().optional() })
+	 *   .handle(async ({ headers }) => headers['idempotency-key']);
+	 * ```
+	 */
+	headers<const T extends RequestHeadersInput>(
+		headers: T,
+	): EndpointBuilder<
+		TRoute,
+		TMethod,
+		Omit<TInput, 'headers'> & { headers: RequestHeadersSchema<T> },
+		TServices,
+		TLogger,
+		OutSchema,
+		TSession,
+		TAuthorizers,
+		TAuditStorage,
+		TAuditStorageServiceName,
+		TAuditAction,
+		TDatabase,
+		TDatabaseServiceName
+	> {
+		(this.schemas as EndpointSchemas).headers = requestHeadersSchema(headers);
+		// @ts-expect-error
+		return this;
+	}
+
+	/**
+	 * The headers a successful response carries — `ETag`, `Location`,
+	 * `Retry-After` — documented under the response, each given inline or as a
+	 * shared `defineHeader()`. Adds to any declared before. The handler still
+	 * sets them, with `response.header()`.
+	 *
+	 * @example
+	 * ```ts
+	 * router
+	 *   .get('/things/:id')
+	 *   .responseHeaders({ ETag, 'Cache-Control': { description: 'How long to keep it' } })
+	 * ```
+	 */
+	responseHeaders(headers: ResponseHeaders): this {
+		return cloneWith(this, {
+			_responseHeaders: { ...this._responseHeaders, ...headers },
+		});
+	}
+
 	authorize(
 		fn: AuthorizeFn<TServices, TLogger, TSession, TInput, TDatabase>,
 	): this {
@@ -325,8 +605,14 @@ export class EndpointBuilder<
 		return cloneWith(this, { _rateLimit: config });
 	}
 
+	/**
+	 * The authorizer that guards this endpoint, and the scopes a caller's
+	 * credential must carry: `.authorizer('oauth', { scopes: ['orders:read'] })`.
+	 * `'none'` makes it public.
+	 */
 	authorizer(
 		name: TAuthorizers[number] | 'none',
+		options?: AuthorizerOptions,
 	): EndpointBuilder<
 		TRoute,
 		TMethod,
@@ -344,23 +630,64 @@ export class EndpointBuilder<
 	> {
 		// Special case: 'none' explicitly marks endpoint as having no authorizer
 		if (name === 'none') {
-			return cloneWith(this, { _authorizerName: undefined });
+			return cloneWith(this, {
+				_authorizerName: undefined,
+				_security: undefined,
+			});
 		}
 
 		// Validate that the authorizer exists in available authorizers
-		const authorizerExists = this._availableAuthorizers.some(
-			(a) => a.name === name,
-		);
-		if (!authorizerExists && this._availableAuthorizers.length > 0) {
-			const available = this._availableAuthorizers
-				.map((a) => a.name)
-				.join(', ');
-			throw new Error(
-				`Authorizer "${name as string}" not found in available authorizers: ${available}`,
-			);
+		assertAuthorizerAvailable(name as string, this._availableAuthorizers);
+
+		return cloneWith(this, {
+			_authorizerName: name,
+			_security: [
+				{ name: name as string, scopes: [...(options?.scopes ?? [])] },
+			],
+		});
+	}
+
+	/**
+	 * Several ways to call this endpoint, any one of which is enough — a
+	 * session cookie, or an OAuth 2 token with a scope:
+	 *
+	 * ```typescript
+	 * .authorizers(['session', { name: 'oauth', scopes: ['orders:read'] }])
+	 * ```
+	 *
+	 * The first is the endpoint's `authorizer`, the one a gateway enforces;
+	 * the OpenAPI document lists them all as alternatives.
+	 */
+	authorizers(
+		alternatives: readonly AuthorizerRequirement<TAuthorizers[number]>[],
+	): EndpointBuilder<
+		TRoute,
+		TMethod,
+		TInput,
+		TServices,
+		TLogger,
+		OutSchema,
+		TSession,
+		TAuthorizers,
+		TAuditStorage,
+		TAuditStorageServiceName,
+		TAuditAction,
+		TDatabase,
+		TDatabaseServiceName
+	> {
+		const security = alternatives.map(normalizeAuthorizerRequirement);
+		const [first] = security;
+		if (!first) {
+			throw new NoAuthorizersGiven(`${this.method} ${this.route}`);
+		}
+		for (const { name } of security) {
+			assertAuthorizerAvailable(name, this._availableAuthorizers);
 		}
 
-		return cloneWith(this, { _authorizerName: name });
+		return cloneWith(this, {
+			_authorizerName: first.name as TAuthorizers[number],
+			_security: security,
+		});
 	}
 
 	/**
@@ -829,35 +1156,32 @@ export class EndpointBuilder<
 		TDatabase,
 		TDatabaseServiceName
 	> {
-		// Find authorizer metadata if name is set
-		// If the authorizer name is set but not in availableAuthorizers, create a simple authorizer object
-		let authorizer: Authorizer | undefined;
-		if (this._authorizerName) {
-			const existingAuthorizer = this._availableAuthorizers.find(
-				(a) => a.name === this._authorizerName,
-			);
-
-			if (existingAuthorizer) {
-				authorizer = existingAuthorizer;
-			} else {
-				// Create authorizer with security scheme if available (built-in or custom)
-				const securityScheme = getSecurityScheme(
-					this._authorizerName as string,
-					this._customSecuritySchemes,
-				);
-				authorizer = {
-					name: this._authorizerName as string,
-					securityScheme,
-				};
-			}
-		}
+		// Each authorizer it accepts, resolved to its scheme (the factory's own,
+		// a built-in, or a custom one); the first is the endpoint's `authorizer`.
+		const security = (
+			this._security ??
+			(this._authorizerName
+				? [{ name: this._authorizerName as string, scopes: [] }]
+				: [])
+		).map(({ name, scopes }) => ({
+			authorizer: resolveAuthorizer(
+				name,
+				this._availableAuthorizers,
+				this._customSecuritySchemes,
+			),
+			scopes,
+		}));
+		const authorizer: Authorizer | undefined = security[0]?.authorizer;
 
 		const endpoint = new Endpoint({
 			fn,
 			method: this.method,
 			route: this.route,
 			description: this._description,
-			tags: this._tags,
+			...(this._tagList.length ? { tags: this._tagList } : {}),
+			...(this._summary ? { summary: this._summary } : {}),
+			...(this._deprecated ? { deprecated: true } : {}),
+			...(this._extensions ? { extensions: this._extensions } : {}),
 			input: this.schemas,
 			output: this.outputSchema,
 			services: this._services,
@@ -871,6 +1195,7 @@ export class EndpointBuilder<
 			rateLimit: this._rateLimit,
 			events: this._events,
 			authorizer,
+			security,
 			surface: this._surface,
 			auditorStorageService: this._auditorStorage,
 			actorExtractor: this._actorExtractor,
@@ -879,13 +1204,19 @@ export class EndpointBuilder<
 			rlsConfig: this._rlsConfig,
 			rlsBypass: this._rlsBypass,
 			responseType: this._responseType,
+			responses: this._responses,
 			...(this._telemetry ? { telemetry: this._telemetry } : {}),
+			errors: mergeEndpointErrors(this._surface?.refusals, this._errors),
+			...(this._responseHeaders
+				? { responseHeaders: this._responseHeaders }
+				: {}),
 		});
 
 		// One field says which process runs a construct, whatever its kind. An
 		// endpoint's is its surface; a cron's is the worker that handed out the
 		// factory. The build partitions on this rather than on directories.
 		endpoint.owner = this._surface?.id;
+		if (this._callbacks) endpoint.callbacks = this._callbacks;
 
 		return endpoint;
 	}

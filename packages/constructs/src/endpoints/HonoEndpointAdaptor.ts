@@ -1,6 +1,7 @@
 import type { AuditableAction, AuditStorage } from '@geekmidas/audit';
 import type { EnvironmentParser } from '@geekmidas/envkit';
 import {
+	ForbiddenError,
 	type HttpError,
 	isHttpError,
 	UnprocessableEntityError,
@@ -35,9 +36,12 @@ import {
 	type EndpointSchemas,
 	ResponseBuilder,
 } from './Endpoint';
+import { parseRequestHeaders, RequestHeadersInvalid } from './headers';
 import { getEndpointsFromRoutes } from './helpers';
+import { honoProblem } from './honoProblems';
 import { createHonoCookies, createHonoHeaders } from './lazyAccessors';
 import { parseHonoQuery } from './parseHonoQuery';
+import { answersProblems, validationFailed } from './problems';
 import {
 	createAuditContext,
 	executeWithAuditTransaction,
@@ -45,6 +49,7 @@ import {
 import { enforceRateLimit } from './rateLimit';
 import { readRequestBody } from './readRequestBody';
 import { requestLogger } from './requestLogger';
+import { parseDeclaredResponse } from './responses';
 
 export interface HonoEndpointOptions {
 	/**
@@ -73,6 +78,7 @@ interface EndpointFeatures {
 	hasBodyValidation: boolean;
 	hasQueryValidation: boolean;
 	hasParamValidation: boolean;
+	hasHeaderValidation: boolean;
 	hasAudits: boolean;
 	hasEvents: boolean;
 	hasRateLimit: boolean;
@@ -114,6 +120,7 @@ function analyzeEndpointFeatures(
 		hasBodyValidation: !!endpoint.input?.body,
 		hasQueryValidation: !!endpoint.input?.query,
 		hasParamValidation: !!endpoint.input?.params,
+		hasHeaderValidation: !!endpoint.input?.headers,
 		// Audit context needed if declarative audits OR auditor storage service configured (for manual audits)
 		hasAudits:
 			(endpoint.audits?.length ?? 0) > 0 || !!endpoint.auditorStorageService,
@@ -163,8 +170,13 @@ export class HonoEndpoint<
 		c: Context<any, string, {}>,
 		data: unknown,
 		schema?: T,
-		/** Told of the issues before the 422 goes out — to log the rejection. */
-		onInvalid?: (issues: readonly StandardSchemaV1.Issue[]) => void,
+		/**
+		 * Told of the issues before the 422 goes out — to log the rejection.
+		 * A response it returns is sent in place of the default 422.
+		 */
+		onInvalid?: (
+			issues: readonly StandardSchemaV1.Issue[],
+		) => Response | undefined | void,
 	) {
 		if (!schema) {
 			return undefined;
@@ -173,7 +185,8 @@ export class HonoEndpoint<
 		const parsed = await Endpoint.validate(schema, data);
 
 		if (parsed.issues) {
-			onInvalid?.(parsed.issues);
+			const answer = onInvalid?.(parsed.issues);
+			if (answer) return answer;
 			return c.json(parsed.issues, 422);
 		}
 
@@ -339,12 +352,19 @@ export class HonoEndpoint<
 				path: c.req.path,
 			});
 
+		// Read per request: `isDev` is a static a test may flip.
+		const problemOptions = {
+			get isDev() {
+				return HonoEndpoint.isDev;
+			},
+		};
+
 		// A request turned away before the handler runs is logged as one the
 		// handler failed would be: the Lambda adaptors log a rejected input
 		// through the same `onError` as any other failure.
 		const rejected =
 			(c: Context, part: 'body' | 'query' | 'params') =>
-			(issues: readonly StandardSchemaV1.Issue[]): void => {
+			(issues: readonly StandardSchemaV1.Issue[]): Response | undefined => {
 				c.header('X-Request-ID', requestIdOf(c));
 				loggerFor(c).error(
 					{
@@ -353,6 +373,10 @@ export class HonoEndpoint<
 					},
 					'Request validation failed',
 				);
+				if (answersProblems(endpoint)) {
+					return honoProblem(c, validationFailed(issues), problemOptions);
+				}
+				return undefined;
 			};
 
 		// Build validators array - only add validators for schemas that exist
@@ -364,9 +388,16 @@ export class HonoEndpoint<
 			validators.push(async (c: Context, next: () => Promise<void>) => {
 				let raw: unknown;
 				try {
-					raw = await readRequestBody(c.req, c.req.header('content-type'), {
-						untyped: 'empty',
-					});
+					const contentType = c.req.header('content-type');
+					// A request that sent no body, to an endpoint whose body is
+					// optional, is handed none — `{}` would be validated as a body
+					// and refused for the fields it lacks.
+					raw =
+						!contentType && (await endpoint.isBodyOptional())
+							? undefined
+							: await readRequestBody(c.req, contentType, {
+									untyped: 'empty',
+								});
 				} catch (error) {
 					if (!isHttpError(error)) throw error;
 					c.header('X-Request-ID', requestIdOf(c));
@@ -375,6 +406,9 @@ export class HonoEndpoint<
 						'Request body could not be read',
 					);
 					setErrorHeaders(c, error);
+					if (answersProblems(endpoint)) {
+						return honoProblem(c, error, problemOptions);
+					}
 					return c.json(
 						errorBody(error),
 						error.statusCode as ContentfulStatusCode,
@@ -417,6 +451,35 @@ export class HonoEndpoint<
 					),
 				),
 			);
+		}
+
+		if (features.hasHeaderValidation) {
+			// Lower-cased by Hono already; a refusal is 400, not the 422 a body
+			// or query gets — the request itself is malformed.
+			validators.push(async (c: Context, next: () => Promise<void>) => {
+				try {
+					c.req.addValidatedData(
+						'header',
+						(await parseRequestHeaders(
+							endpoint.input!.headers!,
+							c.req.header(),
+						)) as {},
+					);
+				} catch (error) {
+					if (!(error instanceof RequestHeadersInvalid)) throw error;
+					c.header('X-Request-ID', requestIdOf(c));
+					loggerFor(c).error(
+						{ err: error, part: 'headers' },
+						'Request validation failed',
+					);
+					setErrorHeaders(c, error);
+					return c.json(
+						errorBody(error),
+						error.statusCode as ContentfulStatusCode,
+					);
+				}
+				await next();
+			});
 		}
 
 		// Main handler
@@ -491,10 +554,19 @@ export class HonoEndpoint<
 							params: features.hasParamValidation
 								? (c.req.valid as any)('param')
 								: undefined,
+							...(features.hasHeaderValidation && {
+								headers: (c.req.valid as any)('header'),
+							}),
 						} as any);
 
 						if (!isAuthorized) {
 							logger.warn('Forbidden access attempt');
+							if (answersProblems(endpoint)) {
+								const forbidden = new ForbiddenError(
+									'You do not have permission to access this resource.',
+								);
+								return honoProblem(c, forbidden, problemOptions);
+							}
 							return c.json({ error: 'Forbidden' }, 403);
 						}
 
@@ -579,6 +651,9 @@ export class HonoEndpoint<
 											params: features.hasParamValidation
 												? (c.req.valid as any)('param')
 												: undefined,
+											...(features.hasHeaderValidation && {
+												headers: (c.req.valid as any)('header'),
+											}),
 											session,
 											header,
 											cookie,
@@ -608,8 +683,16 @@ export class HonoEndpoint<
 									const redirect = Endpoint.isRedirectStatus(
 										metadata.status ?? endpoint.status,
 									);
-									const output =
-										endpoint.outputSchema && !redirect
+									const declared = endpoint.responseFor(metadata.status);
+									const output = declared
+										? redirect
+											? undefined
+											: await parseDeclaredResponse(
+													declared,
+													data,
+													metadata.headers,
+												)
+										: endpoint.outputSchema && !redirect
 											? await endpoint.parseOutput(data)
 											: undefined;
 
@@ -630,6 +713,7 @@ export class HonoEndpoint<
 							},
 							async (result, auditor) => {
 								if (!audits?.length || result.redirect) return;
+								if (endpoint.isAlternateStatus(result.metadata.status)) return;
 
 								for (const audit of audits) {
 									if (audit.when && !audit.when(result.output as any)) {
@@ -668,7 +752,11 @@ export class HonoEndpoint<
 							}
 
 							// Only publish events if configured (no global middleware overhead)
-							if (features.hasEvents && Endpoint.isSuccessStatus(status)) {
+							if (
+								features.hasEvents &&
+								Endpoint.isSuccessStatus(status) &&
+								!endpoint.isAlternateStatus(status)
+							) {
 								await publishConstructEvents<any>(
 									endpoint as any,
 									output,
@@ -689,7 +777,11 @@ export class HonoEndpoint<
 							// we use c.json() which sets Content-Type and serializes. For any
 							// other type, emit the body as-is and set the header explicitly —
 							// metadata.headers (from r.header()) applied above still wins.
-							if (endpoint.responseType === 'application/json') {
+							const contentType = endpoint.contentTypeFor(
+								status,
+								metadata.headers,
+							);
+							if (contentType === 'application/json') {
 								// Hono 4.13 types `c.json`'s status well enough that the
 								// suppression here is now itself an error.
 								return c.json(output, status);
@@ -697,7 +789,7 @@ export class HonoEndpoint<
 							if (
 								!(metadata.headers && hasContentTypeHeader(metadata.headers))
 							) {
-								c.header('content-type', endpoint.responseType);
+								c.header('content-type', contentType);
 							}
 							return c.body(output as any, status);
 						} catch (validationError: any) {
@@ -711,6 +803,9 @@ export class HonoEndpoint<
 								'Response validation failed',
 							);
 							setErrorHeaders(c, error);
+							if (answersProblems(endpoint)) {
+								return honoProblem(c, error, problemOptions);
+							}
 							const body = errorBody(error);
 							if (HonoEndpoint.isDev) {
 								logger.info(
@@ -732,6 +827,9 @@ export class HonoEndpoint<
 						// records it as the exception. A 4xx is the client's.
 						if (error.statusCode >= 500 && e instanceof Error) c.error = e;
 						setErrorHeaders(c, error);
+						if (answersProblems(endpoint)) {
+							return honoProblem(c, error, problemOptions);
+						}
 						const body = errorBody(error);
 						if (HonoEndpoint.isDev) {
 							logger.info(

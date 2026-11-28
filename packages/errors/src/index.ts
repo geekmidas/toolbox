@@ -104,6 +104,9 @@ export class HttpError extends Error {
 			408: 'Request Timeout',
 			409: 'Conflict',
 			410: 'Gone',
+			412: 'Precondition Failed',
+			413: 'Content Too Large',
+			415: 'Unsupported Media Type',
 			422: 'Unprocessable Entity',
 			429: 'Too Many Requests',
 			500: 'Internal Server Error',
@@ -549,7 +552,14 @@ export function createHttpError(
 
 	if (entry) {
 		const handler = factoryHandlers[entry.type];
-		return handler(entry, message, options);
+		const error = handler(entry, message, options);
+		// The subclasses take a message and their details only, so the code a
+		// client matches on — and the cause — are carried over here rather than
+		// dropped.
+		if (options?.code !== undefined)
+			Object.assign(error, { code: options.code });
+		if (options?.cause) error.cause = options.cause;
+		return error;
 	}
 
 	// Fallback to generic HttpError for unknown status codes

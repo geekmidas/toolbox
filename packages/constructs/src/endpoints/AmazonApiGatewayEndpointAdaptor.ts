@@ -11,7 +11,9 @@ import type {
 import { loadRls } from '../optionalPeers';
 import type { HttpMethod } from '../types';
 import { Endpoint, type EndpointSchemas, ResponseBuilder } from './Endpoint';
+import { parseRequestHeaders, VALIDATED_HEADERS } from './headers';
 import type { Telemetry } from './lambdaTelemetry';
+import { answersProblems, asValidationFailed, lambdaProblem } from './problems';
 import { enforceRateLimit } from './rateLimit';
 import { readRequestBody } from './readRequestBody';
 import { envParserFor } from './surfaceEnv';
@@ -49,6 +51,7 @@ import {
 	executeWithAuditTransaction,
 } from './processAudits';
 import { requestLogger } from './requestLogger';
+import { parseDeclaredResponse, toLambdaBody } from './responses';
 
 // Helper function to publish events
 
@@ -145,6 +148,10 @@ export abstract class AmazonApiGatewayEndpoint<
 					'Error processing request',
 				);
 				const wrappedError = wrapError(req.error);
+				if (answersProblems(this.endpoint)) {
+					req.response = lambdaProblem(wrappedError);
+					return;
+				}
 
 				// Set the response with the proper status code from the HttpError,
 				// and the headers it says the response carries (a 429's
@@ -225,8 +232,17 @@ export abstract class AmazonApiGatewayEndpoint<
 						header,
 						cookie,
 					});
+					// Kept beside the event's own `headers`, which are the raw ones.
+					// A refusal is a 400 `RequestHeadersInvalid`.
+					if (this.endpoint.input?.headers) {
+						(req.event as any)[VALIDATED_HEADERS] = await parseRequestHeaders(
+							this.endpoint.input.headers,
+							headers,
+						);
+					}
 				} catch (error) {
 					// Convert validation errors to 422 Unprocessable Entity
+					if (answersProblems(this.endpoint)) throw asValidationFailed(error);
 					if (error && typeof error === 'object' && Array.isArray(error)) {
 						throw new UnprocessableEntityError('Validation failed', error);
 					}
@@ -298,6 +314,9 @@ export abstract class AmazonApiGatewayEndpoint<
 					body: (req.event as any).body,
 					query: (req.event as any).query,
 					params: (req.event as any).params,
+					...(this.endpoint.input?.headers && {
+						headers: (req.event as any)[VALIDATED_HEADERS],
+					}),
 				} as any);
 
 				if (!isAuthorized) {
@@ -401,7 +420,10 @@ export abstract class AmazonApiGatewayEndpoint<
 
 				// Only publish events on successful responses (2xx status codes)
 				// Note: Audits are processed inside the handler's transaction
-				if (Endpoint.isSuccessStatus(statusCode)) {
+				if (
+					Endpoint.isSuccessStatus(statusCode) &&
+					!this.endpoint.isAlternateStatus(statusCode)
+				) {
 					const logger = event.logger as TLogger;
 					const serviceDiscovery = ServiceDiscovery.getInstance<
 						ServiceRecord<TServices>
@@ -494,6 +516,9 @@ export abstract class AmazonApiGatewayEndpoint<
 							auditor,
 							db,
 							...input,
+							...(this.endpoint.input?.headers && {
+								headers: (event as any)[VALIDATED_HEADERS],
+							}),
 						} as any,
 						responseBuilder,
 					);
@@ -511,8 +536,12 @@ export abstract class AmazonApiGatewayEndpoint<
 					const redirect = Endpoint.isRedirectStatus(
 						metadata.status ?? this.endpoint.status,
 					);
-					const output =
-						this.endpoint.outputSchema && !redirect
+					const declared = this.endpoint.responseFor(metadata.status);
+					const output = declared
+						? redirect
+							? undefined
+							: await parseDeclaredResponse(declared, data, metadata.headers)
+						: this.endpoint.outputSchema && !redirect
 							? await this.endpoint.parseOutput(data)
 							: undefined;
 
@@ -535,6 +564,7 @@ export abstract class AmazonApiGatewayEndpoint<
 			// Process declarative audits after handler (inside transaction)
 			async (result, auditor) => {
 				if (!audits?.length || result.redirect) return;
+				if (this.endpoint.isAlternateStatus(result.metadata.status)) return;
 
 				for (const audit of audits) {
 					if (audit.when && !audit.when(result.output as any)) {
@@ -553,15 +583,21 @@ export abstract class AmazonApiGatewayEndpoint<
 		);
 
 		const { output, metadata } = result;
-		const isJsonResponse = this.endpoint.responseType === 'application/json';
+		const contentType = this.endpoint.contentTypeFor(
+			metadata.status,
+			metadata.headers,
+		);
+		const isJsonResponse = contentType === 'application/json';
+		const encoded =
+			output === undefined || isJsonResponse
+				? undefined
+				: await toLambdaBody(output);
 		const body =
 			output === undefined
 				? undefined
 				: isJsonResponse
 					? JSON.stringify(output)
-					: typeof output === 'string'
-						? output
-						: String(output);
+					: encoded!.body;
 
 		// Store response for middleware access
 		(event as any).__response = output;
@@ -570,13 +606,14 @@ export abstract class AmazonApiGatewayEndpoint<
 		const lambdaResponse: AmazonApiGatewayEndpointHandlerResponse = {
 			statusCode: metadata.status ?? this.endpoint.status,
 			body,
+			...(encoded?.isBase64Encoded && { isBase64Encoded: true }),
 		};
 
 		// Compose headers. For non-JSON responseType, emit a default
 		// Content-Type header which metadata.headers (r.header()) can override.
 		const baseHeaders: Record<string, string> | undefined = isJsonResponse
 			? undefined
-			: { 'content-type': this.endpoint.responseType };
+			: { 'content-type': contentType };
 		const rateLimitHeaders: Record<string, string> | undefined = (event as any)
 			.rateLimitHeaders;
 
@@ -721,6 +758,8 @@ type Middleware<
 export type AmazonApiGatewayEndpointHandlerResponse = {
 	statusCode: number;
 	body: string | undefined;
+	/** Set when `body` is base64 — a binary response's bytes. */
+	isBase64Encoded?: boolean;
 	headers?: Record<string, string>;
 	multiValueHeaders?: Record<string, string[]>;
 };

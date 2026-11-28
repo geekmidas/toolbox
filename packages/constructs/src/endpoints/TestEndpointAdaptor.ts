@@ -29,6 +29,7 @@ import {
 	type EndpointSchemas,
 	ResponseBuilder,
 } from './Endpoint';
+import { parseRequestHeaders } from './headers';
 import {
 	createCookieHeaderAccessor,
 	createObjectHeaders,
@@ -39,6 +40,7 @@ import {
 } from './processAudits';
 import { enforceRateLimit } from './rateLimit';
 import { requestLogger } from './requestLogger';
+import { parseDeclaredResponse } from './responses';
 
 export type TestHttpResponse<TBody = any> = {
 	body: TBody;
@@ -170,6 +172,16 @@ export class TestEndpointAdaptor<
 			(ctx as any).params,
 			'params',
 		);
+		// The request's headers, as the endpoint's `.headers()` reads them — a
+		// refusal throws the 400 `RequestHeadersInvalid` a server answers with.
+		const requestHeaders = this.endpoint.input?.headers
+			? {
+					headers: await parseRequestHeaders(
+						this.endpoint.input.headers,
+						ctx.headers,
+					),
+				}
+			: {};
 
 		// Lazy accessors - defer parsing until needed
 		const header = createObjectHeaders(ctx.headers);
@@ -218,6 +230,7 @@ export class TestEndpointAdaptor<
 					body,
 					query,
 					params,
+					...requestHeaders,
 				} as any);
 
 				if (!isAuthorized) {
@@ -304,6 +317,7 @@ export class TestEndpointAdaptor<
 								body,
 								query,
 								params,
+								...requestHeaders,
 								session,
 								services: ctx.services,
 								logger,
@@ -328,15 +342,23 @@ export class TestEndpointAdaptor<
 						const redirect = Endpoint.isRedirectStatus(
 							metadata.status ?? this.endpoint.status,
 						);
+						const declared = this.endpoint.responseFor(metadata.status);
 						const output = redirect
 							? (undefined as never)
-							: await this.endpoint.parseOutput(data);
+							: declared
+								? ((await parseDeclaredResponse(
+										declared,
+										data,
+										metadata.headers,
+									)) as never)
+								: await this.endpoint.parseOutput(data);
 
 						return { output, metadata, responseBuilder, redirect };
 					},
 					// Process declarative audits after handler (inside transaction)
 					async (result, auditor) => {
 						if (!audits?.length || result.redirect) return;
+						if (this.endpoint.isAlternateStatus(result.metadata.status)) return;
 
 						for (const audit of audits) {
 							if (audit.when && !audit.when(result.output as any)) {
@@ -359,7 +381,7 @@ export class TestEndpointAdaptor<
 				// A topic the test handed in as a service — a recorder — is published
 				// to directly; any other is registered as it is deployed. A redirect
 				// has no output to derive an event from, as when deployed.
-				if (!redirect) {
+				if (!redirect && !this.endpoint.isAlternateStatus(metadata.status)) {
 					await publishConstructEvents(
 						this.endpoint,
 						output,
@@ -441,7 +463,8 @@ export type TestRequestAdaptor<
 	_TDatabaseServiceName extends string = string,
 > = {
 	services: ServiceRecord<TServices>;
+	/** The request's headers, raw — validated by the endpoint's `.headers()`. */
 	headers: Record<string, string>;
-} & InferComposableStandardSchema<TInput> &
+} & InferComposableStandardSchema<Omit<TInput, 'headers'>> &
 	AuditStorageRequirement<TAuditStorage> &
 	DatabaseRequirement<TDatabase>;

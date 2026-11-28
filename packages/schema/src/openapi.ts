@@ -4,6 +4,22 @@ export interface OpenApiSchemaOptions {
 	title?: string;
 	version?: string;
 	description?: string;
+	/** A short summary of the API — `info.summary`. */
+	summary?: string;
+	/** A URL to the terms of service — `info.termsOfService`. */
+	termsOfService?: string;
+	/** Who to contact about the API — `info.contact`. */
+	contact?: OpenAPIV3_1.ContactObject;
+	/** The licence the API is offered under — `info.license`. */
+	license?: OpenAPIV3_1.LicenseObject;
+	/**
+	 * The tags operations are grouped under, with their descriptions, in the
+	 * order a reference lists them. A tag an operation names that is not here
+	 * is listed after these, by name alone.
+	 */
+	tags?: OpenAPIV3_1.TagObject[];
+	/** Where the API is served — one entry per stage, sandbox to production. */
+	servers?: OpenAPIV3_1.ServerObject[];
 }
 
 export interface ComponentCollector {
@@ -16,15 +32,31 @@ export interface ComponentCollector {
 		scheme: OpenAPIV3_1.SecuritySchemeObject,
 	): void;
 	getReference(id: string): OpenAPIV3_1.ReferenceObject;
+	/** Request headers many operations share, `$ref`'d from each. */
+	parameters?: Record<string, OpenAPIV3_1.ParameterObject>;
+	/** Response headers many operations share, `$ref`'d from each. */
+	headers?: Record<string, OpenAPIV3_1.HeaderObject>;
+	addParameter?(name: string, parameter: OpenAPIV3_1.ParameterObject): void;
+	addHeader?(name: string, header: OpenAPIV3_1.HeaderObject): void;
 }
 
 export function createComponentCollector(): ComponentCollector {
 	const schemas: Record<string, OpenAPIV3_1.SchemaObject> = {};
 	const securitySchemes: Record<string, OpenAPIV3_1.SecuritySchemeObject> = {};
+	const parameters: Record<string, OpenAPIV3_1.ParameterObject> = {};
+	const headers: Record<string, OpenAPIV3_1.HeaderObject> = {};
 
 	return {
 		schemas,
 		securitySchemes,
+		parameters,
+		headers,
+		addParameter(name, parameter) {
+			parameters[name] = parameter;
+		},
+		addHeader(name, header) {
+			headers[name] = header;
+		},
 		addSchema(id: string, schema: OpenAPIV3_1.SchemaObject) {
 			schemas[id] = schema;
 		},
@@ -49,7 +81,16 @@ export async function buildOpenApiSchema(
 	}>,
 	options: OpenApiSchemaOptions = {},
 ): Promise<OpenAPIV3_1.Document> {
-	const { title = 'API', version = '1.0.0', description } = options;
+	const {
+		title = 'API',
+		version = '1.0.0',
+		description,
+		summary,
+		termsOfService,
+		contact,
+		license,
+		servers,
+	} = options;
 	const paths: OpenAPIV3_1.PathsObject = {};
 	const componentCollector = createComponentCollector();
 
@@ -73,11 +114,19 @@ export async function buildOpenApiSchema(
 		openapi: '3.1.0',
 		info: {
 			title,
+			...(summary && { summary }),
 			version,
 			...(description && { description }),
+			...(termsOfService && { termsOfService }),
+			...(contact && { contact }),
+			...(license && { license }),
 		},
+		...(servers && servers.length > 0 && { servers }),
 		paths,
 	};
+
+	const tags = documentTags(options.tags ?? [], paths);
+	if (tags.length > 0) doc.tags = tags;
 
 	// Add components if any schemas or security schemes were collected. A
 	// `security` requirement naming a scheme the document does not define is
@@ -93,5 +142,43 @@ export async function buildOpenApiSchema(
 		};
 	}
 
+	// Headers declared once and shared — `defineHeader()` — which operations
+	// refer to rather than repeat.
+	const { parameters = {}, headers = {} } = componentCollector;
+	if (Object.keys(parameters).length > 0 || Object.keys(headers).length > 0) {
+		doc.components = {
+			...doc.components,
+			...(Object.keys(parameters).length > 0 && { parameters }),
+			...(Object.keys(headers).length > 0 && { headers }),
+		};
+	}
+
 	return doc;
+}
+
+/**
+ * The document's `tags`: the ones declared, in their order, then any an
+ * operation names that were not declared — by name, in the order first met,
+ * so a reference still lists every group.
+ */
+function documentTags(
+	declared: OpenAPIV3_1.TagObject[],
+	paths: OpenAPIV3_1.PathsObject,
+): OpenAPIV3_1.TagObject[] {
+	const tags = [...declared];
+	const named = new Set(declared.map((tag) => tag.name));
+
+	for (const item of Object.values(paths)) {
+		for (const operation of Object.values(item ?? {})) {
+			const operationTags = (operation as OpenAPIV3_1.OperationObject)?.tags;
+			if (!Array.isArray(operationTags)) continue;
+			for (const name of operationTags) {
+				if (named.has(name)) continue;
+				named.add(name);
+				tags.push({ name });
+			}
+		}
+	}
+
+	return tags;
 }

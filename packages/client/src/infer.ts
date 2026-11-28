@@ -4,11 +4,9 @@ import type {
 	EndpointSchemas,
 } from '@geekmidas/constructs/endpoints';
 import type { HttpMethod } from '@geekmidas/constructs/types';
-import type {
-	InferStandardSchema,
-	InferStandardSchemaInput,
-} from '@geekmidas/schema';
+import type { InferStandardSchemaInput } from '@geekmidas/schema';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
+import type { InferResponses } from './responses';
 
 /**
  * Infers path parameters from a route string as an object
@@ -55,33 +53,55 @@ type InferOperationParameters<TInput extends EndpointSchemas> = TInput extends {
 	: {};
 
 /**
+ * Request headers — `.headers()` — as the caller sends them, keyed by
+ * lower-case name. Merged with the query under one `parameters`.
+ */
+type InferHeaderParameters<TInput extends EndpointSchemas> = TInput extends {
+	headers: infer H;
+}
+	? { parameters: { header: InferStandardSchemaInput<H> } }
+	: {};
+
+/**
+ * The request body: a required key when the schema needs one, an optional
+ * key when it accepts `undefined` (`z.object({…}).optional()`), as the
+ * document writes `required: false`.
+ */
+type InferRequestBody<TInput extends EndpointSchemas> = TInput extends {
+	body: infer B;
+}
+	? undefined extends InferStandardSchemaInput<B>
+		? {
+				requestBody?: {
+					content: {
+						'application/json': Exclude<InferStandardSchemaInput<B>, undefined>;
+					};
+				};
+			}
+		: {
+				requestBody: {
+					content: {
+						// What the client sends, before parsing — the same reasoning as
+						// the query above. For a schema that coerces nothing these two
+						// are the same type, so this costs nothing and is right when it
+						// matters.
+						'application/json': InferStandardSchemaInput<B>;
+					};
+				};
+			}
+	: { requestBody?: never };
+
+/**
  * Infers the operation object compatible with TypedFetcher
  */
 type InferOperation<
 	TInput extends EndpointSchemas,
 	TOutput extends StandardSchemaV1 | undefined,
-> = InferOperationParameters<TInput> & {
-	requestBody?: TInput extends { body: infer B }
-		? {
-				content: {
-					// What the client sends, before parsing — the same reasoning as
-					// the query above. For a schema that coerces nothing these two
-					// are the same type, so this costs nothing and is right when it
-					// matters.
-					'application/json': InferStandardSchemaInput<B>;
-				};
-			}
-		: never;
-	responses: {
-		200: {
-			content: TOutput extends StandardSchemaV1
-				? {
-						'application/json': InferStandardSchema<TOutput>;
-					}
-				: never;
-		};
+> = InferOperationParameters<TInput> &
+	InferHeaderParameters<TInput> &
+	InferRequestBody<TInput> & {
+		responses: InferResponses<TOutput>;
 	};
-};
 
 /**
  * Infers the TypedFetcher-compatible paths structure from a single endpoint

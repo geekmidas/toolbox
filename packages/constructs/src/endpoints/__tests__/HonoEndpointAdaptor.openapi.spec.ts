@@ -89,7 +89,8 @@ describe('HonoEndpoint OpenAPI Documentation', () => {
 		expect(openApiSchema).toMatchObject({
 			openapi: '3.1.0',
 			info: {
-				title: 'API',
+				// Titled after the surface that serves it.
+				title: 'Test',
 				version: '1.0.0',
 			},
 			paths: {

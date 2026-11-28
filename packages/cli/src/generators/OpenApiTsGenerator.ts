@@ -1,4 +1,7 @@
-import type { Endpoint } from '@geekmidas/constructs/endpoints';
+import {
+	documentResponseHeaders,
+	type Endpoint,
+} from '@geekmidas/constructs/endpoints';
 import {
 	getRegisteredZodJsonSchemas,
 	getSchemaMetadata,
@@ -10,6 +13,22 @@ import {
 	type ClientTelemetryDefault,
 	printTelemetryDefault,
 } from './clientTelemetry.js';
+import {
+	type ResponseHeaderInfo,
+	requestHeadersInterface,
+	responseHeadersType,
+} from './openApiHeaders.js';
+import {
+	declaredResponseSchemas,
+	printResponses,
+	type ResponsesInfo,
+} from './openApiResponses.js';
+import {
+	type ProblemResponsesInfo,
+	problemResponsesOf,
+	withProblemResponses,
+} from './problemResponses.js';
+import { generateWebhookTypes } from './webhookTypes.js';
 
 export type { ClientTelemetryDefault } from './clientTelemetry.js';
 
@@ -17,6 +36,11 @@ export interface OpenApiTsOptions {
 	title?: string;
 	version?: string;
 	description?: string;
+	summary?: string;
+	contact?: { name?: string; url?: string; email?: string };
+	license?: { name: string; identifier?: string; url?: string };
+	/** Where the API is reached, stage by stage. */
+	servers?: { url: string; description?: string }[];
 	/**
 	 * Trace propagation in the generated `createApi`, off by default. The
 	 * site's edge to a `Telemetry` construct is what turns it on.
@@ -56,7 +80,7 @@ interface SecuritySchemeObject {
 	[key: string]: unknown;
 }
 
-interface EndpointInfo {
+interface EndpointInfo extends ResponsesInfo {
 	endpoint: string;
 	route: string;
 	method: string;
@@ -65,16 +89,54 @@ interface EndpointInfo {
 	authorizerType: string | null;
 	/** The OpenAPI security scheme definition for this endpoint's authorizer */
 	securityScheme: SecuritySchemeObject | null;
+	/**
+	 * Every authorizer the endpoint accepts, in order — the first is
+	 * `authorizerName`. Any one of them is enough.
+	 */
+	alternatives: { name: string; scheme: SecuritySchemeObject | null }[];
 	input?: {
 		body?: StandardSchemaV1;
 		query?: StandardSchemaV1;
 		params?: StandardSchemaV1;
+		headers?: StandardSchemaV1;
 	};
 	output?: StandardSchemaV1;
 	description?: string;
 	tags?: string[];
 	operationId?: string;
 	responseType: string;
+	/** Whether the request may leave its body out. */
+	bodyOptional: boolean;
+	summary?: string;
+	deprecated?: boolean;
+	/** The refusals it documents, beside its success. */
+	problemResponses?: ProblemResponsesInfo;
+	/** The headers its successful response carries — `.responseHeaders()`. */
+	responseHeaders?: Record<string, ResponseHeaderInfo>;
+}
+
+/**
+ * What `endpointAuth` says of one endpoint: its scheme, every scheme it
+ * accepts when there is more than one, or `null` when it is public.
+ */
+type EndpointAuthEntry = string | string[] | null;
+
+/**
+ * Each authorizer an endpoint accepts with its scheme, in order. An endpoint
+ * from a constructs version without `security` has only its `authorizer`.
+ */
+function endpointAlternatives(
+	ep: Endpoint<any, any, any, any, any, any>,
+): EndpointInfo['alternatives'] {
+	const authorizers = ep.security?.length
+		? ep.security.map((s) => s.authorizer)
+		: ep.authorizer
+			? [ep.authorizer]
+			: [];
+	return authorizers.map((a) => ({
+		name: a.name,
+		scheme: (a.securityScheme as SecuritySchemeObject | undefined) ?? null,
+	}));
 }
 
 interface SecuritySchemeInfo {
@@ -102,6 +164,15 @@ export class OpenApiTsGenerator {
 			description,
 			telemetry = false,
 		} = options;
+		const info = {
+			title,
+			...(options.summary ? { summary: options.summary } : {}),
+			version,
+			...(description ? { description } : {}),
+			...(options.contact ? { contact: options.contact } : {}),
+			...(options.license ? { license: options.license } : {}),
+			...(options.servers?.length ? { servers: options.servers } : {}),
+		};
 		const telemetryDefault = printTelemetryDefault(telemetry);
 
 		// Extract endpoint info
@@ -119,47 +190,66 @@ export class OpenApiTsGenerator {
 		// Generate paths interface
 		const pathsInterface = await this.generatePathsInterface(endpointInfos);
 
+		// What the API sends its users, for a receiver to type its handler by.
+		const webhookTypes = generateWebhookTypes(endpoints, (schema) =>
+			this.jsonSchemaTypeToTs(schema),
+		);
+
 		// Build the final TypeScript module
-		return this.buildModule({
-			title,
-			version,
-			description,
+		const module = this.buildModule({
+			info,
 			securitySchemes,
 			endpointAuth,
 			schemaInterfaces,
 			pathsInterface,
 			telemetryDefault,
 		});
+		return module + webhookTypes;
 	}
 
 	private async extractEndpointInfos(
 		endpoints: Endpoint<any, any, any, any, any, any>[],
 	): Promise<EndpointInfo[]> {
-		return endpoints.map((ep) => {
-			const route = ep.route.replace(/:(\w+)/g, '{$1}');
-			const method = ep.method.toUpperCase();
+		return Promise.all(
+			endpoints.map(async (ep) => {
+				const route = ep.route.replace(/:(\w+)/g, '{$1}');
+				const method = ep.method.toUpperCase();
 
-			// Get security scheme from authorizer (if available)
-			// This is the preferred way - the scheme is stored directly on the authorizer
-			const securityScheme = ep.authorizer?.securityScheme as
-				| SecuritySchemeObject
-				| undefined;
+				// Get security scheme from authorizer (if available)
+				// This is the preferred way - the scheme is stored directly on the authorizer
+				const securityScheme = ep.authorizer?.securityScheme as
+					| SecuritySchemeObject
+					| undefined;
 
-			return {
-				endpoint: `${method} ${route}`,
-				route,
-				method,
-				authorizerName: ep.authorizer?.name ?? null,
-				authorizerType: ep.authorizer?.type ?? null,
-				securityScheme: securityScheme ?? null,
-				input: ep.input,
-				output: ep.outputSchema,
-				description: ep.description,
-				tags: ep.tags,
-				operationId: ep.operationId,
-				responseType: ep.responseType ?? 'application/json',
-			};
-		});
+				return {
+					endpoint: `${method} ${route}`,
+					route,
+					method,
+					authorizerName: ep.authorizer?.name ?? null,
+					authorizerType: ep.authorizer?.type ?? null,
+					securityScheme: securityScheme ?? null,
+					alternatives: endpointAlternatives(ep),
+					input: ep.input,
+					output: ep.outputSchema,
+					description: ep.description,
+					tags: ep.tags,
+					operationId: ep.operationId,
+					responseType: ep.responseType ?? 'application/json',
+					summary: ep.summary,
+					problemResponses: problemResponsesOf(ep),
+					deprecated: ep.deprecated,
+					bodyOptional:
+						typeof ep.isBodyOptional === 'function'
+							? await ep.isBodyOptional()
+							: false,
+					status: ep.status ?? 200,
+					responses: ep.declaredResponses ?? [],
+					responseHeaders: (await documentResponseHeaders(
+						ep.responseHeaders,
+					)) as Record<string, ResponseHeaderInfo> | undefined,
+				};
+			}),
+		);
 	}
 
 	private collectSecuritySchemes(
@@ -186,6 +276,16 @@ export class OpenApiTsGenerator {
 						type: scheme.type,
 						scheme,
 					});
+				}
+			}
+		}
+
+		// Every alternative's scheme, not just the first: a client calls an
+		// endpoint that accepts several with whichever it has a strategy for.
+		for (const info of endpointInfos) {
+			for (const { name, scheme } of info.alternatives.slice(1)) {
+				if (scheme && !schemes.has(name)) {
+					schemes.set(name, { name, type: scheme.type, scheme });
 				}
 			}
 		}
@@ -242,11 +342,17 @@ export class OpenApiTsGenerator {
 
 	private buildEndpointAuthMap(
 		endpointInfos: EndpointInfo[],
-	): Record<string, string | null> {
-		const authMap: Record<string, string | null> = {};
+	): Record<string, EndpointAuthEntry> {
+		const authMap: Record<string, EndpointAuthEntry> = {};
 
 		for (const info of endpointInfos) {
-			authMap[info.endpoint] = info.authorizerName;
+			// One scheme stays a string, as it always was; an endpoint that
+			// accepts several lists them in order, for the fetcher to pick from.
+			const alternatives = info.alternatives
+				.filter(({ scheme }) => scheme)
+				.map(({ name }) => name);
+			authMap[info.endpoint] =
+				alternatives.length > 1 ? alternatives : info.authorizerName;
 		}
 
 		return authMap;
@@ -320,12 +426,43 @@ export class OpenApiTsGenerator {
 				}
 			}
 
+			// Request headers — keyed by header name, which needs quoting
+			if (info.input?.headers && !generatedNames.has(`${baseName}Headers`)) {
+				interfaces.push(
+					requestHeadersInterface(
+						info.input.headers,
+						`${baseName}Headers`,
+						(schema) => this.jsonSchemaTypeToTs(schema),
+					),
+				);
+				generatedNames.add(`${baseName}Headers`);
+			}
+
 			// Output schema
 			if (info.output) {
 				const name = await this.getSchemaName(info.output, `${baseName}Output`);
 				if (!generatedNames.has(name)) {
 					const schema = await this.schemaToInterfaceWithDefs(
 						info.output,
+						name,
+						collectedDefs,
+					);
+					if (schema) {
+						interfaces.push(schema);
+						generatedNames.add(name);
+					}
+				}
+			}
+
+			// Each response `.response()` declared
+			for (const declared of declaredResponseSchemas(info, baseName)) {
+				const name = await this.getSchemaName(
+					declared.schema,
+					declared.defaultName,
+				);
+				if (!generatedNames.has(name)) {
+					const schema = await this.schemaToInterfaceWithDefs(
+						declared.schema,
 						name,
 						collectedDefs,
 					);
@@ -593,7 +730,9 @@ export class OpenApiTsGenerator {
 
 			for (const info of infos) {
 				const methodDef = await this.generateMethodDefinition(info);
-				methodEntries.push(`    ${info.method.toLowerCase()}: ${methodDef};`);
+				methodEntries.push(
+					`${operationDoc(info)}    ${info.method.toLowerCase()}: ${methodDef};`,
+				);
 			}
 
 			// Add path parameters if present
@@ -625,7 +764,10 @@ export class OpenApiTsGenerator {
 				info.input.body,
 				`${baseName}Input`,
 			);
-			parts.push(`requestBody: {
+			// An optional body is an optional key, as openapi-typescript writes
+			// `required: false` — which is what lets the client leave it out.
+			const key = info.bodyOptional ? 'requestBody?' : 'requestBody';
+			parts.push(`${key}: {
         content: {
           'application/json': ${bodyName};
         };
@@ -639,7 +781,11 @@ export class OpenApiTsGenerator {
 				`${baseName}Query`,
 			);
 			parts.push(`parameters: {
-        query: ${queryName};
+        query: ${queryName};${info.input.headers ? `\n        header: ${baseName}Headers;` : ''}
+      }`);
+		} else if (info.input?.headers) {
+			parts.push(`parameters: {
+        header: ${baseName}Headers;
       }`);
 		}
 
@@ -647,31 +793,53 @@ export class OpenApiTsGenerator {
 		const outputName = info.output
 			? await this.getSchemaName(info.output, `${baseName}Output`)
 			: 'unknown';
-		parts.push(`responses: {
-        200: {
-          content: {
-            '${info.responseType}': ${outputName};
-          };
-        };
-      }`);
+		parts.push(
+			await printResponses(
+				info,
+				outputName,
+				declaredResponseSchemas(info, baseName),
+				(d) => this.getSchemaName(d.schema, d.defaultName),
+			),
+		);
+		if (info.responseHeaders) {
+			// The declared response headers go on the response the handler
+			// answers by default.
+			const headers = responseHeadersType(info.responseHeaders, (s) =>
+				this.jsonSchemaTypeToTs(s),
+			);
+			// Under its own status, or 200 where the default is typed there (a
+			// redirect's).
+			const responses = parts.pop()!;
+			const entry = [info.status, 200]
+				.map((status) => `        ${status}: {\n`)
+				.find((candidate) => responses.includes(candidate));
+			parts.push(
+				entry
+					? responses.replace(entry, `${entry}          headers: ${headers};\n`)
+					: responses,
+			);
+		}
+		if (info.problemResponses) {
+			parts.push(
+				withProblemResponses(parts.pop()!, info.problemResponses, (s) =>
+					this.jsonSchemaTypeToTs(s),
+				),
+			);
+		}
 
 		return `{\n      ${parts.join(';\n      ')};\n    }`;
 	}
 
 	private buildModule(params: {
-		title: string;
-		version: string;
-		description?: string;
+		info: Record<string, unknown>;
 		securitySchemes: SecuritySchemeInfo[];
-		endpointAuth: Record<string, string | null>;
+		endpointAuth: Record<string, EndpointAuthEntry>;
 		schemaInterfaces: string;
 		pathsInterface: string;
 		telemetryDefault: string;
 	}): string {
 		const {
-			title,
-			version,
-			description,
+			info,
 			securitySchemes,
 			endpointAuth,
 			schemaInterfaces,
@@ -713,7 +881,7 @@ export const telemetryDefault: boolean | ClientTelemetryOptions = ${telemetryDef
 
 import {
   createAuthAwareFetcher,
-  type AuthStrategy,
+  type AuthFetcherOptions,
 } from '@geekmidas/client/auth-fetcher';
 import { createEndpointHooks } from '@geekmidas/client/endpoint-hooks';
 import type { ClientTelemetryOptions } from '@geekmidas/client/telemetry';
@@ -725,8 +893,11 @@ ${telemetrySection}
 export interface CreateApiOptions {
   /** Base URL for all API requests (required) */
   baseURL: string;
-  /** Auth strategies for each security scheme used in this API */
-  authStrategies: Record<SecuritySchemeId, AuthStrategy>;
+  /**
+   * Auth strategies for the security schemes used in this API. A scheme an
+   * endpoint accepts only as one of several alternatives may be left out.
+   */
+  authStrategies: AuthFetcherOptions<typeof endpointAuth, typeof securitySchemes>['authStrategies'];
   /** Optional React Query client instance */
   queryClient?: QueryClient;
   /** Optional request interceptor */
@@ -848,10 +1019,11 @@ interface SecuritySchemeObject {
 // API Info
 // ============================================================
 
-export const apiInfo = {
-  title: '${title}',
-  version: '${version}',${description ? `\n  description: '${description.replace(/'/g, "\\'")}',` : ''}
-} as const;
+/**
+ * What the API says about itself — its title and version, who to contact,
+ * its licence, and \`servers\`: where it is reached, one per stage.
+ */
+export const apiInfo = ${JSON.stringify(info, null, 2)} as const;
 
 // ============================================================
 // Security Schemes
@@ -871,9 +1043,10 @@ export type SecuritySchemeId = ${schemeNames || 'never'};
 
 /**
  * Runtime map of endpoints to their required authentication scheme.
- * \`null\` indicates a public endpoint (no auth required).
+ * \`null\` indicates a public endpoint (no auth required); a list is every
+ * scheme an endpoint accepts, any one of which will do.
  */
-export const endpointAuth = ${JSON.stringify(endpointAuth, null, 2).replace(/"([^"]+)":/g, "'$1':")} as const satisfies Record<string, SecuritySchemeId | null>;
+export const endpointAuth = ${JSON.stringify(endpointAuth, null, 2).replace(/"([^"]+)":/g, "'$1':")} as const satisfies Record<string, SecuritySchemeId | readonly SecuritySchemeId[] | null>;
 
 export type EndpointString = keyof typeof endpointAuth;
 
@@ -908,4 +1081,18 @@ ${createApiSection}
  */
 function unknownType(name: string): string {
 	return `export type ${name} = unknown;`;
+}
+
+/**
+ * The JSDoc an operation's entry in `paths` carries: its summary and
+ * description, and `@deprecated` — which an editor strikes through.
+ */
+function operationDoc(info: EndpointInfo): string {
+	const lines = [info.summary, info.description]
+		.filter((line): line is string => Boolean(line))
+		.flatMap((text) => text.split('\n'))
+		.map((line) => line.replace(/\*\//g, '*\\/'));
+	if (info.deprecated) lines.push('@deprecated');
+	if (lines.length === 0) return '';
+	return `    /**\n${lines.map((line) => `     * ${line}`).join('\n')}\n     */\n`;
 }

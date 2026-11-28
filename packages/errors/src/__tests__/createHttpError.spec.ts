@@ -9,7 +9,9 @@ import {
 	InternalServerError,
 	NotImplementedError,
 	ServiceUnavailableError,
+	TooManyRequestsError,
 	UnauthorizedError,
+	UnprocessableEntityError,
 } from '../index';
 
 describe('createHttpError', () => {
@@ -41,5 +43,27 @@ describe('createHttpError', () => {
 		expect(error).toBeInstanceOf(ServiceUnavailableError);
 		expect(error.statusCode).toBe(503);
 		expect(error.details).toEqual({ retryAfter: 120 });
+	});
+
+	it.each([
+		[409, ConflictError],
+		[422, UnprocessableEntityError],
+		[429, TooManyRequestsError],
+	] as const)('keeps the code a %s is given', (status, ErrorClass) => {
+		const cause = new Error('underlying');
+		const error = createHttpError(status, 'refused', {
+			code: 'REFUSED',
+			cause,
+		});
+
+		expect(error).toBeInstanceOf(ErrorClass);
+		expect(error.code).toBe('REFUSED');
+		expect(error.cause).toBe(cause);
+	});
+
+	it('names the reason phrase of a precondition that failed', () => {
+		expect(createHttpError(412, 'stale').statusMessage).toBe(
+			'Precondition Failed',
+		);
 	});
 });
