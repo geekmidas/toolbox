@@ -71,6 +71,11 @@ export class Webhooks<
 	readonly reaches: readonly Consumable[];
 	/** How a delivery's request leaves the process. A test swaps it. */
 	transport: WebhookTransport = fetchTransport;
+	/**
+	 * The time everything it schedules is reckoned by — when a delivery is
+	 * next due, when a rotated secret stops signing. A test swaps it.
+	 */
+	clock: () => Date = () => new Date();
 
 	constructor(
 		name: ConstructName<TName>,
@@ -103,6 +108,7 @@ export class Webhooks<
 						register,
 					)) as unknown as Kysely<WebhookTables>,
 					cipher: await this.encryption.service.register(register),
+					now: () => this.clock(),
 				}),
 		};
 	}

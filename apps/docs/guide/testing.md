@@ -279,7 +279,55 @@ string deployed — write payload schemas with `z.iso.datetime()`, not
 
 `published(topic)` still records everything published, and
 `queue(q).invoke(...)` / `subscriber(s).invoke(...)` run a consumer on its own —
-a redelivery, say — and deliver whatever it publishes.
+a redelivery, say — and deliver whatever it publishes. `cron(c).run()` runs a
+cron now rather than on its schedule, the same way: as the server side of the
+test, in its transaction, delivering what it published before it resolves to
+the cron's output.
+
+### Webhooks
+
+A [`Webhooks`](/packages/constructs#webhooks-what-a-service-sends-its-users)
+construct runs as deployed — subscriptions, fan-out, signing, retries and the
+rows they leave, all in the test's transaction. Two things are replaced, each
+at the seam the construct offers for it:
+
+- **The customer's server.** Every delivery goes through `hooks.transport`,
+  which a feature test points at MSW: answer it with `msw.use(...)`, for that
+  test only. A delivery nothing answers never leaves the process — it fails as
+  an unreachable server would (`WebhookReceiverNotFaked`, a `TypeError`), and
+  is recorded as a failed attempt.
+- **The time.** What the construct schedules by is `hooks.clock()`, which reads
+  the test's `clock`: frozen when the test starts, moved by
+  `clock.advance('1m')` (`ms`, `s`, `m`, `h`, `d`, or a number of
+  milliseconds) and `clock.set(date)`. Nothing else is faked — timers, `Date`
+  and Postgres keep the real time, so the database and pg-boss work as usual.
+
+```typescript
+it('retries a failed delivery', async ({ browser, msw, clock, cron }) => {
+  const received: Request[] = [];
+  let calls = 0;
+  msw.use(
+    http.post('https://acme.test/hooks', ({ request }) => {
+      received.push(request.clone());
+      return new HttpResponse(null, { status: ++calls === 1 ? 500 : 200 });
+    }),
+  );
+  await browser.api.post('/webhook-endpoints', {
+    body: { url: 'https://acme.test/hooks', events: ['invoice.paid'] },
+  });
+
+  await browser.api.post('/invoices/inv_1/pay'); // the first attempt, in-process
+  clock.advance('1m');
+  await cron(retryBilling).run();                // the sweep, now due
+
+  expect(received).toHaveLength(2);
+});
+```
+
+The tables are the tenant's committed migration (`gkm migration BillingHooks`),
+which `gkm test` applies with every other before the suite starts. The tenant
+is the test's transaction even when the app does not export it on its own, so
+`db.get('billingHooksDb')` reads what a delivery wrote.
 
 ### Pushes to a WebSocket surface
 

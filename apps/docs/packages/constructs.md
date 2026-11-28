@@ -831,6 +831,16 @@ name (`localhost`, `*.internal`), a private or reserved address, or a URL
 carrying credentials throws `WebhookUrlNotDeliverable`. Under `gkm dev` and in
 tests, `http://localhost` is allowed.
 
+#### Testing webhooks
+
+In a `featureTest`, everything runs in the test's transaction, and only the hop
+to the customer's server and the clock are replaced. `hooks.transport` is sent
+through MSW, so `msw.use(http.post(url, …))` answers a delivery, and one that
+nothing answers fails as an unreachable server would, without reaching the
+network. `hooks.clock` reads the test's `clock` (`clock.advance('1m')`,
+`clock.set(date)`), and `cron(retryBilling).run()` runs the sweep on demand.
+See [Testing webhooks](/guide/testing#webhooks).
+
 ### The database, and what comes off it
 
 ```typescript

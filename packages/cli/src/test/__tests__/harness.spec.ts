@@ -242,6 +242,14 @@ describe('writeTestHarness', () => {
 					export: 'onNoteCreated',
 				},
 			},
+			// Destructured, as `worker.webhooks(hooks)` is exported: the
+			// subscriber by its own name, and the cron beside it not at all.
+			{
+				source: {
+					file: join(fixture, 'subscribers', 'noteEvents.ts'),
+					export: 'deliverNotes',
+				},
+			},
 		]);
 		for (const file of files) {
 			expect(harness).toContain(`${JSON.stringify(file)}: __module`);
